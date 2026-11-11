@@ -295,6 +295,14 @@ class PromptPresentation internal constructor(val ticket: PromptTicket, val surf
     fun markShown() = ticket.shown(this)
     fun choose(choice: PromptChoice) = ticket.choose(this, choice)
     fun retire() = ticket.retire(this)
+
+    /** A read-only notice follows the request, without replacing its answering surface. */
+    fun showNotice(post: () -> (() -> Unit)?) {
+        if (surface == PromptSurface.NOTIFICATION || !shown || !live) return
+        val close = post() ?: return
+        // onFinished also runs immediately if the request ended during the platform post.
+        ticket.onFinished { close() }
+    }
 }
 
 /** Handler calls that time out before dispatch must not perform their queued side effect later. */

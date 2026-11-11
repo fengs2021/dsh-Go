@@ -178,6 +178,7 @@ class PhonePrompts(
         if (handle == null) { p.retire(); return false }
         if (!p.live) { handle(); return false }
         display = ticket to handle
+        notifications.showWaiting(p)
         return true
     }
 

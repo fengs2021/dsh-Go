@@ -110,6 +110,20 @@ class NotificationGate(
 
     override fun status(text: String?, ifCurrent: (() -> Unit) -> Boolean) = onStatus(text, ifCurrent)
 
+    /** Announce an overlay/app prompt without duplicating its buttons or exposing request text. */
+    fun showWaiting(p: PromptPresentation) = p.showNotice {
+        if (!available()) return@showNotice null
+        val id = ids.incrementAndGet()
+        runCatching {
+            nm.notify(TAG, id, builder(CHANNEL_CONFIRM).setSmallIcon(R.drawable.ic_stat_dsh)
+                .setContentTitle(AppStrings.APP_NAME)
+                .setContentText(PhonePromptUi.title(app, p.ticket.content))
+                .setCategory(Notification.CATEGORY_REMINDER).setVisibility(Notification.VISIBILITY_PRIVATE)
+                .setOngoing(true).setTimeoutAfter(p.ticket.remainingMs).build())
+            ({ runCatching { nm.cancel(TAG, id) }; Unit })
+        }.getOrNull()
+    }
+
     /** Non-blocking presentation for the shared arbiter. Open uses an Activity PendingIntent. */
     override fun showPrompt(presentation: PromptPresentation): (() -> Unit)? {
         val p = presentation
