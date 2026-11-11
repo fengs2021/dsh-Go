@@ -1,0 +1,30 @@
+--- a/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
+@@ -4,7 +4,7 @@
+ import { dshCachePath, resolveDshHome } from "@deepseek-ai/dsh-home-paths";
+ import { createHash, randomUUID } from "node:crypto";
+ import { constants, createReadStream } from "node:fs";
+-import { chmod, link, mkdir, open, readFile, rename, rm, unlink, writeFile } from "node:fs/promises";
++import { chmod, link, mkdir, open, readFile, rename, rm, statfs, unlink, writeFile } from "node:fs/promises";
+ import { createLazyRequire } from "@deepseek-ai/dsh-lazy-require";
+ //#region lib/types/compression-limiter.js
+ /** Instance-owned concurrency bound for native image transformations. */
+@@ -368,6 +368,12 @@
+-	const handle = await open(path, constants.O_RDONLY);
++	const handle = await open(path, constants.O_RDONLY);
+-	try {
++	try {
+-		await handle.sync();
++		await handle.sync();
++	} catch (error) {
++		if (process.platform !== "linux" || error?.code !== "EINVAL") throw error;
++		// EROFS ancestor entries belong to an immutable image, with no directory writes to flush.
++		// Inspect the open directory rather than a path that may have been replaced.
++		const filesystem = await statfs(`/proc/self/fd/${handle.fd}`).catch(() => null);
++		if (filesystem?.type !== 0xE0F5E1E2) throw error;
+-	} finally {
++	} finally {
+-		await handle.close();
++		await handle.close();
+-	}
++	}

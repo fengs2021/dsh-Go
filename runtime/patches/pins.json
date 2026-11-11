@@ -1665,6 +1665,14 @@
           "before": "a1ad048cbbb7caefe5471c583f076aa8e393f534efbc5b11b625308096efdace"
         }
       }
+    },
+    "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-attachment-erofs-sync.diff": {
+      "0.2.2-rc.1": {
+        "node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js": {
+          "after": "86f074b17c9d18052b89bb5bcfbf3c9fcc63a7d9031ba50d7ae8c7e1d518ecf3",
+          "before": "d99fe87a115b5d4eda5858d67a463ebf1a01d87c3bda891b25590ee3f01d4f51"
+        }
+      }
     }
   },
   "schema": 1
