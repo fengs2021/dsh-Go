@@ -1,0 +1,22 @@
+name: ev020
+on:
+  push:
+    branches: [reverse/refactor4-020-evidence]
+permissions:
+  contents: read
+jobs:
+  ev:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          set +e
+          id -u
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -q Pillow==13.0.0 numpy==2.4.0
+          PY="$RUNNER_TEMP/venv/bin/python"
+          "$PY" -m unittest -v runtime/tests/test_runtime_fetch.py 2>&1 | tee fetch.log | grep -E "first_lock|failed_capture|host_node_extraction|^Ran|^OK|^FAILED|skipped|ERROR|FAIL"
+          echo "EXIT_FETCH=${PIPESTATUS[0]}"
+          "$PY" -m unittest -v tooling/test_emu_shot.py 2>&1 | tee emu.log | tail -15
+          echo "EXIT_EMU=${PIPESTATUS[0]}"
