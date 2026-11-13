@@ -3,6 +3,7 @@ import { createNativePhonePort } from './native-port.mjs';
 import { registerPhoneRoutes } from './routes.mjs';
 import { registerPhoneTools } from './tools.mjs';
 import { registerUiTools, shText, dumpUi } from './ui-tools.mjs';
+import { startProgressFeed } from './progress-feed.mjs';
 
 export const name = 'dsh-go-ohos-phone';
 export const inject = ['tools', 'ohosLifecycle', 'approval'];
@@ -74,5 +75,9 @@ export function apply(ctx) {
       }
     });
   }
+  // 后台进度导出：把思考/工具调用压成一行写进固定文件，供 ArkTS 侧弹幕展示。
+  let stopFeed = null;
+  try { stopFeed = startProgressFeed(ctx); } catch (error) { console.error('[progress-feed] start failed: ' + ((error && error.message) || error)); }
+  ctx.effect(() => () => { if (typeof stopFeed === 'function') stopFeed(); }, 'ohos progress feed shutdown');
   ctx.inject(['webServer'], webCtx => registerPhoneRoutes(webCtx, queue));
 }

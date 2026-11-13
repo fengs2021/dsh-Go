@@ -9,6 +9,7 @@ import ConnectivityPlugin from '../plugins/ConnectivityPlugin';
 import { GeneratedPluginRegistrant } from '../plugins/GeneratedPluginRegistrant';
 import { RuntimePlugin } from '../runtime/RuntimePlugin';
 import { RuntimeController } from '../runtime/RuntimeController';
+import { DanmakuService } from '../runtime/DanmakuService';
 import FilesMediaPlugin from '../plugins/FilesMediaPlugin';
 import NativeFilesPlugin from '../plugins/NativeFilesPlugin';
 import NativeMediaPlugin from '../plugins/NativeMediaPlugin';
@@ -49,6 +50,8 @@ export default class EntryAbility extends FlutterAbility {
     super.onWindowStageCreate(windowStage);
     PerformancePlugin.applyFrameCache();
     this.keyboardLog.attach(windowStage);
+    // 后台进度弹幕：前台走应用内浮层，后台走通知栏（无需任何系统级权限）。
+    DanmakuService.shared().attach(this.context);
   }
 
   onWindowStageDestroy(): void {
@@ -57,6 +60,7 @@ export default class EntryAbility extends FlutterAbility {
   }
 
   onForeground(): void {
+    DanmakuService.shared().onForeground();
     PastePlugin.onForeground(this);
     AppLinksPlugin.onForeground(this);
     RuntimeController.onForeground(this);
@@ -67,6 +71,7 @@ export default class EntryAbility extends FlutterAbility {
   }
 
   onBackground(): void {
+    DanmakuService.shared().onBackground();
     PastePlugin.onBackground(this);
     AppLinksPlugin.onBackground(this);
     RuntimeController.onBackground(this);
@@ -77,6 +82,7 @@ export default class EntryAbility extends FlutterAbility {
   }
 
   onDestroy(): void {
+    DanmakuService.shared().detach();
     PastePlugin.onBackground(this);
     RuntimeController.onDestroy(this);
     super.onDestroy();
