@@ -4,7 +4,8 @@ import util from '@ohos.util';
 import common from '@ohos.app.ability.common';
 import bundleManager from '@ohos.bundle.bundleManager';
 import { BusinessError } from '@ohos.base';
-import { RuntimeChannelError, resolveNativeLibraryDir } from './RuntimeCore';
+import { RuntimeChannelError } from './RuntimeCore';
+import { resolveNativeLibraryDirForDevice } from './NativeLibraryDir';
 import { OhosRuntimeStorage } from './OhosRuntimeStorage';
 import { LkgStorage, LkgPair, LkgProfile, LkgVersion } from './RuntimeLastKnownGood';
 
@@ -166,7 +167,7 @@ export class OhosLastKnownGoodStorage implements LkgStorage {
       return module.name + ':' + module.hashValue;
     }).sort();
     if (modules.length === 0) this.invalid();
-    const directory = resolveNativeLibraryDir(this.context.bundleCodeDir, this.context.applicationInfo.nativeLibraryPath);
+    const directory = resolveNativeLibraryDirForDevice(this.context.bundleCodeDir, this.context.applicationInfo.nativeLibraryPath);
     const directoryStat = await fs.lstat(directory);
     if (!directoryStat.isDirectory() || directoryStat.isSymbolicLink()) this.invalid();
     const entries = await fs.listFile(directory, { recursion: false, listNum: 1025 });

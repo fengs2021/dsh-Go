@@ -6,7 +6,8 @@ import UIAbility from '@ohos.app.ability.UIAbility';
 import type { HostState, HostEvent, HostOptions } from 'libdsh_host.so';
 import { loadNativeHost, peekNativeHost, nativeHostState, nativeHostTouched, configureNativeRecovery, NativeRecoveryGate } from './NativeHost';
 import { RuntimeChannelError, RuntimeManifest, RuntimeFile, RuntimeInstaller, RuntimeLogs, RuntimeLogEntry,
-  InstallProgress, validateEnvironment, validateStartOptions, resolveNativeLibraryDir } from './RuntimeCore';
+  InstallProgress, validateEnvironment, validateStartOptions } from './RuntimeCore';
+import { resolveNativeLibraryDirForDevice } from './NativeLibraryDir';
 import { OhosRuntimeStorage } from './OhosRuntimeStorage';
 import { RuntimeRecovery } from './RuntimeRecovery';
 import { OhosRecoveryStorage } from './OhosRecoveryStorage';
@@ -478,7 +479,8 @@ export class RuntimeController {
       if (native.consumed) throw new RuntimeChannelError('ohos_restart_required', '启动模式已保存；一个 App 进程只启动一次 Node，请重新打开 App。');
       this.installed = await this.installer.installed();
       if (!this.current()) throw new RuntimeChannelError('ohos_install_required', '运行时尚未完整安装到当前版本，请先安装。');
-      const nativeLibraryDir = resolveNativeLibraryDir(this.context.bundleCodeDir, this.context.applicationInfo.nativeLibraryPath);
+      const nativeLibraryDir = resolveNativeLibraryDirForDevice(this.context.bundleCodeDir, this.context.applicationInfo.nativeLibraryPath);
+      this.logNote('随包原生库目录：' + nativeLibraryDir);
       const dshHome = this.paths.dshHome;
       const workspace = this.paths.workspace;
       const cache = this.context.cacheDir + '/dsh-runtime';
