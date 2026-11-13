@@ -26,7 +26,7 @@ app/android/build/
 # the media plugin carries its own JS package
 runtime/media/dsh-media/node_modules/
 # the OHOS virtual process backend installs its pinned deps (npm ci) in place
-runtime/ohos/process/node_modules/
+runtime/ohos/process/node_modules
 # build-time esbuild for the OHOS Node build (runtime/ohos/node/BUILD.md)
 runtime/ohos/node/build-tools/node_modules/
 # Python bytecode from tooling/
@@ -40,3 +40,8 @@ site/build/
 
 # Reproducible private OHOS rg regex build
 runtime/ohos/process/build/
+
+# 本地构建软链：npm 依赖装在 /root/prepared 下，仓库里只留软链
+/node_modules
+# 随包的内置 hdc 调试私钥（不入库；本地构建时把 id_rsa 放进该目录即可随包分发）
+runtime/ohos/phone/hdc-key/
