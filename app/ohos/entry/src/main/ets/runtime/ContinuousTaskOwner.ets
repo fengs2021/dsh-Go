@@ -79,8 +79,17 @@ export class ContinuousTaskOwner {
     }], requestCode: 0, actionType: wantAgent.OperationType.START_ABILITY,
       actionFlags: [wantAgent.WantAgentFlags.CONSTANT_FLAG] });
     if (generation !== this.generation || !this.wanted) return;
-    const result = await backgroundTaskManager.startBackgroundRunning(this.context, request);
-    const id = result.continuousTaskId;
+    let id: number | undefined;
+    try {
+      const result = await backgroundTaskManager.startBackgroundRunning(this.context, request);
+      id = result.continuousTaskId;
+    } catch (error) {
+      // 新版按 ContinuousTaskRequest 申请；部分机型/版本只放行旧的字符串模式入口，
+      // 这里退一步再试，仍失败才交给上层记失败并回落瞬态任务。
+      const legacy: backgroundTaskManager.ContinuousTaskNotification =
+        await backgroundTaskManager.startBackgroundRunning(this.context, ['dataTransfer'], request.wantAgent);
+      id = legacy.continuousTaskId;
+    }
     if (id === undefined) {
       // A context-wide stop could cancel a replacement owner's task. Without
       // the returned id no safe targeted cleanup can be claimed.

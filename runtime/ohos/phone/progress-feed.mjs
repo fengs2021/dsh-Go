@@ -68,6 +68,38 @@ export function progressFeedPath() {
   return path.join(home, '.dsh', 'dsh-app', 'progress.json');
 }
 
+// ArkTS 侧的弹幕状态（tick 次数、后台标志、通知结果）写在同一目录，这里一并抄进日志，
+// 这样用户只要截一张「设置→诊断」的引擎日志尾部，就能看出是哪一环断了。
+export function arktsStatePath(feedFile) {
+  return path.join(path.dirname(feedFile), 'danmaku-arkts.json');
+}
+
+function readArktsState(file) {
+  try {
+    const raw = fs.readFileSync(file, 'utf8');
+    const value = JSON.parse(raw);
+    return 'ticks=' + value.ticks + ' bg=' + (value.background ? 1 : 0) +
+      ' attached=' + (value.attached ? 1 : 0) + ' notify=' + String(value.notify || '-').slice(0, 40) +
+      ' err=' + String(value.error || '-').slice(0, 40);
+  } catch {
+    return 'absent';
+  }
+}
+
+function lifecycleFacts(ctx) {
+  try {
+    const coordinator = typeof ctx.get === 'function' ? ctx.get('ohosLifecycle') : undefined;
+    const status = coordinator && typeof coordinator.status === 'function' ? coordinator.status() : undefined;
+    const native = status && status.nativeHost ? status.nativeHost : null;
+    if (!native) return 'phase=? host=none paused=' + String(status && status.paused);
+    return 'phase=' + native.phase + ' fg=' + native.foreground + ' avail=' + native.available +
+      ' deadline=' + native.deadlineMs + ' paused=' + String(status.paused) +
+      ' manual=' + String(status.manualPaused) + ' busy=' + String(status.busy);
+  } catch (error) {
+    return 'phase=? err=' + String((error && error.message) || error).slice(0, 40);
+  }
+}
+
 export function startProgressFeed(ctx, options = {}) {
   const file = options.file || progressFeedPath();
   const now = () => Date.now();
@@ -199,11 +231,26 @@ export function startProgressFeed(ctx, options = {}) {
     touch();
   });
 
+  const arktsFile = arktsStatePath(file);
+  let beats = 0;
+  const beat = () => {
+    try {
+      beats += 1;
+      console.error('[danmaku] beat ' + beats + ' ' + lifecycleFacts(ctx) + ' stage=' + state.stage +
+        ' wrote=' + state.seq + ' line="' + String(state.pool[state.pool.length - 1] || '').slice(0, 24) + '"');
+      console.error('[danmaku] arkts ' + readArktsState(arktsFile));
+      console.error('[danmaku] file ' + file + ' exists=' + fs.existsSync(file));
+    } catch { /* 诊断日志本身不能影响运行 */ }
+  };
+  const heartbeat = setInterval(beat, 5000);
+  if (typeof heartbeat.unref === 'function') heartbeat.unref();
+  console.error('[danmaku] progress feed armed, file=' + file);
   timer = setInterval(tick, SAMPLE_MS);
   if (typeof timer.unref === 'function') timer.unref();
   tick();
   const stop = () => {
     clearInterval(timer);
+    clearInterval(heartbeat);
     if (typeof offStream === 'function') offStream();
     if (typeof offStatus === 'function') offStatus();
     if (typeof offError === 'function') offError();
