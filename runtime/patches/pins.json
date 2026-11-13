@@ -1555,6 +1555,14 @@
           "before": "c27587fc302f45c9ea6863bfaa2f96894a8a67e894ddfd74cf02477a79ab67e5"
         }
       }
+    },
+    "zzzzzzzzzzzzzzz-ohos-ptc-plain-javascript.diff": {
+      "0.2.2-rc.1": {
+        "node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js": {
+          "before": "952ffdd55654ccaedce2a9c004b68028fdcb31085987cc969d02438076260738",
+          "after": "7ac61f14ca80735c0cfbfeebcba1c6e951c88d9b874d46990abb55afce576614"
+        }
+      }
     }
   },
   "schema": 2,
@@ -1759,7 +1767,8 @@
       "zzzzzzzzzzzzzz-ohos-composition-imports.diff",
       "ohos-forge-github-unavailable.diff",
       "ohos-liveshare-owner-unavailable.diff",
-      "ohos-market-git-unavailable.diff"
+      "ohos-market-git-unavailable.diff",
+      "zzzzzzzzzzzzzzz-ohos-ptc-plain-javascript.diff"
     ]
   }
 }

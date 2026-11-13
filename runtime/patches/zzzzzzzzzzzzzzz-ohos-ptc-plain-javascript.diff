@@ -1,0 +1,46 @@
+--- a/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js
+@@ -1,4 +1,15 @@
+-import { stripTypeScriptTypes } from "node:module";
++import { stripTypeScriptTypes as stripTypeScriptTypesNative } from "node:module";
++// OHOS：随包 libnode 用 --jitless 交叉编译，V8 没有 WebAssembly，Amaro 的类型剥离
++// 因此在设备上必然失败（ERR_WASM_NOT_SUPPORTED）。这里退化成原样执行，并在指令里
++// 要求模型直接写 JavaScript；桌面与 Android 走的就是原生剥离，行为不变。
++const stripTypeScriptTypes = (source, options) => {
++	try {
++		return stripTypeScriptTypesNative(source, options);
++	} catch (error) {
++		if (error?.code !== "ERR_WASM_NOT_SUPPORTED") throw error;
++		return source;
++	}
++};
+ import { DUNDER_MEMBER, PORTABLE_RESERVED_WORDS, PtcRuntime, RESERVED_BINDING_GLOBALS, RESERVED_ERROR_MEMBERS } from "@deepseek-ai/dsh-ptc-runtime";
+ import { dirname, isAbsolute, resolve } from "node:path";
+ import { fileURLToPath, pathToFileURL } from "node:url";
+@@ -1325,7 +1336,7 @@ function resolveMode(config) {
+ 		case "per-call": return {
+ 			format: "function-body",
+ 			retainsState: false,
+-			executionInstructions: "The program is the body of an async TypeScript function; only erasable syntax is accepted, with no enum or namespaces. Type annotations are advisory. Top-level await and return are supported. Emit output with console.log(...) or return a lossless JSON value. Only printed values and the returned value become program output. Each call runs in a fresh Node process. Node APIs are available through await import(...). Relative paths use the supplied working directory; process.env starts empty. Direct filesystem access follows this execution's sandbox policy.",
++			executionInstructions: "The program is the body of an async TypeScript function; only erasable syntax is accepted, with no enum or namespaces. Type annotations are advisory, but this device may execute the program verbatim when the runtime has no TypeScript stripper, so write plain JavaScript without annotations. Top-level await and return are supported. Emit output with console.log(...) or return a lossless JSON value. Only printed values and the returned value become program output. Each call runs in a fresh Node process. Node APIs are available through await import(...). Relative paths use the supplied working directory; process.env starts empty. Direct filesystem access follows this execution's sandbox policy.",
+ 			stripTypes(program) {
+ 				const stripped = stripTypeScriptTypes(STRIP_PREFIX + program + STRIP_SUFFIX);
+ 				return stripped.slice(35, stripped.length - 2);
+@@ -1334,7 +1345,7 @@ function resolveMode(config) {
+ 		case "persistent-in-memory": return {
+ 			format: "repl",
+ 			retainsState: true,
+-			executionInstructions: "The program contains TypeScript REPL statements; only erasable syntax is accepted, with no enum or namespaces. Type annotations are advisory. Top-level declarations and await are supported; top-level return is not supported. Emit output with console.log(...) or a final lossless JSON expression. Only printed values and that final expression become program output. Variables, functions, and imported modules remain in memory for this Agent across calls. Use await import(...) for modules. Direct filesystem access follows this execution's sandbox policy; process.env starts empty. Changing the session sandbox mode clears retained variables. An approved sandbox escalation runs in a separate temporary environment: it cannot access retained variables, and its declarations are discarded afterward. Restart, Agent disposal, cancellation, timeout, output overflow, or process failure clears the environment. If a variable is undefined, recreate it and reacquire its resources. State is not restored from the conversation, and failed evaluations can leave earlier mutations in memory. Redeclaring an existing let, const, or class name fails; assign to a mutable binding or use a new name. Await all tool calls; background callbacks cannot call tools after their evaluation ends. Await child-process completion before ending an evaluation; raw subprocess output belongs to whichever evaluation is active when it arrives.",
++			executionInstructions: "The program contains TypeScript REPL statements; only erasable syntax is accepted, with no enum or namespaces. Type annotations are advisory, but this device may execute the program verbatim when the runtime has no TypeScript stripper, so write plain JavaScript without annotations. Top-level declarations and await are supported; top-level return is not supported. Emit output with console.log(...) or a final lossless JSON expression. Only printed values and that final expression become program output. Variables, functions, and imported modules remain in memory for this Agent across calls. Use await import(...) for modules. Direct filesystem access follows this execution's sandbox policy; process.env starts empty. Changing the session sandbox mode clears retained variables. An approved sandbox escalation runs in a separate temporary environment: it cannot access retained variables, and its declarations are discarded afterward. Restart, Agent disposal, cancellation, timeout, output overflow, or process failure clears the environment. If a variable is undefined, recreate it and reacquire its resources. State is not restored from the conversation, and failed evaluations can leave earlier mutations in memory. Redeclaring an existing let, const, or class name fails; assign to a mutable binding or use a new name. Await all tool calls; background callbacks cannot call tools after their evaluation ends. Await child-process completion before ending an evaluation; raw subprocess output belongs to whichever evaluation is active when it arrives.",
+ 			stripTypes: stripTypeScriptTypes
+ 		};
+ 		case "vm-script": {
+@@ -1344,7 +1355,7 @@ function resolveMode(config) {
+ 			return {
+ 				format: "script",
+ 				retainsState: config.scriptPersistence,
+-				executionInstructions: "The program contains TypeScript script statements; only erasable syntax is accepted, with no enum or namespaces. Type annotations are advisory. Top-level declarations and await are supported; top-level return is not supported. Emit output with console.log(...) or a final lossless JSON expression. The final expression is awaited if it is a Promise. Only printed values and that final expression become program output. " + lifetime + " Use await import(...) for modules. Relative paths use the supplied working directory. Direct filesystem access follows this execution's sandbox policy; process.env starts empty. " + asynchronousFailure + " Values from bindings and imports can belong to another realm; use Array.isArray for arrays and the supplied binding error classes for failures, because instanceof Array or Error may be false." + recovery,
++				executionInstructions: "The program contains TypeScript script statements; only erasable syntax is accepted, with no enum or namespaces. Type annotations are advisory, but this device may execute the program verbatim when the runtime has no TypeScript stripper, so write plain JavaScript without annotations. Top-level declarations and await are supported; top-level return is not supported. Emit output with console.log(...) or a final lossless JSON expression. The final expression is awaited if it is a Promise. Only printed values and that final expression become program output. " + lifetime + " Use await import(...) for modules. Relative paths use the supplied working directory. Direct filesystem access follows this execution's sandbox policy; process.env starts empty. " + asynchronousFailure + " Values from bindings and imports can belong to another realm; use Array.isArray for arrays and the supplied binding error classes for failures, because instanceof Array or Error may be false." + recovery,
+ 				stripTypes: stripTypeScriptTypes
+ 			};
+ 		}
