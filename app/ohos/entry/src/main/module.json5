@@ -26,6 +26,9 @@
         "orientation": "auto_rotation_restricted",
         "exported": true,
         "launchType": "singleton",
+        "backgroundModes": [
+          "dataTransfer"
+        ],
         "metadata": [
           {
             "name": "ohos.ability.shortcuts",
@@ -128,6 +131,9 @@
       },
       {
         "name": "ohos.permission.GET_BUNDLE_INFO"
+      },
+      {
+        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING"
       },
       {
         "name": "ohos.permission.MICROPHONE",

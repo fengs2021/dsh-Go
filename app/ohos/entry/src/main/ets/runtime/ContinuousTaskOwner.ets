@@ -2,7 +2,12 @@ import common from '@ohos.app.ability.common';
 import wantAgent from '@ohos.app.ability.wantAgent';
 import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
 import { NativeHostModule } from './NativeHost';
-import { backgroundComputePermission } from './BackgroundCompute';
+import { BusinessError } from '@ohos.base';
+import { backgroundComputePermission, continuousTaskModes } from './BackgroundCompute';
+
+// MODE_DATA_TRANSFER leases expire after ten idle minutes; the engine reports no
+// download progress, so the lease is refreshed well inside that window.
+const REFRESH_MS: number = 240000;
 
 // OS acceptance, not permission eligibility, grants the native background lease.
 export class ContinuousTaskOwner {
@@ -20,6 +25,9 @@ export class ContinuousTaskOwner {
   private cancelled: Set<number> = new Set<number>();
   private cleanup: Set<number> = new Set<number>();
   private failure: string | null = null;
+  private lease: backgroundTaskManager.ContinuousTaskRequest | null = null;
+  private refresh: number | null = null;
+  private refreshBusy: boolean = false;
   private readonly onCancel = (info: backgroundTaskManager.ContinuousTaskCancelInfo): void => this.unavailable(info.id, true);
   private readonly onSuspend = (info: backgroundTaskManager.ContinuousTaskSuspendInfo): void => this.unavailable(info.continuousTaskId, false);
 
@@ -47,8 +55,9 @@ export class ContinuousTaskOwner {
     this.wanted = true; this.cancelled.clear();
     const generation = ++this.generation;
     this.pending++;
-    this.start(generation).catch((): void => {
+    this.start(generation).catch((error: BusinessError): void => {
       if (this.generation !== generation || !this.wanted) return;
+      if (this.failure === null) this.failure = 'ohos_continuous_start_failed:' + String(error.code) + ':' + error.message;
       this.stop(); this.fallback();
     }).finally((): void => { this.pending--; });
     return true;
@@ -57,8 +66,14 @@ export class ContinuousTaskOwner {
   private async start(generation: number): Promise<void> {
     backgroundTaskManager.on('continuousTaskCancel', this.onCancel); this.listening = true;
     backgroundTaskManager.on('continuousTaskSuspend', this.onSuspend);
+    const modes = continuousTaskModes(this.context.applicationInfo.accessTokenId);
+    if (modes.length === 0) {
+      this.failure = 'ohos_continuous_mode_unsupported';
+      throw new Error('No continuous task mode is supported');
+    }
     const request = new backgroundTaskManager.ContinuousTaskRequest();
-    request.backgroundTaskModes = [backgroundTaskManager.BackgroundTaskMode.MODE_TASK_KEEPING];
+    request.backgroundTaskModes = modes;
+    this.lease = request;
     request.wantAgent = await wantAgent.getWantAgent({ wants: [{
       bundleName: this.context.applicationInfo.name, abilityName: this.context.abilityInfo.name
     }], requestCode: 0, actionType: wantAgent.OperationType.START_ABILITY,
@@ -78,7 +93,32 @@ export class ContinuousTaskOwner {
     if (this.host.lifecycleUpdate('continuous', this.owner, 0, 1) !== 1) {
       this.stop(); return;
     }
+    this.startRefresh();
     this.wake();
+  }
+
+  private startRefresh(): void {
+    this.stopRefresh();
+    this.refresh = setInterval((): void => this.refreshTask(), REFRESH_MS);
+  }
+
+  private stopRefresh(): void {
+    if (this.refresh !== null) clearInterval(this.refresh);
+    this.refresh = null;
+    this.refreshBusy = false;
+    this.lease = null;
+  }
+
+  private refreshTask(): void {
+    const lease = this.lease;
+    if (lease === null || this.task === null || this.refreshBusy) return;
+    this.refreshBusy = true;
+    backgroundTaskManager.updateBackgroundRunning(this.context, lease).then((): void => {
+      this.refreshBusy = false;
+    }, (_: BusinessError): void => {
+      // A rejected refresh is retried on the next tick while the lease survives.
+      this.refreshBusy = false;
+    });
   }
 
   active(): boolean { return this.wanted; }
@@ -87,6 +127,7 @@ export class ContinuousTaskOwner {
 
   stop(): void {
     this.wanted = false; this.generation++; this.cancelled.clear();
+    this.stopRefresh();
     const task = this.task; this.task = null;
     if (task !== null) {
       this.closeNative();
