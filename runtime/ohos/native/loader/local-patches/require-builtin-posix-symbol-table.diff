@@ -1,0 +1,56 @@
+--- a/packages/native/src/runtime_probe/posix.cc
++++ b/packages/native/src/runtime_probe/posix.cc
+@@ -30,8 +30,52 @@
+   return true;
+ }
+ 
++namespace {
++
++// OHOS 上 napi 宿主以局部作用域装载原生模块，作为 DT_NEEDED 被带进来的
++// libnode.so 不会进入 dlsym(RTLD_DEFAULT) 搜索的全局作用域，因此 dlsym 查不到
++// V8 私有 ABI 符号。下面这些直接引用由动态链接器按 addon 的 DT_NEEDED
++// libnode.so 绑定，等价于在 node 映像内部解析同一个符号。
++// 带 Eit 后缀的 tagged getter 在 Node 24.22.1 中并不导出，故不在此列（上游
++// 源码对它们缺失有回退分支）。
++extern "C" void sym_v8_get_version() __asm__("_ZN2v82V810GetVersionEv");
++extern "C" void sym_isolate_get_current() __asm__("_ZN2v87Isolate10GetCurrentEv");
++extern "C" void sym_isolate_get_current_context()
++    __asm__("_ZN2v87Isolate17GetCurrentContextEv");
++extern "C" void sym_context_embedder_data_count()
++    __asm__("_ZN2v87Context29GetNumberOfEmbedderDataFieldsEv");
++extern "C" void sym_context_slow_untagged_getter()
++    __asm__("_ZN2v87Context37SlowGetAlignedPointerFromEmbedderDataEi");
++extern "C" void sym_node_builtin_module_require()
++    __asm__("_ZNK4node14PrincipalRealm22builtin_module_requireEv");
++
++struct DirectSymbol {
++  const char* mangled;
++  void* address;
++};
++
++const DirectSymbol kDirectSymbols[] = {
++    {"_ZN2v82V810GetVersionEv", reinterpret_cast<void*>(&sym_v8_get_version)},
++    {"_ZN2v87Isolate10GetCurrentEv", reinterpret_cast<void*>(&sym_isolate_get_current)},
++    {"_ZN2v87Isolate17GetCurrentContextEv",
++     reinterpret_cast<void*>(&sym_isolate_get_current_context)},
++    {"_ZN2v87Context29GetNumberOfEmbedderDataFieldsEv",
++     reinterpret_cast<void*>(&sym_context_embedder_data_count)},
++    {"_ZN2v87Context37SlowGetAlignedPointerFromEmbedderDataEi",
++     reinterpret_cast<void*>(&sym_context_slow_untagged_getter)},
++    {"_ZNK4node14PrincipalRealm22builtin_module_requireEv",
++     reinterpret_cast<void*>(&sym_node_builtin_module_require)},
++};
++
++}  // namespace
++
+ void* LookupPlatformProcessSymbol(std::string_view name) {
+-  return dlsym(RTLD_DEFAULT, name.data());
++  void* symbol = dlsym(RTLD_DEFAULT, name.data());
++  if (symbol != nullptr) return symbol;
++  for (const DirectSymbol& entry : kDirectSymbols) {
++    if (name == entry.mangled) return entry.address;
++  }
++  return nullptr;
+ }
+ 
+ Result<GetterSymbol> ResolvePlatformBuiltinModuleRequireGetterFallback(

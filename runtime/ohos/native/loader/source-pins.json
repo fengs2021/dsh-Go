@@ -43,7 +43,7 @@
       "packages/native/src/runtime_probe/parser.h": "dd156b73ea3dddbdaad2df71a21c5a4372b1908c82bd83d72f7d622636f4eaac",
       "packages/native/src/runtime_probe/platform.cc": "f0c472027c06e8102e4d01a4b00ec565722e3f680b2ee2fcc700a2619b53aaf0",
       "packages/native/src/runtime_probe/platform.h": "2947e6e697e0b5b59b870156b12aff6004da595bcaa5262d71f5a91b5071a4c7",
-      "packages/native/src/runtime_probe/posix.cc": "a7083871a27051b3d0847e8fb876aa5d3814b749add720ea7032b5c4b4a018c4",
+      "packages/native/src/runtime_probe/posix.cc": "8fbc446a292bc23550b65d415ad9cd960f30b4e355eaeef82e233a4ac191545f",
       "packages/native/src/runtime_probe/win32_arm64.cc": "ec0c5300daf51372ec3e84064e09038d39d2d129428ca615e8bd42000c6dc06b",
       "packages/native/src/runtime_probe/win32_common.cc": "4e0a30c6d84e1ca19dc953b1617acd8d0ea76fad438ff8e4a3d3aba190c48bbd",
       "packages/native/src/runtime_probe/win32_ia32.cc": "16274ab5889681f1d1d2558c948aad0fe2a092dadbd9aa087054467c47e71ccc",
@@ -82,5 +82,15 @@
   "unusedTaggedSymbolsOnNode24": [
     "_ZN2v87Context33GetAlignedPointerFromEmbedderDataEit",
     "_ZN2v87Context37SlowGetAlignedPointerFromEmbedderDataEit"
+  ],
+  "localPatches": [
+    {
+      "file": "packages/native/src/runtime_probe/posix.cc",
+      "reason": "OHOS 的 napi 宿主以局部作用域装载原生模块：libnode.so 作为 DT_NEEDED 不进全局作用域，dlsym(RTLD_DEFAULT, \"_ZN2v87Isolate10GetCurrentEv\" 等) 返回 NULL，运行时报 Unsupported/no-context。posix.cc 的 LookupPlatformProcessSymbol 增加直接符号绑定兜底（asm 标号声明 + 查表），符号由动态链接器按 DT_NEEDED libnode.so 解析；dlsym 路径保持原样。",
+      "declaredAt": "2026-11-13",
+      "sha256": "8fbc446a292bc23550b65d415ad9cd960f30b4e355eaeef82e233a4ac191545f",
+      "evidence": "真机 engine.log: dsh: host preparation failed: node-addon-require-builtin unsupported: Unsupported/no-context (required V8 current-context symbols were not found)",
+      "patchFile": "local-patches/require-builtin-posix-symbol-table.diff"
+    }
   ]
 }
