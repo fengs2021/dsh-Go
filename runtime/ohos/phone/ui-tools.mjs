@@ -180,7 +180,28 @@ async function appAction(args) {
     if (run.code !== 0 || /error/i.test(run.text)) return result(false, 'launch_failed', ('启动 ' + app + '/' + ability + ' 失败：' + run.text).trim().slice(0, 300), '');
     return result(true, 'ok', '已启动 ' + app + '（' + ability + '）', run.text.trim());
   }
-  return result(false, 'invalid_args', 'app.action 只支持 launch/stop/list', '');
+  if (action === 'current') {
+    // 抓前台 Ability 记录（含 want 参数线索）：用来把一个"只能手点"的容器内应用，
+    // 变成可以 replay 的启动参数。
+    const run = await shText('aa dump -a 2>&1', 40000);
+    if (run.code !== 0) return result(false, 'current_failed', run.text.trim().slice(0, 300), '');
+    const blocks = run.text.split(/AbilityRecord ID/).map((block) => block.trim()).filter(Boolean);
+    const foreground = blocks.filter((block) => /state #FOREGROUND/.test(block) && !/^#?\s*app state #FOREGROUND\s*$/m.test(block.split('\n')[0] || ''));
+    const picked = blocks.filter((block) => /\n\s*state #FOREGROUND/.test(block)).pop()
+      || foreground.pop()
+      || blocks.filter((block) => /state #FOREGROUND/.test(block)).pop();
+    if (!picked) return result(false, 'not_found', '没找到前台 Ability 记录', run.text.trim().slice(0, 800));
+    const field = (name) => (new RegExp(name + ' \\[([^\\]]+)\\]').exec(picked) || [])[1] || '';
+    const bundle = field('bundle name');
+    const ability = field('main name');
+    return result(true, 'ok', '前台：' + bundle + '/' + ability, picked.slice(0, 3000));
+  }
+  if (action === 'abilities') {
+    const run = await shText('bm dump -n ' + shellQuote(app) + ' -a 2>&1', 40000);
+    if (run.code !== 0) return result(false, 'abilities_failed', run.text.trim().slice(0, 300), '');
+    return result(true, 'ok', '已读取 ' + app + ' 的 ability 清单', run.text.trim().slice(0, 8000));
+  }
+  return result(false, 'invalid_args', 'app.action 只支持 launch/stop/list/current/abilities', '');
 }
 
 const definitions = [
@@ -210,9 +231,9 @@ const definitions = [
       return handler(args);
     } },
   { name: 'mcp__phone__app',
-    description: '管理手机应用：list 列出已安装包名；launch 用包名把应用拉到前台（走 aa start，不依赖桌面入口）；stop 强制停止应用。',
+    description: '管理手机应用：list 列出已安装包名；launch 用包名把应用拉到前台（走 aa start，不依赖桌面入口）；stop 强制停止应用；current 抓当前前台 Ability 记录（含 want 参数线索，用来把只能手点的容器应用变成可 replay 的启动参数）；abilities 列出某个包的 ability/extension（bm dump -n <pkg> -a）。',
     parameters: { type: 'object', additionalProperties: false, properties: {
-      action: { type: 'string', enum: ['list', 'launch', 'stop'], description: '动作' },
+      action: { type: 'string', enum: ['list', 'launch', 'stop', 'current', 'abilities'], description: '动作：list/launch/stop/current(抓前台 Ability 及其 want)/abilities(列某包的 ability)' },
       app: str('包名，例如 com.tencent.mqq') }, required: ['action'] },
     run: appAction },
 ];
