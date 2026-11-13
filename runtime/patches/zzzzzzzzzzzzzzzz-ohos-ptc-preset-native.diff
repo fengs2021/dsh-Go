@@ -1,0 +1,13 @@
+--- a/node_modules/@deepseek-ai/dsh-web-app/presets/ptc.patch.yml
++++ b/node_modules/@deepseek-ai/dsh-web-app/presets/ptc.patch.yml
+@@ -124,6 +124,10 @@
+               searchTimeoutMs: 60000
+           - id: tool-executor-ptc
+             name: '@deepseek-ai/dsh-tool-executor-ptc'
++            # OHOS：run_code 需要真正 spawn 子进程，鸿蒙本机进程后端不支持（报
++            # 「这个命令在鸿蒙本机不可用」/worker-exit）。这里关掉 PTC 执行器，
++            # 让本作用域回退到 base 的原生执行器：模型直接调工具（含 mcp__phone__*）。
++            disabled: true
+           - id: present
+             name: '@deepseek-ai/dsh-tool-present'
+           - id: tool-plugin-manager
