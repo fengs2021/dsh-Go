@@ -5,7 +5,9 @@ import { getLink } from './hdc-link.mjs';
 
 const TMP = '/data/local/tmp';
 const shellQuote = (value) => "'" + String(value).replace(/'/g, "'\\''") + "'";
-const stateDir = () => path.join(process.env.DSH_GO_PHONE_HOME || process.env.HOME || '/tmp', '.dsh', 'phone-shots');
+// 截图必须落在会话工作区里：模型的 fs 工具（read_image）只读得到工作区，
+// 只有让它能"看见"屏幕，才能在拿不到无障碍节点的 Android 容器/游戏界面上按坐标点击。
+const shotDir = () => path.join(process.cwd(), 'phone-shots');
 const text = (value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }];
 
 export async function shText(command, timeoutMs = 30000) {
@@ -70,7 +72,14 @@ async function uiDump(args) {
   const ordered = nodes.slice().sort((a, b) => Number(Boolean(b.label)) - Number(Boolean(a.label)));
   const matched = filter ? ordered.filter((n) => (n.label || '').includes(filter) || n.type.includes(filter) || n.id.includes(filter)) : ordered;
   const shown = matched.slice(0, limit);
-  const head = '屏幕 ' + (screen ? screen.x2 + 'x' + screen.y2 : '?') + ' · 控件 ' + nodes.length + ' 个' + (filter ? ' · 匹配 ' + matched.length + ' 个' : '');
+  const labeled = nodes.filter((node) => node.label).length;
+  const head = '屏幕 ' + (screen ? screen.x2 + 'x' + screen.y2 : '?') + ' · 控件 ' + nodes.length + ' 个' +
+    (filter ? ' · 匹配 ' + matched.length + ' 个' : '');
+  if (labeled === 0) {
+    return result(true, 'no_nodes',
+      '这个界面没有可读的无障碍节点（典型的 Android 容器、游戏、自绘界面）。改用 action=shot 截图，再用 read_image 读 phone-shots/ 下的文件看屏幕，按像素坐标 click。',
+      head);
+  }
   const lines = shown.map((node, index) => describe(node, index));
   if (matched.length > shown.length) lines.push('… 还有 ' + (matched.length - shown.length) + ' 个，用 filter 缩小范围');
   return result(true, 'ok', '界面树已读取', head + '\n' + lines.join('\n'));
@@ -130,11 +139,16 @@ async function uiShot() {
   const run = await shText('snapshot_display -f ' + file, 25000);
   if (run.code !== 0) return result(false, 'shot_failed', run.text.trim().slice(0, 300), '');
   const buffer = await getLink().execBuffer('cat ' + file + '; rm -f ' + file, 30000);
-  const dir = stateDir();
+  if (buffer.length < 1000 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
+    return result(false, 'shot_failed', '截图数据异常（' + buffer.length + ' 字节）', '');
+  }
+  const dir = shotDir();
   fs.mkdirSync(dir, { recursive: true });
-  const target = path.join(dir, 'shot-' + Date.now() + '.jpeg');
+  const name = 'shot-' + Date.now() + '.jpg';
+  const target = path.join(dir, name);
   fs.writeFileSync(target, buffer);
-  return result(true, 'ok', '截图已保存', target + ' (' + buffer.length + ' 字节)');
+  try { fs.chmodSync(target, 0o644); } catch { /* 只读挂载时忽略 */ }
+  return result(true, 'ok', '截图已保存到工作区，用 read_image 读取即可看见屏幕', 'phone-shots/' + name + ' (' + buffer.length + ' 字节)');
 }
 
 async function uiWait(args) {
