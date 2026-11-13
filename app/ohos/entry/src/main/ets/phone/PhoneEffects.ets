@@ -3,6 +3,7 @@ import common from '@ohos.app.ability.common';
 import Want from '@ohos.app.ability.Want';
 import notificationManager from '@ohos.notificationManager';
 import settings from '@ohos.settings';
+import bundleManager from '@ohos.bundle.bundleManager';
 import pasteboard from '@ohos.pasteboard';
 import call from '@ohos.telephony.call';
 import calendarManager from '@ohos.calendarManager';
@@ -100,6 +101,27 @@ export class PhoneEffects {
   private static notificationSequence: number = 0;
   constructor(context: common.UIAbilityContext) { this.context = context; }
 
+  // 旧的 open 用 ohos.want.action.home 拉起第三方应用，缺 abilityName/moduleName 会被系统静默忽略。
+  private async launchWant(app: string): Promise<Want> {
+    try {
+      const flags: number = bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_HAP_MODULE |
+        bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_ABILITY;
+      const info: bundleManager.BundleInfo = await bundleManager.getBundleInfo(app, flags);
+      const modules: bundleManager.HapModuleInfo[] = info.hapModulesInfo ?? [];
+      for (const module of modules) {
+        const main: string = module.mainElementName ?? '';
+        if (main === '') continue;
+        const slash: number = main.indexOf('/');
+        const abilityName: string = slash >= 0 ? main.substring(slash + 1) : main;
+        if (abilityName === '') continue;
+        return { bundleName: app, moduleName: module.name, abilityName };
+      }
+    } catch (error) {
+      // 拿不到其他应用的包信息时退回旧行为。
+    }
+    return { bundleName: app, action: 'ohos.want.action.home', entities: ['entity.system.home'] };
+  }
+
   async execute(tool: string, args: Map<string, Object>, beforeEffect: () => void): Promise<PhoneEffectResult> {
     let dispatched = false;
     const dispatch = (): void => { beforeEffect(); dispatched = true; };
@@ -114,7 +136,7 @@ export class PhoneEffects {
           await this.context.openLink(url);
         } else {
           if (!/^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+$/.test(app)) unsupported('请提供应用包名；无法可靠解析应用显示名。');
-          const want: Want = { bundleName: app, action: 'ohos.want.action.home', entities: ['entity.system.home'] };
+          const want: Want = await this.launchWant(app);
           dispatch();
           await this.context.startAbility(want);
         }

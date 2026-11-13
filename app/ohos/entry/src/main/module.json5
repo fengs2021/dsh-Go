@@ -127,6 +127,9 @@
         "name": "ohos.permission.VIBRATE"
       },
       {
+        "name": "ohos.permission.GET_BUNDLE_INFO"
+      },
+      {
         "name": "ohos.permission.MICROPHONE",
         "reason": "$string:mic_reason",
         "usedScene": {

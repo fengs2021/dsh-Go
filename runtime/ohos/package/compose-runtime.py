@@ -421,6 +421,10 @@ def assemble(args):
                 if source.name.startswith(('build-', 'link-')):
                     continue
                 composer.add(source, repo, 'repository', source.relative_to(repo).as_posix())
+        shipped_key_dir = source_runtime / 'phone' / 'hdc-key'
+        if shipped_key_dir.is_dir():
+            for source in sorted(shipped_key_dir.glob('id_rsa')):
+                composer.add(source, repo, 'repository', source.relative_to(repo).as_posix())
         for name in ('preload.mjs', 'node-version.json'):
             composer.add(source_runtime / name, repo, 'repository', 'runtime/ohos/' + name)
         helper = source_runtime / 'native/hap-loader'
