@@ -4,13 +4,13 @@
 -import { stripTypeScriptTypes } from "node:module";
 +import { stripTypeScriptTypes as stripTypeScriptTypesNative } from "node:module";
 +// OHOS：随包 libnode 用 --jitless 交叉编译，V8 没有 WebAssembly，Amaro 的类型剥离
-+// 因此在设备上必然失败（ERR_WASM_NOT_SUPPORTED）。这里退化成原样执行，并在指令里
-+// 要求模型直接写 JavaScript；桌面与 Android 走的就是原生剥离，行为不变。
++// 必然抛 ERR_WEBASSEMBLY_NOT_SUPPORTED（node:internal/modules/typescript）。设备上
++// 退化成原样执行，指令里已要求模型直接写 JavaScript；桌面与 Android 走原生剥离。
 +const stripTypeScriptTypes = (source, options) => {
 +	try {
 +		return stripTypeScriptTypesNative(source, options);
 +	} catch (error) {
-+		if (error?.code !== "ERR_WASM_NOT_SUPPORTED") throw error;
++		if (!/WEBASSEMBLY_NOT_SUPPORTED/.test(String(error && error.code))) throw error;
 +		return source;
 +	}
 +};

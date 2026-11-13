@@ -1560,7 +1560,7 @@
       "0.2.2-rc.1": {
         "node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js": {
           "before": "952ffdd55654ccaedce2a9c004b68028fdcb31085987cc969d02438076260738",
-          "after": "7ac61f14ca80735c0cfbfeebcba1c6e951c88d9b874d46990abb55afce576614"
+          "after": "8cd4675608711612b63f8619e4dc320ea781c3c972a8fc16c8a443558aef70b1"
         }
       }
     }
