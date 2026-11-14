@@ -39,7 +39,11 @@
 - `python3 tool/l10n_merge.py --check` → 51 parts / 5736 keys，退出 0；`git diff` 只含本次新增键（244+/32-，无格式 churn）。
 - `flutter analyze --no-pub` 对本次改动的 4 个 Dart 文件无 error / warning。
 - `python3 app/tool/guide_sync.py --check` → `guide: 26 files checked`，退出 0。
-- runtime 重新组合：见下条构建记录。
+- runtime 重新组合：`COMPOSE_RC=0`，runtimeVersion `ohos-bddb606c015da2c36b63d8a0`，payload 12 379 文件 / 151 217 642 B（missing/wrong/extra 全 0）。
+- 构建：GitHub Actions `OHOS compile` run 43566212719 成功（6m47s，工件 `ohos-aot-55e0b35d…`）；`check-arkts.sh --full` → `FULLHAP_RC=0`、`audit-hap: OK`、`versionCode 29`。
+- 真机（SGT-AL10 / API 26）装 v39：`hdc install -r` 成功，`bm dump` 读到 `versionCode 29 / versionName 1.0.29`；签名包 md5 `71c24902c98d6df1b9dbbe3b2f6b520f`（108 797 951 B），未签名包 md5 `59c443615c004c22acedfca8706d6a49`（108 723 288 B）。
+- 真机看页面：卡片显示「界面操作（调试通道）／已授权／AI 能读界面、点按、输入、滑动、按键、截图，也能启停应用／14:58」；点卡片重新检测后时间戳依次变成 15:04、15:10（`uitest dumpLayout` 原文），证明 ArkTS 写请求 → 运行时轮询重检 → 状态文件 → 页面刷新整条回路通。证据截图 `phone-shots/v39a.png`、`phone-shots/recheck.png`，报告 `调试通道授权页实测-v39.md`。
+- 引擎日志同时可见探针成功：`[phone-hdc] probe ok 1259ms rc=0 out=uid=2000(shell) …`。
 
 **已知限制**：
 - 页面显示的是「最近一次检测」的结果，不主动打断用户去轮询；未授权时仍需用户自己按四步打开无线调试并在系统弹窗点「始终允许」——App 不能代点系统弹窗。
