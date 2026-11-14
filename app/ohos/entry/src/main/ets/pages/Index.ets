@@ -1,6 +1,7 @@
 
 import common from '@ohos.app.ability.common';
 import { FlutterPage } from '@ohos/flutter_ohos'
+import fs from '@ohos.file.fs';
 
 let storage = LocalStorage.getShared()
 const EVENT_BACK_PRESS = 'EVENT_BACK_PRESS'
@@ -19,6 +20,14 @@ struct Index {
   private hiddenUntil: number = 0;
   private lastLine: string = '';
   private hideTimer: number = -1;
+
+  aboutToAppear(): void {
+    // 探针：UI 层是否真的加载了我们改过的首页。
+    try {
+      const probe = fs.openSync(this.context.getApplicationContext().filesDir + '/danmaku-ui.txt', fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
+      try { fs.writeSync(probe.fd, 'ui ' + Date.now()); } finally { fs.closeSync(probe); }
+    } catch (error) { /* 探针失败不影响页面 */ }
+  }
 
   onDanmakuLine(): void {
     if (this.danmakuLine.length === 0) {

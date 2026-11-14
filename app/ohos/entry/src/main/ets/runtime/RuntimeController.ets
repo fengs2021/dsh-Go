@@ -183,6 +183,18 @@ export class RuntimeController {
     finally { this.lkgRecovering = false; }
     if (this.manifest !== null) {
       this.installed = await this.installer.installed();
+      if (this.installed === null && await this.storage.exists(this.installer.base + '/installing.json')) {
+        // A relaunch after an interrupted upgrade finds the runtime half installed. The
+        // journal names every path this install owns, so finishing it is exactly the work
+        // the interrupted run was doing; dead-ending the launch only strands the app.
+        this.setupError = null;
+        try {
+          await this.installPayload();
+          this.installed = await this.installer.installed();
+        } catch (error) {
+          this.setupError = error instanceof RuntimeChannelError ? error.message : '运行时安装未完成，请重新打开应用后重试。';
+        }
+      }
       if (this.current() && !(await this.storage.exists(this.installer.base + '/installing.json'))) {
         this.setupError = null;
         if (recovering && !this.recovery.status().resetPending) this.lastError = null;
