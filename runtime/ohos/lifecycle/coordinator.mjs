@@ -177,7 +177,7 @@ export class BoundaryCoordinator {
     this.#check(); signal?.throwIfAborted();
     if (this.#cancelling.has(sessionId)) throw fail('ERR_OHOS_LIFECYCLE_CANCELLED', 'Session cancellation has not finished joining');
     if (this.#cancelled.has(sessionId) && [...this.#pending.keys()].some(key => JSON.parse(key)[0] === sessionId)) throw fail('ERR_OHOS_LIFECYCLE_CANCELLED', 'Session cancellation invalidated this admission');
-    if (this.#blocked.has(sessionId) || this.#unresolved(sessionId).length) throw fail('ERR_OHOS_LIFECYCLE_RESULT_UNKNOWN', 'Previous tool results require reconciliation');
+    if (this.#blocked.has(sessionId) || this.#unresolved(sessionId).length) throw fail('ERR_OHOS_LIFECYCLE_RESULT_UNKNOWN', 'Previous tool results require reconciliation — call mcp__phone__session with action=release (or start a new session)');
     return this.#refreshNative() && !this.#gate;
   }
   async gate(sessionId, signal) {
@@ -193,7 +193,7 @@ export class BoundaryCoordinator {
         // joined cancellation is a new request, never a replay of that call.
         this.#cancelled.delete(sessionId);
       }
-      if (this.#blocked.has(sessionId) || this.#unresolved(sessionId).length) throw fail('ERR_OHOS_LIFECYCLE_RESULT_UNKNOWN', 'Previous tool results require reconciliation before another step');
+      if (this.#blocked.has(sessionId) || this.#unresolved(sessionId).length) throw fail('ERR_OHOS_LIFECYCLE_RESULT_UNKNOWN', 'Previous tool results require reconciliation before another step — call mcp__phone__session with action=release (or start a new session)');
       if (!this.#gate) return;
       const interrupted = Promise.withResolvers();
       const abort = () => interrupted.reject(signal.reason);

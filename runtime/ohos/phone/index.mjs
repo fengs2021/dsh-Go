@@ -3,6 +3,7 @@ import { createNativePhonePort } from './native-port.mjs';
 import { registerPhoneRoutes } from './routes.mjs';
 import { registerPhoneTools } from './tools.mjs';
 import { registerUiTools, shText, dumpUi } from './ui-tools.mjs';
+import { registerSessionTools } from './session-tools.mjs';
 import { startProgressFeed } from './progress-feed.mjs';
 
 export const name = 'dsh-go-ohos-phone';
@@ -17,12 +18,12 @@ export function apply(ctx) {
   if (process.platform !== 'openharmony' && globalThis[simulationSymbol] !== true) return;
   if (Object.hasOwn(globalThis, phoneSymbol)) throw new Error('One phone callback owner is allowed per engine');
   const queue = new PhoneQueue(createNativePhonePort(ctx.ohosLifecycle.bootId));
-  let removeTools, removeUi;
-  try { removeTools = registerPhoneTools(ctx, queue); removeUi = registerUiTools(ctx); }
-  catch (error) { removeTools?.(); queue.close(); throw error; }
+  let removeTools, removeUi, removeSession;
+  try { removeTools = registerPhoneTools(ctx, queue); removeUi = registerUiTools(ctx); removeSession = registerSessionTools(ctx); }
+  catch (error) { removeSession?.(); removeUi?.(); removeTools?.(); queue.close(); throw error; }
   // A disposed bridge stays closed. Reloading a plugin must never replay an old call.
   Object.defineProperty(globalThis, phoneSymbol, { value: queue, configurable: false, writable: false });
-  ctx.effect(() => () => { queue.close(); removeTools(); removeUi(); }, 'ohos phone shutdown');
+  ctx.effect(() => () => { queue.close(); removeTools(); removeUi(); removeSession(); }, 'ohos phone shutdown');
   // 启动自检：验证 app 内部能否经 hdc 通道拿到 shell uid 并驱动 uitest（结果写入 engine.log，便于 PC 侧排查）。
   if (process.env.DSH_GO_PHONE_PROBE !== '0') {
     Promise.resolve().then(async () => {
