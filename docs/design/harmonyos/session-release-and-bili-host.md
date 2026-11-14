@@ -99,3 +99,41 @@ PC 端实测（`/root/bili-host-test.mjs`、`/root/bili-longevity.mjs`）：env 
 ### 边界
 - 垫片只实现了**响应**解析（bili/undici 只解析响应；请求由 undici 自己序列化）。
 - 不支持升级（101/WebSocket）与 CONNECT 隧道内的明文解析——这两条路 undici 走的是别的分支。
+
+
+## 4. v36：未知结果的自愈（不再需要人/agent 手动放行）
+
+v34 给了 `mcp__phone__session action=release`，但真机上仍然反复出现
+`Previous tool results require reconciliation before another step`，原因是**鸡生蛋死锁**：
+
+- `coordinator.gate()/admit()` 在工具开始前就检查「本会话有没有未解决的未知结果」；
+- 于是同一条会话里 agent 连 `mcp__phone__session` 都调不起来，放行入口永远够不到；
+- 而 `reconcileCold()` 每次冷启动都把 `dispatch-without-outcome` 一类行重新判成 `blocking = true` 并写进 journal，所以重启也不自愈。
+
+### 4.1 放行工具穿透闸门
+
+`RELEASE_TOOLS = {'phone_session', 'mcp__phone__session', 'session'}`。`gate()/admit()` 增加第三个参数 `tool`，
+命中放行工具时跳过阻塞检查；其余工具一律照旧。调用点 `prepared(meta)` 传 `meta.block.name`，`run(meta)` 传 `row.identity.name`。
+
+### 4.2 冷启动自动放弃（默认开启）
+
+派发未完成调用的那个引擎进程已经死了，结果永远不会再到。继续阻塞只会让会话永久不可用，所以冷启动时把三类
+「不可恢复」的行按 `blocking = false`、`basis = 'auto-abandon-…'` 结算，并在会话里保留「结果未知」的事实：
+
+| 分支 | 含义 | 自动结算后的 basis |
+| --- | --- | --- |
+| `dispatch-without-outcome` / `returned-awaiting-ordered-finalization` | 派发了但没有结果 | `auto-abandon-unknown-without-replay` |
+| `missing-ordered-recovery-slot` | 找不到配对的结果槽 | `auto-abandon-missing-recovery-slot` |
+| `existing-unknown-placeholder` | 会话里已经是 unknown 占位 | `auto-abandon-existing-unknown` |
+
+仍然保持阻塞（不能静默放过）的分支：`session-identity-mismatch`、journal 损坏、`ERR_OHOS_LIFECYCLE_SEQUENCE`。
+
+### 4.3 幂等
+
+二次启动时，`/abandon-unknown-without-replay$/` 的 `blocking === false` 行原样沿用，不会被重新判成阻塞。
+开关：环境变量 `DSH_OHOS_LIFECYCLE_AUTO_RELEASE=0` 可关闭自动放弃（回到 v35 行为）。
+
+### 4.4 验证
+
+- `node --check runtime/ohos/lifecycle/coordinator.mjs` 通过；`lifecycle-engine.test.mjs` 的 `gate(sessionId)` 两参调用仍兼容（无 tool ⇒ 不放行）。
+- 真机自检：装机后在被锁死的会话里发一句话，应直接开始新一轮，而不是再报 reconciliation 错误。

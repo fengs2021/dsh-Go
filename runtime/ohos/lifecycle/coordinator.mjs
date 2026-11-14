@@ -18,6 +18,9 @@ const resultFor = (identity, result) => ({
   ...(result.meta !== undefined ? { meta: result.meta } : {}),
 });
 const unknownResult = event => event?.data?.error?.code === 'TOOL_OUTCOME_UNKNOWN';
+// v36：解铃的工具本身必须能在「已锁死」的会话里跑，否则 agent 永远调不到放行入口。
+const RELEASE_TOOLS = new Set(['phone_session', 'mcp__phone__session', 'session']);
+const isReleaseTool = name => typeof name === 'string' && RELEASE_TOOLS.has(name);
 
 function validateIdentity(identity) {
   if (!identity || !['sessionId', 'callId', 'name', 'originBootId'].every(key => knownString(identity[key]))
@@ -55,8 +58,10 @@ export class BoundaryCoordinator {
   #nativeFailure;
   #nativeTimer;
   #admissionTarget = true;
+  #autoAbandon;
   constructor({ journal, bootId, flushSession, readEvents, resolveAgent = () => undefined,
-    revalidateTransport = async () => {}, onStage = () => {}, readHost = readNativeHost, hasActiveRounds = () => false }) {
+    revalidateTransport = async () => {}, onStage = () => {}, readHost = readNativeHost, hasActiveRounds = () => false,
+    autoAbandon = process.env.DSH_OHOS_LIFECYCLE_AUTO_RELEASE !== '0' }) {
     if (!journal || !knownString(bootId) || typeof flushSession !== 'function' || typeof readEvents !== 'function') throw new TypeError('Lifecycle requires durable session adapters and boot identity');
     this.#readHost = readHost;
     this.hasActiveRounds = hasActiveRounds;
@@ -68,6 +73,7 @@ export class BoundaryCoordinator {
     this.resolveAgent = resolveAgent;
     this.revalidateTransport = revalidateTransport;
     this.#onStage = onStage;
+    this.#autoAbandon = autoAbandon !== false;
     try { for (const record of journal.records) this.#fold(record.body); }
     catch (error) { this.#fault = error; }
     this.#manualPaused = this.#lastManualPaused;
@@ -173,14 +179,16 @@ export class BoundaryCoordinator {
     return desired;
   }
   // Call after the caller's final await, then dispatch/claim synchronously.
-  admit(sessionId, signal) {
+  admit(sessionId, signal, tool) {
     this.#check(); signal?.throwIfAborted();
+    const release = isReleaseTool(tool);
     if (this.#cancelling.has(sessionId)) throw fail('ERR_OHOS_LIFECYCLE_CANCELLED', 'Session cancellation has not finished joining');
     if (this.#cancelled.has(sessionId) && [...this.#pending.keys()].some(key => JSON.parse(key)[0] === sessionId)) throw fail('ERR_OHOS_LIFECYCLE_CANCELLED', 'Session cancellation invalidated this admission');
-    if (this.#blocked.has(sessionId) || this.#unresolved(sessionId).length) throw fail('ERR_OHOS_LIFECYCLE_RESULT_UNKNOWN', 'Previous tool results require reconciliation — call mcp__phone__session with action=release (or start a new session)');
+    if (!release && (this.#blocked.has(sessionId) || this.#unresolved(sessionId).length)) throw fail('ERR_OHOS_LIFECYCLE_RESULT_UNKNOWN', 'Previous tool results require reconciliation — call mcp__phone__session with action=release (or start a new session)');
     return this.#refreshNative() && !this.#gate;
   }
-  async gate(sessionId, signal) {
+  async gate(sessionId, signal, tool) {
+    const release = isReleaseTool(tool);
     for (;;) {
       this.#check(); signal?.throwIfAborted();
       this.#refreshNative();
@@ -193,7 +201,7 @@ export class BoundaryCoordinator {
         // joined cancellation is a new request, never a replay of that call.
         this.#cancelled.delete(sessionId);
       }
-      if (this.#blocked.has(sessionId) || this.#unresolved(sessionId).length) throw fail('ERR_OHOS_LIFECYCLE_RESULT_UNKNOWN', 'Previous tool results require reconciliation before another step — call mcp__phone__session with action=release (or start a new session)');
+      if (!release && (this.#blocked.has(sessionId) || this.#unresolved(sessionId).length)) throw fail('ERR_OHOS_LIFECYCLE_RESULT_UNKNOWN', 'Previous tool results require reconciliation before another step — call mcp__phone__session with action=release (or start a new session)');
       if (!this.#gate) return;
       const interrupted = Promise.withResolvers();
       const abort = () => interrupted.reject(signal.reason);
@@ -205,7 +213,7 @@ export class BoundaryCoordinator {
   async prepared(meta) {
     // Admission failures are local to this call/session. Only a failed durable
     // checkpoint or identity check poisons the shared persistence boundary.
-    await this.gate(meta.session.id, meta.signal);
+    await this.gate(meta.session.id, meta.signal, meta.block.name);
     try {
       if (await this.flushSession(meta.session) !== true) throw fail('ERR_OHOS_LIFECYCLE_NO_CHECKPOINT', 'A durable session flush listener is required');
       const events = await this.readEvents(meta.session.id, meta.callSeq, meta.callSeq + 1);
@@ -224,15 +232,15 @@ export class BoundaryCoordinator {
   }
   async run(meta, dispatch) {
     const row = this.#row(meta), key = keyOf(row.identity);
-    await this.gate(meta.session.id, meta.signal);
+    await this.gate(meta.session.id, meta.signal, row.identity.name);
     await this.#record({ kind: 'dispatch', bootId: this.bootId, identity: row.identity });
     // Keep the accepted dispatch live while waiting for a confirmed pause to
     // end. No second copy is created and no async gap follows final admission.
     const settled = Promise.withResolvers();
     this.#active.set(key, settled.promise);
     try {
-      do { await this.gate(meta.session.id, meta.signal); }
-      while (!this.admit(meta.session.id, meta.signal));
+      do { await this.gate(meta.session.id, meta.signal, row.identity.name); }
+      while (!this.admit(meta.session.id, meta.signal, row.identity.name));
       const outcome = await this.withinCall(meta, dispatch);
       await this.#record({ kind: 'returned', bootId: this.bootId, identity: row.identity,
         needsPost: outcome.kind === 'post-result' }, outcome.result);
@@ -309,11 +317,15 @@ export class BoundaryCoordinator {
       let basis, blocking = false, expected;
       if (!call || call.type !== 'tool/call' || hash(call) !== identity.callHash || matches.length > 1) {
         basis = 'session-identity-mismatch'; blocking = true;
-      } else if (row.reconciliation?.basis === 'explicit-abandon-unknown-without-replay' && row.reconciliation.blocking === false) {
-        basis = 'explicit-abandon-unknown-without-replay';
+      } else if (row.reconciliation && row.reconciliation.blocking === false
+          && /abandon-unknown-without-replay$/.test(String(row.reconciliation.basis))) {
+        // 显式放弃（acknowledgeUnknown）与冷启动自动放弃都从这里原样沿用，避免二次启动又翻案。
+        basis = String(row.reconciliation.basis);
       } else if (matches.length === 1) {
         basis = unknownResult(matches[0]) ? 'existing-unknown-placeholder' : 'durable-session-result';
         blocking = unknownResult(matches[0]);
+        // 会话里已经是 unknown 占位（模型早就看过「结果未知」）就没必要再锁一次。
+        if (blocking && this.#autoAbandon) { blocking = false; basis = 'auto-abandon-existing-unknown'; }
         if (!blocking && row.phase === 'committed' && (row.sessionResultSeq !== matches[0].seq || row.sessionResultHash !== hash(matches[0].data))) {
           basis = 'committed-session-result-changed'; blocking = true;
         } else if (!blocking && row.phase === 'outcome') {
@@ -326,7 +338,11 @@ export class BoundaryCoordinator {
         }
       } else {
         const closer = replacements.find(event => event.type === 'tool/result' && event.sourceEventSeqs?.length === 1 && event.sourceEventSeqs[0] === identity.callSeq);
-        if (!closer) { basis = 'missing-ordered-recovery-slot'; blocking = true; }
+        if (!closer) {
+          basis = 'missing-ordered-recovery-slot';
+          blocking = !this.#autoAbandon;
+          if (this.#autoAbandon) basis = 'auto-abandon-missing-recovery-slot';
+        }
         else if (row.outcome) {
           try {
             const saved = await this.#journal.readResult(row.outcome);
@@ -350,7 +366,12 @@ export class BoundaryCoordinator {
             isError: true, error: { info: { name: 'InterruptedToolCall', code: 'TOOL_NOT_STARTED' } } });
           basis = 'complete-prepared-without-dispatch';
         } else {
-          basis = row.returned ? 'returned-awaiting-ordered-finalization' : 'dispatch-without-outcome'; blocking = true;
+          basis = row.returned ? 'returned-awaiting-ordered-finalization' : 'dispatch-without-outcome';
+          // v36 自愈：派发这条调用的引擎进程已经死了，结果永远不会再到；继续阻塞会让会话
+          // 永久「本轮运行失败」，而 agent 连解铃的工具都调不到（gate 会先拦）。所以冷启动
+          // 直接按「放弃未知结果、不重放」结算，并在文案里声明结果未知。
+          blocking = !this.#autoAbandon;
+          if (this.#autoAbandon) basis = 'auto-abandon-unknown-without-replay';
         }
       }
       decisions.push({ row, basis, blocking, expected });
