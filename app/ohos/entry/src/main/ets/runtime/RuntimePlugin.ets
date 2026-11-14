@@ -13,6 +13,7 @@ import { LinuxRunRequest } from './LinuxControl';
 import type { LinuxProxyConfiguration } from './LinuxControl';
 import { ManagedSkillOwner } from './ManagedSkillService';
 import { PhoneBridge } from '../phone/PhoneBridge';
+import { HdcChannelStatus } from '../phone/HdcChannelStatus';
 import type { HostPhoneKey } from 'libdsh_host.so';
 
 
@@ -26,6 +27,7 @@ export class RuntimePlugin implements FlutterPlugin, MethodCallHandler, StreamHa
   private ability: AbilityPluginBinding | null = null;
   private owner: ManagedSkillOwner | null = null;
   private phone: PhoneBridge | null = null;
+  private hdc: HdcChannelStatus | null = null;
 
   getUniqueClassName(): string { return 'DshRuntimePlugin'; }
 
@@ -35,6 +37,7 @@ export class RuntimePlugin implements FlutterPlugin, MethodCallHandler, StreamHa
     this.controller = RuntimeController.get(binding.getApplicationContext());
     this.owner = this.controller.managedSkills.attachOwner();
     this.phone = new PhoneBridge(() => this.controller?.phoneContext(this.ability?.getAbility()) ?? null);
+    this.hdc = new HdcChannelStatus(binding.getApplicationContext().filesDir);
     this.methods = new MethodChannel(binding.getBinaryMessenger(), 'dsh/runtime');
     this.events = new EventChannel(binding.getBinaryMessenger(), 'dsh/runtime/events');
     this.methods.setMethodCallHandler(this);
@@ -50,6 +53,7 @@ export class RuntimePlugin implements FlutterPlugin, MethodCallHandler, StreamHa
       // lifecycle retirement/deadline; do not report OS cancellation success.
     }
     this.phone = null;
+    this.hdc = null;
     if (this.owner !== null) this.controller?.managedSkills.detachOwner(this.owner);
     this.methods?.setMethodCallHandler(null);
     binding.getBinaryMessenger().setMessageHandler('dsh/runtime/events', null);
@@ -157,6 +161,18 @@ export class RuntimePlugin implements FlutterPlugin, MethodCallHandler, StreamHa
       else if (call.method === 'phoneCancel') result.success(this.phone.cancel(key));
       else if (call.method === 'phoneCheck') result.success(this.phone.check(key));
       else result.success(this.phone.handoffContinue(key));
+      return;
+    }
+    if (call.method === 'hdcStatus') {
+      // 「系统操作」页：界面操作（调试通道）有没有授权，读引擎写的状态文件。
+      const status = this.hdc;
+      result.success(status === null ? new Map<string, Object | null>() : status.read());
+      return;
+    }
+    if (call.method === 'hdcProbe') {
+      const status = this.hdc;
+      if (status === null) throw new RuntimeChannelError('ohos_detached', '运行时通道已解除连接。');
+      result.success(status.request());
       return;
     }
     if (call.method === 'reset') {
