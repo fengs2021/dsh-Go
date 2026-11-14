@@ -97,3 +97,14 @@
 **证据（2026-11-15）**：`node --check` index/progress-feed 通过；`node --test runtime/tests/ohos/phone-progress-feed.test.mjs` → **tests 6 / pass 6 / fail 0**；`node --test runtime/tests/ohos/entry-ability-*.test.mjs` → **7 / 7 pass**；同集合（composition + phone + tooling runtime）复跑 **49 tests / 37 pass / 12 fail**，12 个失败与 `git stash` 后的基线**逐一同名**（缺 `node_modules`、缺 fixture 环境变量），**无新增失败**。ArkTS 未编译、未上真机。
 
 **真机验收要点（未验）**：① 后台 30 秒以上是否仍每秒 tick（底座自己的 `ContinuousTaskOwner` 持 `MODE_TASK_KEEPING`，不需要 module.json5 的 `backgroundModes`）；② 通知通道 `SERVICE_INFORMATION` 在调试签名包上能否 publish；③ `floatView` 在无悬浮窗权限的调试包上应静默降级、通知横幅照旧；④ 前台浮层是否压在 Flutter 页面上（`Stack` 顶层）。
+
+## 提交与推送记录
+
+| 提交 | 内容 |
+| --- | --- |
+| `aa5f8cfb` | 阶段 1：hdc 调试通道的界面自动化（hdc-link / ui-tools / 打包带密钥 / 9 例测试） |
+| `30ef128c` | 阶段 1 补丁：手机工具失败分三态（`not_dispatched` / `dispatched`）+ 只读快照，不套 native permit（13 例测试） |
+| `ce13c895` | 阶段 2 + 阶段 3：授权状态卡片、后台进度弹幕（26 文件 +1941/−11） |
+
+**推送（2026-11-15）**：`git push fork port/v40:port/v40` → `fengs2021/dsh-Go` 的 `refs/heads/port/v40` = `ce13c895`。
+底座提交 `1948e7b7` 尚未进 fork（fork 的 `claude/harmonyos-ohos` 停在 `f47b11dd` = 2026-11-10），所以这条分支挂在 fork 上是一个**新分支**，没有改动任何上游分支。旧线 v16–v39 仍在 `fengs2021/dsh-Go` 的 `ohos/v8` = `e0162393`。
