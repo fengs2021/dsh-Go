@@ -633,6 +633,25 @@ class RuntimeBridge {
     return map == null ? const LastKnownGood.none() : LastKnownGood.fromMap({...map, 'available': true});
   }
 
+  /// HarmonyOS 界面操作（调试通道）的授权状态：ArkTS 读引擎写的 dsh-app/hdc-status.json。
+  /// null 表示没有原生侧（安卓）或引擎还没写过，页面按「还没检测」显示。
+  Future<Map<Object?, Object?>?> hdcChannelStatus() async {
+    try {
+      return await _methods.invokeMapMethod<Object?, Object?>('hdcStatus');
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
+  /// 让引擎重新检测一次调试通道；结果随后由 [hdcChannelStatus] 读到。
+  Future<void> requestHdcProbe() async {
+    try {
+      await _methods.invokeMethod<void>('hdcProbe');
+    } on MissingPluginException {
+      return;
+    }
+  }
+
   /// HarmonyOS: whether this build may schedule system reminders: `granted`,
   /// `denied` or `unsupported`.
   Future<String?> reminderAccess() => _methods.invokeMethod<String>('reminderAccess');

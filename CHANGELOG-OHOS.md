@@ -10,6 +10,42 @@
 
 ---
 
+## v39 · 「系统操作」页显示调试通道授权状态（2026-11-14，1.0.29+29）
+
+**问题**（用户 m02447「这里要看有没授权」）：App 的「系统操作」页只有一句「做不到的：看屏幕、点按其他应用 / 系统不允许」，
+既不反映实际情况（ohos/v8 早已能用调试通道读界面、点按、输入、截图），也不告诉用户当前到底授权没有、没授权该点哪里。
+用户只能靠对话里试一次才知道通不通。
+
+**做法**：三层打通「运行时检测 → 状态文件 → ArkTS 读取 → Flutter 显示」。
+
+| 文件 | 改动 |
+| --- | --- |
+| `runtime/ohos/phone/hdc-status.mjs`（新） | 检测结果落盘：`$HOME/.dsh/dsh-app/hdc-status.json`（v/updatedAt/source/stage/authorized/port/ports/defaultPort/ms/error/keySource/keyPath/pemBytes/fingerprint/hints），请求文件 `hdc-probe.json`。`stageOf()` 把报告判成 `authorized｜no_port｜unauthorized`（三者不可混：端口没开 ≠ 端口开着但密钥没被信任）；`writeStatus()` 原子写（临时文件 + rename，写失败不影响调用方）；`probeAndWrite(source)` 诊断抛错也落一条 `stage=error`，页面不会空白；`startHdcStatusWatch(ctx)` 每 2s 轮询请求文件，序号变新才重检（不重复诊断） |
+| `runtime/ohos/phone/index.mjs` | 启动探针成功 → `authorizedStatus()`；失败 → 诊断后 `probeAndWrite('boot')`；`apply()` 末尾 `startHdcStatusWatch(ctx)` 挂上「重新检测」轮询 |
+| `app/ohos/entry/src/main/ets/phone/HdcChannelStatus.ets`（新） | 原生侧读状态文件（`read()` → Map，含 present/stage/authorized/updatedAt/port/ports/ms/error/keySource/pemBytes/hints）与写「重新检测」请求（`request()` → `{at: Date.now()}`） |
+| `app/ohos/entry/src/main/ets/runtime/RuntimePlugin.ets` | 通道新增两个方法：`hdcStatus` → `read()`、`hdcProbe` → `request()`（放在 phoneAttach 之前处理） |
+| `app/lib/runtime/runtime_bridge.dart` | `hdcChannelStatus()`（`invokeMapMethod("hdcStatus")`，老版本 App 的 MissingPluginException → null）+ `requestHdcProbe()` |
+| `app/lib/state/system_actions_state.dart` | `HdcStage{unknown,authorized,unauthorized,noPort,error}`、`HdcChannelState.loaded/stage/checkedAt/port/hints/checking`（fromMap/copyWith）、`SystemActionsState.hdc`；控制器 `refreshHdc()`（build/回到前台/重检轮询都调）与 `probeHdc()`（发请求后 12×1.5s 轮询，`checkedAt` 变新即止，最后清 checking） |
+| `app/lib/ui/phone/system_actions_page.dart` | 「能做的」与「做不到的」之间新增卡片「界面操作（调试通道）」：图标 authorized=verified / 已加载未授权=warning / 无状态=link，右侧显示「正在检测…」或上次检测时间（24 小时制），点整行＝重新检测；未授权时下方给出四步说明；删掉「做不到的」里过时的「看屏幕、点按其他应用」一行 |
+| `app/lib/l10n/parts/system_actions_{zh,en}.arb` + 生成物 | 新增 15 键（Title/Authorized(+Hint)/Unauthorized(+Hint)/NoPort(+Hint)/Unknown(+Hint)/Error(+Hint)/Checking/NeverChecked/StepsTitle/Steps），删 2 个过时键；`tool/l10n_merge.py` 重新生成 `app/lib/l10n/app_*.arb` 与 `gen/` |
+| `app/test/phone/system_actions_page_test.dart` | 新增 4 例：已授权→显示「已授权」+检测时间且不显示四步；未授权→显示阶段名且引擎给的下一步优先于默认文案；无状态→说「还没检测」而不是「能用」；检测失败→指向实时日志并保留四步 |
+| `runtime/tests/ohos/hdc-status.test.mjs`（新） | 4 例：三种阶段判据不可混、落盘字段齐全且 hints 截断到 3 条、诊断抛错也落 error、请求序号变新才触发重检 |
+| `docs/design/harmonyos/hdc-channel-status.md`（新） | 两条链路对照（调试通道 vs 系统操作）、状态文件与请求文件时序、运行时段/原生段/应用段各自的职责、测试清单 |
+| `app/pubspec.yaml` + 四份 README 版本行 | 1.0.28+28 → 1.0.29+29 |
+
+**验证**：
+- `node --test runtime/tests/ohos/hdc-status.test.mjs` → pass 4 / fail 0。
+- `flutter test test/phone/system_actions_page_test.dart`（flutter 3.47.7 / Dart 3.13.5，本机）→ **33 例全绿**，其中新增 4 例名字为 `界面操作 says whether the debug channel is authorized *`。
+- `python3 tool/l10n_merge.py --check` → 51 parts / 5736 keys，退出 0；`git diff` 只含本次新增键（244+/32-，无格式 churn）。
+- `flutter analyze --no-pub` 对本次改动的 4 个 Dart 文件无 error / warning。
+- `python3 app/tool/guide_sync.py --check` → `guide: 26 files checked`，退出 0。
+- runtime 重新组合：见下条构建记录。
+
+**已知限制**：
+- 页面显示的是「最近一次检测」的结果，不主动打断用户去轮询；未授权时仍需用户自己按四步打开无线调试并在系统弹窗点「始终允许」——App 不能代点系统弹窗。
+- 调试通道只在本机引擎的对话里可用；远程主机模式下卡片照常显示，但通道不参与远程会话。
+- 本机无 flutter SDK 时 Dart 改动进不了 HAP；本次已在 build 机装上 flutter 3.47.7 跑通测试，AOT 仍由 GitHub Actions 产出。
+
 ## v38 · 手机操作手册改口径 + 首次使用授权引导（2026-11-14，1.0.28+28）
 
 **问题**：用户手册 `docs/guide/harmony/{zh,en}/04-phone-control.md` 写的是「鸿蒙版没有手机操控……不看屏幕，也不点按其他应用，系统不允许」，

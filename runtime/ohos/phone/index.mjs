@@ -6,6 +6,7 @@ import { registerUiTools, shText, dumpUi } from './ui-tools.mjs';
 import { registerSessionTools } from './session-tools.mjs';
 import { startProgressFeed } from './progress-feed.mjs';
 import { diagnoseHdc } from './hdc-link.mjs';
+import { authorizedStatus, probeAndWrite, startHdcStatusWatch } from './hdc-status.mjs';
 
 export const name = 'dsh-go-ohos-phone';
 export const inject = ['tools', 'ohosLifecycle', 'approval'];
@@ -32,12 +33,16 @@ export function apply(ctx) {
       try {
         const r = await shText('id 2>&1', 60000);
         console.error('[phone-hdc] probe ok ' + (Date.now() - t0) + 'ms rc=' + r.code + ' out=' + brief(r.text, 200));
+        // 通道确实可用：把「已授权」写进状态文件，ArkTS 侧「系统操作」页据此显示已授权。
+        authorizedStatus();
       } catch (error) {
         console.error('[phone-hdc] probe failed ' + (Date.now() - t0) + 'ms: ' + ((error && error.message) || error));
         // 第一次使用要用户动手：把该做的几步写进 engine.log（本机引擎页的实时日志里能直接看到）。
         try {
           const report = await diagnoseHdc();
           for (const hint of report.hints) console.error('[phone-hdc] 下一步：' + hint);
+          // 同一次诊断落盘：ArkTS 侧「系统操作」页据此显示未授权 + 下一步。
+          await probeAndWrite('boot');
         } catch (inner) { console.error('[phone-hdc] diagnose failed: ' + ((inner && inner.message) || inner)); }
         return;
       }
@@ -86,5 +91,7 @@ export function apply(ctx) {
   let stopFeed = null;
   try { stopFeed = startProgressFeed(ctx); } catch (error) { console.error('[progress-feed] start failed: ' + ((error && error.message) || error)); }
   ctx.effect(() => () => { if (typeof stopFeed === 'function') stopFeed(); }, 'ohos progress feed shutdown');
+  // 「重新检测」：页面写请求文件，这里轮询到就再诊断一次并更新状态文件。
+  try { startHdcStatusWatch(ctx); } catch (error) { console.error('[phone-hdc] status watch failed: ' + ((error && error.message) || error)); }
   ctx.inject(['webServer'], webCtx => registerPhoneRoutes(webCtx, queue));
 }

@@ -130,7 +130,7 @@ void main() {
       _zh.systemActionsCanNotify,
       _zh.systemActionsCanClipboard,
       _zh.systemActionsCanHandoff,
-      _zh.systemActionsCannotScreen,
+      _zh.systemActionsScreenTitle,
       _zh.systemActionsCannotOther,
       _zh.systemActionsOnScreenTitle,
     ]) {
@@ -140,6 +140,61 @@ void main() {
     expect(find.text('手机操控'), findsNothing);
     expect(find.textContaining('无障碍'), findsNothing);
     expect(find.textContaining('悬浮'), findsNothing);
+  });
+
+  group('界面操作 says whether the debug channel is authorized', () {
+    Future<void> pumpWith(WidgetTester tester, HdcChannelState hdc) async {
+      await _pump(
+        tester,
+        const SystemActionsPage(),
+        state: SystemActionsState(loaded: true, enabled: true, hdc: hdc),
+      );
+    }
+
+    testWidgets('authorized: says so, when it last checked, and offers no steps', (tester) async {
+      await pumpWith(
+        tester,
+        HdcChannelState(
+          loaded: true,
+          stage: HdcStage.authorized,
+          port: 45957,
+          checkedAt: DateTime(2026, 11, 14, 13, 22),
+        ),
+      );
+      expect(find.text(_zh.systemActionsScreenAuthorized), findsOneWidget);
+      expect(find.text('13:22'), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenStepsTitle), findsNothing);
+    });
+
+    testWidgets('not authorized yet: names the stage, and the engine\'s next step wins', (tester) async {
+      await pumpWith(
+        tester,
+        const HdcChannelState(
+          loaded: true,
+          stage: HdcStage.unauthorized,
+          hints: ['在手机上点「始终允许」'],
+        ),
+      );
+      expect(find.text(_zh.systemActionsScreenUnauthorized), findsOneWidget);
+      expect(find.text('在手机上点「始终允许」'), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenUnauthorizedHint), findsNothing);
+      expect(find.text(_zh.systemActionsScreenStepsTitle), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenSteps), findsOneWidget);
+    });
+
+    testWidgets('no status from the engine: says it hasn\'t checked, not that it works', (tester) async {
+      await pumpWith(tester, const HdcChannelState());
+      expect(find.text(_zh.systemActionsScreenUnknown), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenNeverChecked), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenStepsTitle), findsOneWidget);
+    });
+
+    testWidgets('a failed check points at the log, and keeps the steps', (tester) async {
+      await pumpWith(tester, const HdcChannelState(loaded: true, stage: HdcStage.error));
+      expect(find.text(_zh.systemActionsScreenError), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenErrorHint), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenStepsTitle), findsOneWidget);
+    });
   });
 
   group('闹钟和计时器 say what is true of this build', () {

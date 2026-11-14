@@ -59,6 +59,16 @@ class _SystemActionsPageState extends ConsumerState<SystemActionsPage> {
     final status = systemActionsLine(l10n, state.link);
     final recent = state.log.take(SystemActionsPage.recentCount).toList();
     final reminders = ref.watch(reminderAccessProvider).value;
+    final hdc = state.hdc;
+    final channel = hdcChannelLines(l10n, hdc);
+    final channelValue = hdc.checking
+        ? l10n.systemActionsScreenChecking
+        : hdc.checkedAt == null
+        ? l10n.systemActionsScreenNeverChecked
+        : MaterialLocalizations.of(context).formatTimeOfDay(
+            TimeOfDay.fromDateTime(hdc.checkedAt!),
+            alwaysUse24HourFormat: true,
+          );
     const gap = SizedBox(height: 24);
     return AppPage.list(
       title: l10n.systemActionsTitle,
@@ -138,13 +148,31 @@ class _SystemActionsPageState extends ConsumerState<SystemActionsPage> {
         ),
         gap,
         ListPageCard(
-          title: l10n.systemActionsCannotTitle,
+          title: l10n.systemActionsScreenTitle,
           children: [
             ListPageRow(
-              icon: AppIcons.blocked,
-              title: l10n.systemActionsCannotScreen,
-              subtitle: l10n.systemActionsCannotScreenHint,
+              icon: hdc.authorized
+                  ? AppIcons.verified
+                  : hdc.loaded
+                  ? AppIcons.warning
+                  : AppIcons.link,
+              title: channel.title,
+              titleMaxLines: 2,
+              subtitle: channel.hint,
+              subtitleMaxLines: 3,
+              value: channelValue,
+              onTap: hdc.checking
+                  ? null
+                  : () => unawaited(ref.read(systemActionsProvider.notifier).probeHdc()),
             ),
+          ],
+        ),
+        if (!hdc.authorized)
+          PhoneNote(icon: AppIcons.warning, title: l10n.systemActionsScreenStepsTitle, text: l10n.systemActionsScreenSteps),
+        gap,
+        ListPageCard(
+          title: l10n.systemActionsCannotTitle,
+          children: [
             if (reminders == ReminderAccess.notThisBuild || reminders == ReminderAccess.notThisDevice)
               ListPageRow(
                 icon: AppIcons.blocked,
@@ -203,6 +231,24 @@ String systemActionsLine(L10n l10n, SystemActionsLink link) => switch (link) {
   SystemActionsLink.unavailable => l10n.systemActionsUnavailable,
   SystemActionsLink.unsupported => l10n.systemActionsUnsupported,
 };
+
+/// 界面操作那张卡的标题与一行说明：只说现在为真的事；引擎给了下一步就用引擎的。
+({String title, String hint}) hdcChannelLines(L10n l10n, HdcChannelState hdc) {
+  if (!hdc.loaded) {
+    return (title: l10n.systemActionsScreenUnknown, hint: l10n.systemActionsScreenUnknownHint);
+  }
+  final next = hdc.hints.isEmpty ? null : hdc.hints.first;
+  return switch (hdc.stage) {
+    HdcStage.authorized => (title: l10n.systemActionsScreenAuthorized, hint: l10n.systemActionsScreenAuthorizedHint),
+    HdcStage.unauthorized => (
+      title: l10n.systemActionsScreenUnauthorized,
+      hint: next ?? l10n.systemActionsScreenUnauthorizedHint,
+    ),
+    HdcStage.noPort => (title: l10n.systemActionsScreenNoPort, hint: next ?? l10n.systemActionsScreenNoPortHint),
+    HdcStage.error => (title: l10n.systemActionsScreenError, hint: next ?? l10n.systemActionsScreenErrorHint),
+    HdcStage.unknown => (title: l10n.systemActionsScreenUnknown, hint: next ?? l10n.systemActionsScreenUnknownHint),
+  };
+}
 
 /// 操作记录 on HarmonyOS: the rows of [PhoneActionLogPage], from this app's own
 /// log (the native log behind that page is Android's).

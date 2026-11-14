@@ -61,6 +61,82 @@ enum SystemActionsLink {
   unsupported,
 }
 
+/// 界面操作（调试通道）现在能不能用。引擎（本机 Node）自己经 hdc 驱动系统，
+/// 与 ArkTS 的系统操作是两条链路，所以状态只能由引擎写文件、原生侧读出来。
+enum HdcStage {
+  /// 引擎没跑、或还没跑过自检：没有状态文件。
+  unknown,
+  authorized,
+  unauthorized,
+
+  /// 手机上没有监听中的调试端口（无线调试关着）。
+  noPort,
+  error,
+}
+
+class HdcChannelState {
+  const HdcChannelState({
+    this.loaded = false,
+    this.stage = HdcStage.unknown,
+    this.checkedAt,
+    this.port = 0,
+    this.hints = const [],
+    this.checking = false,
+  });
+
+  /// 读到过引擎写的状态文件。
+  final bool loaded;
+  final HdcStage stage;
+  final DateTime? checkedAt;
+
+  /// 通道用的无线调试端口，没连上时为 0。
+  final int port;
+
+  /// 引擎给的下几步，最多三条。
+  final List<String> hints;
+
+  /// 正在重新检测。
+  final bool checking;
+
+  bool get authorized => stage == HdcStage.authorized;
+
+  /// 引擎写的状态 → 这个页面用的形状；null 当作没检测过。
+  factory HdcChannelState.fromMap(Map<Object?, Object?>? map, {bool checking = false}) {
+    if (map == null || map['present'] != true) return HdcChannelState(checking: checking);
+    final stage = switch (map['stage']) {
+      'authorized' => HdcStage.authorized,
+      'unauthorized' => HdcStage.unauthorized,
+      'no_port' => HdcStage.noPort,
+      'error' => HdcStage.error,
+      _ => HdcStage.unknown,
+    };
+    final at = map['updatedAt'];
+    final hints = map['hints'];
+    return HdcChannelState(
+      loaded: true,
+      stage: map['authorized'] == true ? HdcStage.authorized : stage,
+      checkedAt: at is int && at > 0 ? DateTime.fromMillisecondsSinceEpoch(at) : null,
+      port: map['port'] is int ? map['port'] as int : 0,
+      hints: [
+        if (hints is List)
+          for (final hint in hints)
+            if (hint is String && hint.isNotEmpty) hint,
+      ],
+      checking: checking,
+    );
+  }
+
+  HdcChannelState copyWith({bool? loaded, HdcStage? stage, DateTime? checkedAt, int? port, List<String>? hints, bool? checking}) =>
+      HdcChannelState(
+        loaded: loaded ?? this.loaded,
+        stage: stage ?? this.stage,
+        checkedAt: checkedAt ?? this.checkedAt,
+        port: port ?? this.port,
+        hints: hints ?? this.hints,
+        checking: checking ?? this.checking,
+      );
+}
+
 class SystemActionsState {
   const SystemActionsState({
     this.loaded = false,
@@ -69,6 +145,7 @@ class SystemActionsState {
     this.link = SystemActionsLink.off,
     this.handoff,
     this.log = const [],
+    this.hdc = const HdcChannelState(),
   });
 
   /// False until the saved switch is read.
@@ -83,6 +160,9 @@ class SystemActionsState {
   /// Newest first; what ran and how it came out, never its arguments.
   final List<PhoneLogEntry> log;
 
+  /// 界面操作（调试通道）的授权状态。
+  final HdcChannelState hdc;
+
   SystemActionsState copyWith({
     bool? loaded,
     bool? enabled,
@@ -91,6 +171,7 @@ class SystemActionsState {
     DshPhoneRequest? handoff,
     bool clearHandoff = false,
     List<PhoneLogEntry>? log,
+    HdcChannelState? hdc,
   }) => SystemActionsState(
     loaded: loaded ?? this.loaded,
     enabled: enabled ?? this.enabled,
@@ -98,6 +179,7 @@ class SystemActionsState {
     link: link ?? this.link,
     handoff: clearHandoff ? null : handoff ?? this.handoff,
     log: log ?? this.log,
+    hdc: hdc ?? this.hdc,
   );
 }
 
@@ -148,6 +230,7 @@ class SystemActionsController extends Notifier<SystemActionsState> {
       onShow: () {
         _visible = true;
         _startOver();
+        unawaited(refreshHdc());
       },
       onHide: () {
         _visible = false;
@@ -162,6 +245,7 @@ class SystemActionsController extends Notifier<SystemActionsState> {
       unawaited(_updates?.cancel());
     });
     unawaited(_load());
+    unawaited(refreshHdc());
     return const SystemActionsState();
   }
 
@@ -184,6 +268,39 @@ class SystemActionsController extends Notifier<SystemActionsState> {
     if (!r.mounted) return;
     state = state.copyWith(loaded: true, enabled: enabled, disclosureAccepted: accepted, log: log);
     _sync();
+  }
+
+  /// 读一次引擎写下的调试通道状态。读不到就还是「没检测过」。
+  Future<void> refreshHdc() async {
+    Map<Object?, Object?>? map;
+    try {
+      map = await ref.read(runtimeBridgeProvider).hdcChannelStatus();
+    } catch (_) {
+      map = null;
+    }
+    if (!ref.mounted) return;
+    state = state.copyWith(hdc: HdcChannelState.fromMap(map, checking: state.hdc.checking));
+  }
+
+  /// 请引擎重新自检一次，然后等它改写状态文件（引擎每两秒看一次请求）。
+  Future<void> probeHdc() async {
+    if (state.hdc.checking) return;
+    final before = state.hdc.checkedAt;
+    state = state.copyWith(hdc: state.hdc.copyWith(checking: true));
+    try {
+      await ref.read(runtimeBridgeProvider).requestHdcProbe();
+      for (var i = 0; i < 12; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 1500));
+        if (!ref.mounted) return;
+        await refreshHdc();
+        final now = state.hdc.checkedAt;
+        if (now != null && now != before) break;
+      }
+    } catch (_) {
+      // No native side: nothing to ask. The spinner is dropped below.
+    }
+    if (!ref.mounted) return;
+    state = state.copyWith(hdc: state.hdc.copyWith(checking: false));
   }
 
   Future<void> acceptDisclosure() async {

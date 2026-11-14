@@ -17623,6 +17623,54 @@ class L10nEn extends L10n {
       'The system doesn\'t let background apps do these. After the AI opens another app, it can\'t go on until you\'re back in DSH Go.';
 
   @override
+  String get systemActionsScreenTitle => 'Screen control (debug channel)';
+
+  @override
+  String get systemActionsScreenAuthorized => 'Authorized';
+
+  @override
+  String get systemActionsScreenAuthorizedHint =>
+      'The AI can read the screen, tap, type, swipe, press keys, take screenshots, and start or stop apps';
+
+  @override
+  String get systemActionsScreenUnauthorized => 'Not authorized yet';
+
+  @override
+  String get systemActionsScreenUnauthorizedHint =>
+      'Debugging is on, but this phone hasn\'t trusted this device\'s key';
+
+  @override
+  String get systemActionsScreenNoPort => 'No debugging port';
+
+  @override
+  String get systemActionsScreenNoPortHint => 'Wireless debugging is off, or on without a listening port';
+
+  @override
+  String get systemActionsScreenUnknown => 'Not checked yet';
+
+  @override
+  String get systemActionsScreenUnknownHint => 'The local engine checks once when it starts';
+
+  @override
+  String get systemActionsScreenError => 'Check failed';
+
+  @override
+  String get systemActionsScreenErrorHint => 'The channel is down: see the local engine\'s live log';
+
+  @override
+  String get systemActionsScreenChecking => 'Checking…';
+
+  @override
+  String get systemActionsScreenNeverChecked => 'Never checked';
+
+  @override
+  String get systemActionsScreenStepsTitle => 'First time: authorize';
+
+  @override
+  String get systemActionsScreenSteps =>
+      '1. Settings › About phone, tap Build number repeatedly to turn on developer mode\n2. Settings › System › Developer options, turn on Wireless debugging and leave it on\n3. Come back here and tap check again, then choose Always allow in the system dialog\n4. No dialog? Revoke debugging authorizations in Settings, then try again';
+
+  @override
   String get systemActionsCanTitle => 'What it can do';
 
   @override
@@ -17663,12 +17711,6 @@ class L10nEn extends L10n {
 
   @override
   String get systemActionsCannotTitle => 'What it can\'t do';
-
-  @override
-  String get systemActionsCannotScreen => 'See the screen or tap inside other apps';
-
-  @override
-  String get systemActionsCannotScreenHint => 'The system doesn\'t allow it';
 
   @override
   String get systemActionsCannotOther => 'Read the clipboard, find apps by name, SMS';

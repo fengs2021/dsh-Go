@@ -16698,6 +16698,52 @@ class L10nZh extends L10n {
   String get systemActionsOnScreenBody => '系统不让后台应用做这些。AI 打开别的应用后，要等你回到 DSH Go 才能接着做。';
 
   @override
+  String get systemActionsScreenTitle => '界面操作（调试通道）';
+
+  @override
+  String get systemActionsScreenAuthorized => '已授权';
+
+  @override
+  String get systemActionsScreenAuthorizedHint => 'AI 能读界面、点按、输入、滑动、按键、截图，也能启停应用';
+
+  @override
+  String get systemActionsScreenUnauthorized => '还没授权';
+
+  @override
+  String get systemActionsScreenUnauthorizedHint => '调试通道开着，但这台手机还没信任本机的密钥';
+
+  @override
+  String get systemActionsScreenNoPort => '没找到调试端口';
+
+  @override
+  String get systemActionsScreenNoPortHint => '无线调试没开，或者开着但没在监听';
+
+  @override
+  String get systemActionsScreenUnknown => '还没检测';
+
+  @override
+  String get systemActionsScreenUnknownHint => '本机引擎启动后会自动检测一次';
+
+  @override
+  String get systemActionsScreenError => '检测失败';
+
+  @override
+  String get systemActionsScreenErrorHint => '通道没通，看本机引擎的实时日志';
+
+  @override
+  String get systemActionsScreenChecking => '正在检测…';
+
+  @override
+  String get systemActionsScreenNeverChecked => '还没检测过';
+
+  @override
+  String get systemActionsScreenStepsTitle => '第一次要授权';
+
+  @override
+  String get systemActionsScreenSteps =>
+      '① 设置 → 关于本机，连点「版本号」进开发者模式\n② 设置 → 系统 → 开发者选项，打开「无线调试」并保持开启\n③ 回到这里点重新检测，手机弹窗选「始终允许」\n④ 没弹窗就去设置里撤销调试授权，再回来重试';
+
+  @override
   String get systemActionsCanTitle => '能做的';
 
   @override
@@ -16738,12 +16784,6 @@ class L10nZh extends L10n {
 
   @override
   String get systemActionsCannotTitle => '做不到的';
-
-  @override
-  String get systemActionsCannotScreen => '看屏幕、点按其他应用';
-
-  @override
-  String get systemActionsCannotScreenHint => '系统不允许';
 
   @override
   String get systemActionsCannotOther => '读剪贴板、按名字找应用、短信';

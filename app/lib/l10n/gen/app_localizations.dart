@@ -30608,6 +30608,96 @@ abstract class L10n {
   /// **'系统不让后台应用做这些。AI 打开别的应用后，要等你回到 DSH Go 才能接着做。'**
   String get systemActionsOnScreenBody;
 
+  /// No description provided for @systemActionsScreenTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'界面操作（调试通道）'**
+  String get systemActionsScreenTitle;
+
+  /// No description provided for @systemActionsScreenAuthorized.
+  ///
+  /// In zh, this message translates to:
+  /// **'已授权'**
+  String get systemActionsScreenAuthorized;
+
+  /// No description provided for @systemActionsScreenAuthorizedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'AI 能读界面、点按、输入、滑动、按键、截图，也能启停应用'**
+  String get systemActionsScreenAuthorizedHint;
+
+  /// No description provided for @systemActionsScreenUnauthorized.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没授权'**
+  String get systemActionsScreenUnauthorized;
+
+  /// No description provided for @systemActionsScreenUnauthorizedHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'调试通道开着，但这台手机还没信任本机的密钥'**
+  String get systemActionsScreenUnauthorizedHint;
+
+  /// No description provided for @systemActionsScreenNoPort.
+  ///
+  /// In zh, this message translates to:
+  /// **'没找到调试端口'**
+  String get systemActionsScreenNoPort;
+
+  /// No description provided for @systemActionsScreenNoPortHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'无线调试没开，或者开着但没在监听'**
+  String get systemActionsScreenNoPortHint;
+
+  /// No description provided for @systemActionsScreenUnknown.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没检测'**
+  String get systemActionsScreenUnknown;
+
+  /// No description provided for @systemActionsScreenUnknownHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'本机引擎启动后会自动检测一次'**
+  String get systemActionsScreenUnknownHint;
+
+  /// No description provided for @systemActionsScreenError.
+  ///
+  /// In zh, this message translates to:
+  /// **'检测失败'**
+  String get systemActionsScreenError;
+
+  /// No description provided for @systemActionsScreenErrorHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'通道没通，看本机引擎的实时日志'**
+  String get systemActionsScreenErrorHint;
+
+  /// No description provided for @systemActionsScreenChecking.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在检测…'**
+  String get systemActionsScreenChecking;
+
+  /// No description provided for @systemActionsScreenNeverChecked.
+  ///
+  /// In zh, this message translates to:
+  /// **'还没检测过'**
+  String get systemActionsScreenNeverChecked;
+
+  /// No description provided for @systemActionsScreenStepsTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'第一次要授权'**
+  String get systemActionsScreenStepsTitle;
+
+  /// No description provided for @systemActionsScreenSteps.
+  ///
+  /// In zh, this message translates to:
+  /// **'① 设置 → 关于本机，连点「版本号」进开发者模式\n② 设置 → 系统 → 开发者选项，打开「无线调试」并保持开启\n③ 回到这里点重新检测，手机弹窗选「始终允许」\n④ 没弹窗就去设置里撤销调试授权，再回来重试'**
+  String get systemActionsScreenSteps;
+
   /// No description provided for @systemActionsCanTitle.
   ///
   /// In zh, this message translates to:
@@ -30691,18 +30781,6 @@ abstract class L10n {
   /// In zh, this message translates to:
   /// **'做不到的'**
   String get systemActionsCannotTitle;
-
-  /// No description provided for @systemActionsCannotScreen.
-  ///
-  /// In zh, this message translates to:
-  /// **'看屏幕、点按其他应用'**
-  String get systemActionsCannotScreen;
-
-  /// No description provided for @systemActionsCannotScreenHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'系统不允许'**
-  String get systemActionsCannotScreenHint;
 
   /// No description provided for @systemActionsCannotOther.
   ///
