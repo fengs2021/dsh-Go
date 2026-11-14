@@ -85,10 +85,40 @@ const describe = (node, index) => (index + 1) + '. ' + (node.label ? JSON.string
   ' · ' + (node.type || '?') + (node.clickable ? ' · 可点击' : '') + (node.editable ? ' · 可输入' : '') +
   (node.bounds ? ' · 中心 ' + node.bounds.cx + ',' + node.bounds.cy : '');
 
-const result = (ok, code, message, data) => ({ ok, code, message, data: data ?? '' });
+const result = (ok, code, message, data, dispatched = false) => ({ ok, code, message, data: data ?? '', dispatched });
 const schema = { type: 'object', additionalProperties: false,
-  properties: { ok: { type: 'boolean' }, code: { type: 'string' }, message: { type: 'string' }, data: { type: 'string' } },
+  properties: { ok: { type: 'boolean' }, code: { type: 'string' }, message: { type: 'string' }, data: { type: 'string' },
+    dispatched: { type: 'boolean', description: '命令是否已经发到手机上（true 时动作可能已经生效，不能直接重试）' } },
   required: ['ok', 'code', 'message', 'data'] };
+
+// 三态结果，与上游 phone 队列同一口径：成功 / 一定没发生（可安全重试）/ 已发出但结果未知
+// （不要重试，先看现场）。第三态存在的原因很实在——点按和输入重试一次就是真的多按一下。
+const UNKNOWN_HINT = '命令已发出但没有拿到结束回执，动作可能已经生效：不要直接重试，先用 action=dump 或 action=shot 确认现场再决定。';
+export const classifyFailure = (error) => {
+  const message = String((error && error.message) || error).slice(0, 500);
+  const nonce = error && error.executionNonce ? '（执行 nonce ' + error.executionNonce + '）' : '';
+  if (error && error.hdcPhase === 'dispatched') return { ok: false, code: 'outcome_unknown', dispatched: true, message: message + ' · ' + UNKNOWN_HINT + nonce };
+  return { ok: false, code: 'failed', dispatched: false, message: message + nonce };
+};
+
+// 只读 native 快照（不 claim、不阻塞）：给「结果未知」留下当时的现场依据。
+// 不套 native permit 是刻意的——hdc 通道的价值恰恰在于不依赖 App 在前台。
+export function readNativeSnapshot(bindingOf = () => process._linkedBinding && process._linkedBinding('dsh_ohos_publication')) {
+  try {
+    const binding = bindingOf();
+    const snapshot = binding && typeof binding.getPhoneSnapshot === 'function' ? binding.getPhoneSnapshot() : null;
+    if (!snapshot || typeof snapshot !== 'object') return null;
+    return { available: snapshot.available === true, foreground: snapshot.foreground === true,
+      engineId: typeof snapshot.engineId === 'string' ? snapshot.engineId : '',
+      bridgeGeneration: Number.isSafeInteger(snapshot.bridgeGeneration) ? snapshot.bridgeGeneration : 0 };
+  } catch { return null; }
+}
+const nativeHint = () => {
+  const snapshot = readNativeSnapshot();
+  if (!snapshot) return '';
+  return '\n本机当时：DSH ' + (snapshot.foreground ? '在前台' : '不在前台') + '，引擎 ' + (snapshot.engineId || '未知') +
+    (snapshot.bridgeGeneration ? ' 第 ' + snapshot.bridgeGeneration + ' 代' : '') + (snapshot.available ? '' : '，phone 回调不可用');
+};
 const str = (description) => ({ type: 'string', description });
 const num = (description) => ({ type: 'number', description });
 
@@ -290,6 +320,7 @@ const definitions = [
         : '调试通道不可用：' + (report.auth.error || '未知原因');
       const lines = [head, '密钥文件：' + report.key.path, '无线调试端口：' + (report.wirelessDebugging.discoveredPorts.join(',') || '未发现')];
       for (const hint of report.hints) lines.push('· ' + hint);
+      lines.push(nativeHint() || '本机当时：拿不到 native 快照（不在鸿蒙宿主里运行）');
       return result(report.auth.ok, report.auth.ok ? 'ok' : 'hdc_unavailable', lines.join('\n'), report);
     } },
   { name: 'mcp__phone__app',
@@ -345,7 +376,10 @@ export function registerUiTools(ctx) {
         output: { schema, render: (_args, value) => text(value) },
         async execute(args) {
           try { return await definition.run(args || {}); }
-          catch (error) { return result(false, 'failed', String(error && error.message || error).slice(0, 500), ''); }
+          catch (error) {
+            const outcome = classifyFailure(error);
+            return result(outcome.ok, outcome.code, outcome.message + (outcome.dispatched ? nativeHint() : ''), '', outcome.dispatched);
+          }
         },
       }));
     }

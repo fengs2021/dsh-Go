@@ -156,6 +156,11 @@ export function loadOrCreateKey(keyPath) {
   return crypto.createPrivateKey(privateKey);
 }
 
+// 失败必须分成两种报：帧还没写进 socket（动作一定没发生）与帧已写出却没等到结束回执
+// （动作可能已经生效）。后者当普通失败报，上层就会重试，点按/输入就被重复执行一次。
+export const hdcError = (message, phase, extra = {}) =>
+  Object.assign(new Error(message), { hdcPhase: phase }, extra);
+
 export class HdcLink {
   constructor(options = {}) {
     this.host = options.host || '127.0.0.1';
@@ -260,10 +265,14 @@ export class HdcLink {
   execBuffer(command, timeoutMs = 30000) {
     const dbg = process.env.DSH_HDC_DEBUG ? (m) => process.stderr.write('[dbg] ' + m + '\n') : () => {};
     dbg('execBuffer enter');
-    return this.ready().then(() => new Promise((resolve, reject) => {
+    const executionNonce = crypto.randomUUID();
+    // 连接/鉴权阶段失败：命令帧还没写出去，动作一定没发生。
+    const beforeWrite = (error) => (error && error.hdcPhase ? error
+      : hdcError(String((error && error.message) || error), 'not_dispatched', { executionNonce }));
+    return this.ready().catch((error) => { throw beforeWrite(error); }).then(() => new Promise((resolve, reject) => {
       dbg('execBuffer ready ch=' + this.nextChannel);
       const socket = this.socket;
-      if (!socket || socket.destroyed) { reject(new Error('hdc 连接不可用')); return; }
+      if (!socket || socket.destroyed) { reject(hdcError('hdc 连接不可用', 'not_dispatched', { executionNonce })); return; }
       const channel = this.nextChannel++;
       if (this.nextChannel > 0x7fffffff) this.nextChannel = 1;
       const chunks = [];
@@ -276,14 +285,16 @@ export class HdcLink {
       };
       const timer = setTimeout(() => {
         try { socket.write(frame(channel, CMD_CHANNEL_CLOSE, Buffer.alloc(0))); } catch { /* ignore */ }
-        finish(new Error('命令执行超时 ' + timeoutMs + 'ms'));
+        finish(hdcError('命令执行超时 ' + timeoutMs + 'ms', 'dispatched', { executionNonce }));
       }, timeoutMs);
       waiter.done = () => finish(null);
-      waiter.reject = finish;
-      waiter.stop = (why) => finish(new Error(why));
+      // 帧写出去之后的断连/输出溢出都算「可能已生效」：宁可让上层去确认现场，也不谎报失败。
+      waiter.reject = (error) => finish(error && error.hdcPhase ? error
+        : hdcError(String((error && error.message) || error), 'dispatched', { executionNonce }));
+      waiter.stop = (why) => finish(hdcError(why, 'dispatched', { executionNonce }));
       this.pending.set(channel, waiter);
       socket.write(frame(channel, CMD_UNITY_EXECUTE, Buffer.from(command, 'utf8')));
-      dbg('exec written ch=' + channel + ' cmd=' + command);
+      dbg('exec written ch=' + channel + ' cmd=' + command + ' nonce=' + executionNonce);
     }));
   }
 

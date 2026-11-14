@@ -40,5 +40,19 @@
 ## 已知限制（未验证项）
 
 - 真机行为未验证：`hdc-link` 的握手/鉴权/uitest 调用需要打 HAP 上真机才能验；本阶段只证明「能装进引擎、注册得进去、纯函数正确」。
-- 上游 phone 工具的审批口径里还有 native permit（`claimPhonePermit`）这一层；我们的 hdc 工具**不经过** native permit，只走 `tools/pre-execute` 的会话审批。要不要给 hdc 工具也套上 native permit，阶段 2 再定。
+- 上游 phone 工具的审批口径里还有 native permit（`claimPhonePermit`）这一层；我们的 hdc 工具**刻意不套**（理由见下节），只走 `tools/pre-execute` 的会话审批。
 - `hdc-status.mjs`（v39 的状态文件与轮询）没进阶段 1，所以现在页面上还没有「授权状态」卡片。
+
+## 阶段 1 补丁（2026-11-15）：三态结果 + 只读快照，不套 native permit
+
+**为什么不套 native permit。** 上游那层许可落在原生宿主（`libdsh_host.so`，binding `dsh_ohos_publication`）里，一条许可绑 `(engineId, bridgeGeneration, requestId, executionNonce)` 并带 BOOTTIME 截止，实际提供三件事：前台门禁、换代作废、派发状态记账。前两条对 hdc 是**负收益**——hdc 通道的价值恰恰是不依赖 App 在前台（后台弹幕、长任务期间仍要驱动界面）；而 `phone_contract.h` / ArkTS 侧 `PhoneToolCatalog` 是**按结构化参数做白名单**的，hdc 的参数是自由 shell 命令，要过白名单就得改原生契约并重编 `libdsh_host.so`，等于把「底座能持续跟上游走」这条方案 A 的前提废掉。
+
+**只把真正值钱的第三条搬过来。** 第三态（「已发出但结果未知」）在 Node 侧就能实现，且必须实现：现在点按/输入超时一律报 `ok:false`，模型会重试，而重试一次就是真的多按一下。
+
+| 文件 | 改动 |
+| --- | --- |
+| `runtime/ohos/phone/hdc-link.mjs` | 新增 `hdcError(message, phase, extra)`；`execBuffer` 每次执行生成 `executionNonce`（`crypto.randomUUID()`），并按**帧是否已写出**给错误标 `hdcPhase`：连接/鉴权失败 = `not_dispatched`；超时、输出溢出、写出后断连 = `dispatched` |
+| `runtime/ohos/phone/ui-tools.mjs` | 结果对象加 `dispatched` 字段；`classifyFailure(error)` 把 `dispatched` 映射成 `code:'outcome_unknown'` + 「不要直接重试，先用 dump/shot 确认现场」+ 执行 nonce；`readNativeSnapshot()` **只读** `getPhoneSnapshot()`（不 claim、不阻塞），把「本机当时 DSH 是否在前台 / 引擎第几代 / phone 回调是否可用」写进未知结果与 `mcp__phone__hdc` 自检输出 |
+| `runtime/tests/ohos/phone-ui-tools.test.mjs` | 从 9 例增到 **13 例**：三态两分支、快照归一化与三种拿不到 binding 的情形、真连不上端口时错误必须标 `not_dispatched` 且带 nonce |
+
+**证据（2026-11-15）**：`node --check` 两文件通过；`node --test runtime/tests/ohos/phone-ui-tools.test.mjs` → **tests 13 / pass 13 / fail 0**。真机仍未验证。

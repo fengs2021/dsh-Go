@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectNodes, registerUiTools, phoneUiCatalog } from '../../ohos/phone/ui-tools.mjs';
-import { resolveKeyPath, fingerprintOf, loadOrCreateKey, frame, FrameReader } from '../../ohos/phone/hdc-link.mjs';
+import { collectNodes, registerUiTools, phoneUiCatalog, classifyFailure, readNativeSnapshot } from '../../ohos/phone/ui-tools.mjs';
+import { resolveKeyPath, fingerprintOf, loadOrCreateKey, frame, FrameReader, HdcLink } from '../../ohos/phone/hdc-link.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -129,4 +129,39 @@ test('注册：四个手机界面工具全部装上，卸载时全部摘掉', ()
 test('工具目录只暴露 name/description/parameters，不泄漏实现', () => {
   assert.equal(phoneUiCatalog.length, 4);
   for (const entry of phoneUiCatalog) assert.deepEqual(Object.keys(entry).sort(), ['description', 'name', 'parameters']);
+});
+
+test('失败分三态：帧已写出却没拿到回执 → outcome_unknown 且 dispatched=true', () => {
+  const outcome = classifyFailure(Object.assign(new Error('命令执行超时 30000ms'), { hdcPhase: 'dispatched', executionNonce: 'n-1' }));
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.code, 'outcome_unknown');
+  assert.equal(outcome.dispatched, true);
+  assert.match(outcome.message, /不要直接重试/);
+  assert.match(outcome.message, /n-1/);
+});
+
+test('失败分三态：连不上、帧没写出去 → failed 且 dispatched=false（可安全重试）', () => {
+  const outcome = classifyFailure(Object.assign(new Error('没检测到无线调试端口'), { hdcPhase: 'not_dispatched' }));
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.code, 'failed');
+  assert.equal(outcome.dispatched, false);
+  assert.equal(classifyFailure(new Error('随便什么错')).dispatched, false);
+  assert.equal(classifyFailure(undefined).code, 'failed');
+});
+
+test('readNativeSnapshot 只读快照并归一化，拿不到 binding 时返回 null 而不抛', () => {
+  const snapshot = readNativeSnapshot(() => ({ getPhoneSnapshot: () => ({ available: true, foreground: false, engineId: 'eng-1', bridgeGeneration: 7, nowMs: 1, ownerHash: 'x' }) }));
+  assert.deepEqual(snapshot, { available: true, foreground: false, engineId: 'eng-1', bridgeGeneration: 7 });
+  assert.equal(readNativeSnapshot(() => { throw new Error('No such binding dsh_ohos_publication'); }), null);
+  assert.equal(readNativeSnapshot(() => ({})), null);
+  assert.equal(readNativeSnapshot(() => null), null);
+  assert.equal(readNativeSnapshot(() => ({ getPhoneSnapshot: () => null })), null);
+});
+
+test('hdc 连不上时错误标成「未派发」：重试不会重复执行动作', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-hdc-'));
+  try {
+    const link = new HdcLink({ port: 1, connectTimeoutMs: 1500, keyPath: join(dir, 'id_rsa') });
+    await assert.rejects(() => link.exec('id'), (error) => error.hdcPhase === 'not_dispatched' && Boolean(error.executionNonce));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
