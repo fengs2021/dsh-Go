@@ -6,9 +6,24 @@ import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-// 随包内置的已授权密钥（调试用）：存在时优先使用，避免首次连接弹「是否信任此设备」。
+// 随包内置的已授权密钥只对打包者本人的手机有效：别人装同一个包，手机并不认识这把密钥，
+// 首次连接仍要在系统弹窗里点「始终允许」才生效。用户自备密钥放在数据目录里时优先生效。
 const moduleDir = path.dirname(new URL(import.meta.url).pathname);
-const shippedKeyPath = path.join(moduleDir, 'hdc-key', 'id_rsa');
+export const shippedKeyPath = path.join(moduleDir, 'hdc-key', 'id_rsa');
+export const userKeyPath = () => path.join(process.env.DSH_GO_PHONE_HOME || process.env.HOME || '/tmp', '.dsh', 'hdc-client', 'id_rsa');
+// 优先级：显式选项 > 环境变量 > 用户自备（存在即用）> 随包内置 > 自动生成到用户目录
+export function resolveKeyPath(options = {}) {
+  if (options.keyPath) return { path: options.keyPath, source: 'option' };
+  if (process.env.DSH_GO_PHONE_KEY) return { path: process.env.DSH_GO_PHONE_KEY, source: 'env' };
+  const user = userKeyPath();
+  if (fs.existsSync(user)) return { path: user, source: 'user' };
+  if (fs.existsSync(shippedKeyPath)) return { path: shippedKeyPath, source: 'shipped' };
+  return { path: user, source: 'generated' };
+}
+// 连不上时给用户看的手机侧入口，不要只说「鉴权失败」。
+const GUIDE_WIRELESS = '请打开手机的 设置 › 系统 › 开发者选项 › 无线调试 并保持开启';
+const GUIDE_TRUST = '首次连接时手机弹「是否允许调试」，选「始终允许」';
+const GUIDE_REVOKE = '没看到弹窗就先到 开发者选项 › 撤销 USB 调试授权，再重试';
 // 无线调试端口每次重连/重启都会变：从 /proc/net/tcp 里找 hdcd（以 shell uid 2000 运行）的监听端口。
 const discoverPorts = () => {
   const ports = [];
@@ -128,6 +143,9 @@ export const pubPemOf = (key) => {
 export const signToken = (key, token) => crypto.privateEncrypt({ key, padding: crypto.constants.RSA_PKCS1_PADDING },
   Buffer.from(token, 'utf8')).toString('base64');
 
+// 公钥指纹（SHA-256），用来让用户核对手机信任的是哪把密钥。
+export const fingerprintOf = (key) => crypto.createHash('sha256').update(pubPemOf(key)).digest('hex').match(/../g).join(':');
+
 export function loadOrCreateKey(keyPath) {
   if (fs.existsSync(keyPath)) return crypto.createPrivateKey(fs.readFileSync(keyPath));
   fs.mkdirSync(path.dirname(keyPath), { recursive: true });
@@ -143,9 +161,9 @@ export class HdcLink {
     this.host = options.host || '127.0.0.1';
     this.port = options.port || 45957;
     this.hostname = options.hostname || 'dsh-phone';
-    this.keyPath = options.keyPath || process.env.DSH_GO_PHONE_KEY
-      || (fs.existsSync(shippedKeyPath) ? shippedKeyPath
-        : path.join(process.env.DSH_GO_PHONE_HOME || process.env.HOME || '/tmp', '.dsh', 'hdc-client', 'id_rsa'));
+    const key = resolveKeyPath(options);
+    this.keyPath = key.path;
+    this.keySource = key.source;
     this.connectTimeoutMs = options.connectTimeoutMs || 20000;
     this.socket = null; this.authed = false; this.pending = new Map(); this.nextChannel = 1;
     this.connecting = null;
@@ -169,7 +187,11 @@ export class HdcLink {
         return link;
       } catch (error) { lastError = error; }
     }
-    throw lastError || new Error('hdc 服务不可达');
+    if (!discoverPorts().length) {
+      const detail = lastError && lastError.message ? '（' + lastError.message + '）' : '';
+      throw new Error('没检测到无线调试端口：' + GUIDE_WIRELESS + '，然后重试' + detail);
+    }
+    throw lastError || new Error('hdc 服务不可达：' + GUIDE_WIRELESS);
   }
 
   #connectPort(port, connectTimeoutMs) {
@@ -192,7 +214,7 @@ export class HdcLink {
         this.socket = null; this.authed = false;
         reject(error);
       };
-      const timer = setTimeout(() => fail(new Error('hdc 鉴权超时（可能手机正在等待「允许调试」确认，或无线调试已关闭）')), connectTimeoutMs);
+      const timer = setTimeout(() => fail(new Error('hdc 鉴权超时：' + GUIDE_TRUST + '；' + GUIDE_REVOKE)), connectTimeoutMs);
       const reader = new FrameReader((fr) => {
         if (fr.cmd === CMD_HANDSHAKE) {
           const hs = parseHandshake(fr.payload);
@@ -226,7 +248,7 @@ export class HdcLink {
       socket.on('connect', () => { debug('socket connected'); socket.write(frame(0, CMD_HANDSHAKE, handshakeMsg({ authType: 0, sessionId, version: VERSION }))); });
       socket.on('data', (chunk) => { try { reader.push(chunk); } catch (error) { this.#die(error); fail(error); } });
       socket.on('error', (error) => { debug('socket error ' + error.message); this.#die(error); fail(error); });
-      socket.on('close', () => { debug('socket close'); this.#die(new Error('hdc 连接已关闭')); fail(new Error('hdc 连接在鉴权完成前关闭（手机可能还没点「始终允许」）')); });
+      socket.on('close', () => { debug('socket close'); this.#die(new Error('hdc 连接已关闭')); fail(new Error('hdc 连接在鉴权完成前关闭：' + GUIDE_TRUST + '；' + GUIDE_REVOKE)); });
     });
   }
 
@@ -276,3 +298,37 @@ export function getLink(options) {
   return shared;
 }
 export const hdcPort = () => Number(process.env.DSH_GO_PHONE_HDC_PORT || 45957);
+
+// 一次性自检：无线调试端口、当前密钥来源与指纹、鉴权结果，以及按现状给出的修复步骤。
+export async function diagnoseHdc(options = {}) {
+  const resolved = resolveKeyPath(options);
+  let fingerprint = '', pemBytes = 0, keyError = '';
+  try {
+    const key = loadOrCreateKey(resolved.path);
+    fingerprint = fingerprintOf(key);
+    pemBytes = pubPemOf(key).length;
+  } catch (error) { keyError = String((error && error.message) || error); }
+  const ports = discoverPorts();
+  const report = {
+    key: { source: resolved.source, path: resolved.path, fingerprint, pubkeyPemBytes: pemBytes, error: keyError },
+    wirelessDebugging: { discoveredPorts: ports, ok: ports.length > 0, defaultPort: hdcPort() },
+    auth: { ok: false, port: 0, ms: 0, error: '' },
+    hints: [],
+  };
+  const t0 = Date.now();
+  try {
+    const link = getLink(options);
+    await link.ready();
+    report.auth.ok = true;
+    report.auth.port = link.port;
+  } catch (error) { report.auth.error = String((error && error.message) || error); }
+  report.auth.ms = Date.now() - t0;
+  if (!ports.length) report.hints.push('没有监听的无线调试端口：' + GUIDE_WIRELESS + '。');
+  if (!report.auth.ok) {
+    report.hints.push('让手机信任当前密钥：' + GUIDE_TRUST + '；' + GUIDE_REVOKE + '。');
+    report.hints.push('想换成自己桌面 hdc 的密钥：把 id_rsa 放到 ' + userKeyPath() + '（存在即优先使用）。');
+  }
+  if (pemBytes && pemBytes !== 625) report.hints.push('当前公钥 PEM 为 ' + pemBytes + ' 字节，不是 625，设备不会记住「始终允许」：请改用 3072 位 RSA 重新生成。');
+  if (keyError) report.hints.push('读取密钥失败：' + keyError);
+  return report;
+}

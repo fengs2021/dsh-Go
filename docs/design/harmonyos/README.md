@@ -168,6 +168,7 @@ flowchart TD
 | 能力 / 恢复 / 发布 | [capabilities-v1](capabilities-v1.md)、[lifecycle](lifecycle.md)、[publication-ownership](publication-ownership.md)、[publication-atomic-capability](publication-atomic-capability.md)、[设备前提](M6-3-device-prerequisites.md)；41 的 `host-lifecycle.md` |
 | 组成 / 插件 | [runtime-composition](runtime-composition.md)、[plugin-install-bridge](plugin-install-bridge.md)、[android-recipe](android-recipe.md)；单归档的 `runtime-archive.md` / `runtime-archive-composition.md` |
 | 更新日志 | [CHANGELOG-OHOS.md](../../../CHANGELOG-OHOS.md)：每个版本改了什么、为什么、验证证据、已知限制 |
+| 手机工具 | [hdc-key-onboarding](hdc-key-onboarding.md)：调试密钥来自哪里、别人装同一个包为什么要授权一次、625 字节公钥约束、`mcp__phone__hdc` 自检 |
 | 公开通道 | [core-channels](core-channels.md)、[app-links](app-links-channels.md)、[files-media](files-media-channels.md)、[notify](notify.md)；33 的 `web-files.md` |
 | 新候选 | `native-files.md`、`native-media.md`、`performance-channel.md`、`diagnostics-channel.md`、`hms-share.md`、`voice-channel.md`、`pdf-preview.md`，状态逐项见证据表 |
 

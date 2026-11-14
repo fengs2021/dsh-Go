@@ -1,7 +1,7 @@
 // 把 hdc shell 与 uitest 封装成 DSH 手机工具：真正能点屏、滑动、打字、读界面树的自动化。
 import fs from 'node:fs';
 import path from 'node:path';
-import { getLink } from './hdc-link.mjs';
+import { getLink, diagnoseHdc } from './hdc-link.mjs';
 
 const TMP = '/data/local/tmp';
 const shellQuote = (value) => "'" + String(value).replace(/'/g, "'\\''") + "'";
@@ -279,6 +279,18 @@ const definitions = [
       const handler = uiActions[action];
       if (!handler) return result(false, 'invalid_args', 'action 只支持 ' + Object.keys(uiActions).join('/'), '');
       return handler(args);
+    } },
+  { name: 'mcp__phone__hdc',
+    description: '检查手机调试通道（HDC）为什么不通：无线调试端口、当前使用的密钥来源（随包内置 / 用户自备 / 自动生成）与公钥指纹、鉴权是否成功，并给出该让用户做哪几步。手机工具报鉴权超时、或换了别人的手机使用时先用它自检。只读，不改任何设置。',
+    parameters: { type: 'object', additionalProperties: false, properties: {} },
+    run: async () => {
+      const report = await diagnoseHdc();
+      const head = report.auth.ok
+        ? '调试通道可用：端口 ' + report.auth.port + '，密钥来源 ' + report.key.source + '，指纹 ' + report.key.fingerprint
+        : '调试通道不可用：' + (report.auth.error || '未知原因');
+      const lines = [head, '密钥文件：' + report.key.path, '无线调试端口：' + (report.wirelessDebugging.discoveredPorts.join(',') || '未发现')];
+      for (const hint of report.hints) lines.push('· ' + hint);
+      return result(report.auth.ok, report.auth.ok ? 'ok' : 'hdc_unavailable', lines.join('\n'), report);
     } },
   { name: 'mcp__phone__app',
     description: '管理手机应用：list 列出已安装包名；launch 用包名把应用拉到前台（走 aa start，不依赖桌面入口）；stop 强制停止应用；current 抓当前前台 Ability 记录（含 want 参数线索，用来把只能手点的容器应用变成可 replay 的启动参数）；abilities 列出某个包的 ability/extension（bm dump -n <pkg> -a）。',

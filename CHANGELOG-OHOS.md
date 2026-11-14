@@ -10,6 +10,36 @@
 
 ---
 
+## v37 · 调试密钥引导（2026-11-14，1.0.27+27）
+
+**问题**：手机工具（`mcp__phone__shell` / `mcp__phone__ui` / `mcp__phone__app`）靠 App 进程内的 HDC 客户端鉴权，
+而 `hdc-link.mjs` 的密钥优先级是「随包内置优先」。结果两个问题同时存在：
+1. 别人装同一个 HAP，手机并不认识内置那把密钥，所有手机工具只会报「鉴权超时」，且文案没有告诉用户去点弹窗。
+2. 用户把自己的 `id_rsa` 放进数据目录也永远不生效——内置密钥一直抢在前面。
+
+**改动**：
+
+| 文件 | 改动 |
+| --- | --- |
+| `runtime/ohos/phone/hdc-link.mjs` | 新增 `resolveKeyPath()` 明确优先级：显式选项 > `DSH_GO_PHONE_KEY` > 用户自备 `$DSH_HOME/hdc-client/id_rsa` > 随包内置 > 自动生成；新增 `userKeyPath()` / `shippedKeyPath` 导出、`fingerprintOf()`（SHA-256 公钥指纹）、`diagnoseHdc()`（端口/密钥来源/指纹/PEM 字节数/鉴权结果 + 中文修复步骤）；三类失败文案改成带手机侧入口的引导（无线调试在哪、弹窗点「始终允许」、撤销授权重试） |
+| `runtime/ohos/phone/ui-tools.mjs` | 新增只读工具 `mcp__phone__hdc`：把 `diagnoseHdc()` 给模型，用于回答「手机操作为什么用不了」「换人用时要做什么」 |
+| `docs/design/harmonyos/hdc-key-onboarding.md` | 新增：密钥来源与优先级、625 字节公钥约束、别人装同一个包为什么必须授权一次、自备密钥流程、自检工具、已知限制 |
+| `docs/design/harmonyos/README.md` | 索引新增「手机工具」一行 |
+| `runtime/tests/ohos/hdc-key-onboarding.test.mjs` | 新增 3 条本地判据：优先级顺序、3072 位/625 字节/指纹格式、自检报告必须给出可执行步骤且不假装成功 |
+
+**验证**：
+- `node --test runtime/tests/ohos/hdc-key-onboarding.test.mjs` → `# pass 3 / # fail 0`。
+- 本地仿真实测：内置密钥公钥 PEM = 625 字节，指纹 `83:f3:36:e2:…:8d`；把自备密钥放进 `$DSH_HOME/hdc-client/` 后 `source` 变为 `user`。
+- 无无线调试环境下的自检输出：`没检测到无线调试端口：请打开手机的 设置 › 系统 › 开发者选项 › 无线调试 并保持开启…`，并附「始终允许」「撤销授权」「自备密钥放哪里」三条建议。
+
+**已知限制**：
+- 系统弹窗只能用户自己点，App 不能代点，因此「零操作」不可能，只能把步骤说清。
+- 撤销授权后内置密钥也要重新授权（没有静默恢复）。
+- known_hosts 在设备侧，shell uid 写不了，只能靠用户授权或使用已受信任的密钥。
+- 用户手册 `docs/guide/harmony/zh/04-phone-control.md` 仍写「不看屏幕、不点按其他应用」，与 ohos/v8 已实现的 `mcp__phone__ui` 口径不一致，属待产品确认项，本版未改手册正文。
+
+---
+
 ## CI 转绿（2026-11-14，纯 CI/文档改动，不产生新 HAP）
 
 **问题**：推到 `fengs2021/dshgo-ohos` 后 GitHub Actions 的 `CI` 全红，失败作业两个：
