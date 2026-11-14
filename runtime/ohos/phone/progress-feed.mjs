@@ -10,6 +10,27 @@ const MIN_HOLD_MS = 2200;     // 一条弹幕最短停留，保证读得完
 const IDLE_QUIET_MS = 25000;  // 超过这么久没有事件 → 心跳话术
 const POOL_MAX = 8;
 const LINE_UNITS = 76;        // 显示宽度上限（半角单位，全角计 2）
+const CJK = /[\u3400-\u9fff]/;
+// 工具名换成一眼看懂的中文动作词；没登记的就用原名末段。
+const TOOL_LABELS = {
+  'phone/shell': '手机命令',
+  'phone/ui': '手机界面',
+  'phone/app': '打开应用',
+  'plugin_manager': '插件安装',
+  'plugin-manager': '插件安装',
+  'bash': '执行命令',
+  'read_image': '看截图',
+  'web_search': '联网搜索',
+  'web_fetch': '读取网页',
+  'read': '读文件',
+  'write': '写文件',
+  'edit': '改文件',
+  'grep': '搜代码',
+  'glob': '找文件',
+  'todo': '整理待办',
+  'subagent': '分派子任务'
+};
+const HINT_FIELDS = ['command', 'path', 'text', 'query', 'filter', 'action', 'key', 'app', 'title', 'spec', 'package', 'target', 'url', 'name'];
 
 const clean = (text) => String(text === undefined || text === null ? '' : text)
   .replace(/```[\s\S]*?```/g, ' ')
@@ -38,14 +59,43 @@ const clip = (text, units = LINE_UNITS) => {
     out += ch;
     used += step;
   }
+  // 与其把半句话硬截断，不如退到最近的标点/空格收尾，读起来像一句完整的话。
+  const boundary = Math.max(out.lastIndexOf('。'), out.lastIndexOf('，'), out.lastIndexOf('、'),
+    out.lastIndexOf('；'), out.lastIndexOf('！'), out.lastIndexOf('？'), out.lastIndexOf(' '));
+  if (boundary > 0 && boundary >= out.length * 0.5) return out.slice(0, boundary).replace(/[，、；\s]+$/, '') + '…';
   return out + '…';
 };
 
+// 中文字幕只放中文：整段英文思考（夹杂半句、术语、JSON 片段）不上屏，宁可显示通用话术。
+const cjkCount = (text) => {
+  let count = 0;
+  for (const ch of text) if (CJK.test(ch)) count += 1;
+  return count;
+};
+const readableLine = (text) => typeof text === 'string' && cjkCount(text) >= 6;
+
+const labelOf = (tool) => {
+  const name = String(tool || '');
+  const direct = TOOL_LABELS[name];
+  if (direct !== undefined) return direct;
+  const parts = name.split('/');
+  const last = parts[parts.length - 1] || name;
+  return TOOL_LABELS[last] !== undefined ? TOOL_LABELS[last] : (width(last) > 14 ? clip(last, 14) : last);
+};
+
 // 从一段连续文本里切出「已完成的句子」和「正在写的那一句」。
+// 一段文本里前面半截常是英文思考，后面才接中文；只保留从第一个汉字开始的部分。
+const chineseOnly = (text) => {
+  const start = text.search(CJK);
+  if (start < 0) return '';
+  const tail = text.slice(start);
+  return cjkCount(tail) >= 6 ? tail : '';
+};
+
 const sentences = (buffer) => {
   const text = clean(buffer);
   if (!text) return { done: [], live: '' };
-  const parts = text.split(/(?<=[。！？；!?;…])/).map((part) => part.trim()).filter(Boolean);
+  const parts = text.split(/(?<=[。！？；!?;…])/).map((part) => chineseOnly(part.trim())).filter(Boolean);
   if (parts.length === 0) return { done: [], live: '' };
   const live = parts[parts.length - 1];
   const done = parts.slice(0, -1).filter((part) => width(part) >= 8);
@@ -53,12 +103,30 @@ const sentences = (buffer) => {
 };
 
 // tool-call-delta 的参数是流式 JSON 片段，尽力捞一个像样的提示词。
-const argumentHint = (text) => {
-  const raw = clean(text);
+const argumentHint = (accumulated) => {
+  const raw = String(accumulated || '');
   if (!raw) return '';
-  const named = /\b(?:command|path|text|query|filter|action|key|app|title)\s*"?\s*:?\s*"?([^",}]{2,28})/.exec(raw);
-  if (named) return named[1];
-  return width(raw) > 6 ? raw.slice(0, 24) : '';
+  const tidy = (value) => {
+    const text = clean(value).replace(/^[\s:：,、]+/, '');
+    if (!text) return '';
+    if (/["{}[\]<>=]/.test(text)) return '';
+    return width(text) > 28 ? clip(text, 28) : text;
+  };
+  // 优先取已经闭合的字段值：\"command\": \"…\" 里那一段不会被截成半句。
+  const fieldPattern = new RegExp('"(?:' + HINT_FIELDS.join('|') + ')"\\s*:\\s*"([^"\\\\]{2,80})"');
+  const complete = fieldPattern.exec(raw);
+  if (complete !== null) {
+    const value = tidy(complete[1]);
+    if (value) return value;
+  }
+  // 流还没走完时，只收完全跑出引号外的干净片段，绝不把 JSON 残片搬上屏。
+  const tail = new RegExp('(?:' + HINT_FIELDS.join('|') + ')"\\s*:\\s*"([^"\\\\]{4,80})' + '$');
+  const open = tail.exec(raw);
+  if (open !== null) {
+    const value = tidy(open[1]);
+    if (value && !/[\\"]/.test(value)) return value;
+  }
+  return '';
 };
 
 export function progressFeedPath() {
@@ -103,27 +171,48 @@ function lifecycleFacts(ctx) {
 export function startProgressFeed(ctx, options = {}) {
   const file = options.file || progressFeedPath();
   const now = () => Date.now();
-  const state = { stage: 'idle', status: '', turn: 0, step: 0, steps: 0, reasoning: '', answer: '', tool: '', toolHint: '', error: '', startedAt: now(), lastEventAt: now(), lastSwitchAt: 0, pool: [], live: '', seq: 0 };
+  const state = { stage: 'idle', status: '', turn: 0, step: 0, steps: 0, reasoning: '', answer: '', tool: '', toolArgs: '', toolHint: '', error: '', startedAt: now(), lastEventAt: now(), lastSwitchAt: 0, pool: [], live: '', seq: 0 };
+  const toolLine = () => '🛠 ' + labelOf(state.tool) + (state.toolHint ? ' · ' + state.toolHint : '');
+  // 归一化后比较：同一句话的多种写法（标点、空白不同）算重复，不再反复上屏。
+  const normal = (text) => text.replace(/[\s\p{P}]/gu, '');
+  const similar = (left, right) => {
+    const a = normal(left);
+    const b = normal(right);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const shorter = a.length <= b.length ? a : b;
+    const longer = a.length <= b.length ? b : a;
+    return shorter.length >= 8 && longer.startsWith(shorter);
+  };
   const push = (line) => {
     const text = clip(line);
     if (!text) return;
-    if (state.pool.includes(text)) return;
+    const index = state.pool.findIndex((entry) => similar(entry, text));
+    if (index >= 0) {
+      // 同一句的两种说法只留信息更多的那个：工具提示词是流式到达的，晚到的更完整。
+      if (normal(text).length > normal(state.pool[index]).length) state.pool[index] = text;
+      return;
+    }
     state.pool.push(text);
     while (state.pool.length > POOL_MAX) state.pool.shift();
   };
   const sample = () => {
     const source = state.stage === 'answer' ? state.answer : state.reasoning;
     const result = sentences(source);
-    for (const line of result.done.slice(-3)) push(line);
-    state.live = result.live;
-    if (state.tool) push('🛠 ' + state.tool + (state.toolHint ? ' · ' + state.toolHint : ''));
+    for (const line of result.done.slice(-3)) if (readableLine(line)) push(line);
+    state.live = readableLine(result.live) ? result.live : '';
+    if (state.tool) push(toolLine());
   };
+  const activeStage = (stage) => stage === 'thinking' || stage === 'tool' || stage === 'answer';
   const line = () => {
     const quiet = now() - state.lastEventAt;
     if (state.stage === 'error') return clip('⚠\ufe0f ' + (state.error || '执行出错'));
-    if (state.stage === 'done') return clip('\u2705 本轮完成 · ' + state.steps + ' 步');
-    if (quiet > IDLE_QUIET_MS) return clip('\u23f3 仍在处理… 已 ' + Math.round(quiet / 1000) + ' 秒');
-    if (state.stage === 'tool' && state.tool && now() - (state.toolAt || 0) < 6000) return clip('\ud83d\udee0 ' + state.tool + (state.toolHint ? ' · ' + state.toolHint : ''));
+    if (state.stage === 'done') return quiet > 8000 ? '' : clip('\u2705 本轮完成 · ' + state.steps + ' 步');
+    const running = activeStage(state.stage);
+    // 只有真正在跑时才抱怨“久没更新”；闲置时安静收场，别把上一轮的进度一直挂在那儿。
+    if (!running && state.stage === 'idle') return '';
+    if (running && quiet > IDLE_QUIET_MS) return clip('\u23f3 仍在处理… 已 ' + Math.round(quiet / 1000) + ' 秒');
+    if (state.stage === 'tool' && state.tool && now() - (state.toolAt || 0) < 6000) return clip(toolLine());
     if (state.pool.length > 0) return clip(state.pool[state.pool.length - 1]);
     if (state.live) return clip((state.stage === 'answer' ? '\u270d\ufe0f ' : '\ud83d\udcad ') + state.live);
     if (state.stage === 'answer') return '\u270d\ufe0f 正在组织回答…';
@@ -147,7 +236,7 @@ export function startProgressFeed(ctx, options = {}) {
       lastWrite = now();
       dirty = false;
       const payload = {
-        v: FEED_VERSION, updatedAt: now(), stage: state.stage, line: lastLine || text,
+        v: FEED_VERSION, updatedAt: now(), stage: state.stage, line: text || (activeStage(state.stage) ? lastLine : ''),
         tool: state.tool, turn: state.turn, step: state.step, steps: state.steps,
         status: state.status, elapsedMs: now() - state.startedAt, quietMs: now() - state.lastEventAt,
         recent: state.pool.slice(-4), seq: ++state.seq
@@ -162,6 +251,7 @@ export function startProgressFeed(ctx, options = {}) {
     state.reasoning = '';
     state.answer = '';
     state.tool = '';
+    state.toolArgs = '';
     state.toolHint = '';
     state.toolAt = 0;
     state.error = '';
@@ -193,7 +283,11 @@ export function startProgressFeed(ctx, options = {}) {
       case 'block-start':
         if (chunk.blockType === 'reasoning') state.stage = 'thinking';
         else if (chunk.blockType === 'text') state.stage = 'answer';
-        else state.stage = 'tool';
+        else {
+          state.stage = 'tool';
+          state.toolArgs = '';
+          state.toolHint = '';
+        }
         return;
       case 'reasoning-delta':
         state.stage = 'thinking';
@@ -206,8 +300,15 @@ export function startProgressFeed(ctx, options = {}) {
       case 'tool-call-delta':
         state.stage = 'tool';
         state.toolAt = now();
-        if (chunk.name) state.tool = String(chunk.name).replace(/^mcp__/, '').replace(/__/g, '/');
-        if (chunk.argumentsDelta) state.toolHint = argumentHint((state.toolHint || '') + chunk.argumentsDelta);
+        if (chunk.name) {
+          const name = String(chunk.name).replace(/^mcp__/, '').replace(/__/g, '/');
+          if (name !== state.tool) state.toolArgs = '';
+          state.tool = name;
+        }
+        if (chunk.argumentsDelta) {
+          state.toolArgs = (state.toolArgs + String(chunk.argumentsDelta)).slice(-3000);
+          state.toolHint = argumentHint(state.toolArgs);
+        }
         return;
       case 'finish':
         state.stage = state.answer ? 'answer' : 'thinking';

@@ -18,12 +18,30 @@ export async function shText(command, timeoutMs = 30000) {
   return { code, text: body.replace(/\r\n/g, '\n') };
 }
 
+// uitest uiInput 即使内部报错也会返回退出码 0，唯一可信的成功信号是 stdout 恰好为 No Error
+// （ui_input.cpp 对 ApiCallErr 也返回 EXIT_SUCCESS）。输入类动作统一走这里，避免把失败报成成功。
+async function uiCommand(command, timeoutMs = 30000) {
+  const run = await shText(command, timeoutMs);
+  if (run.code !== 0) return { ok: false, text: run.text.trim() || ('退出码 ' + run.code) };
+  const body = run.text.trim();
+  if (body !== 'No Error') return { ok: false, text: body || '(没有返回 No Error)' };
+  return { ok: true, text: body };
+}
+
 const parseBounds = (bounds) => {
-  const m = /^\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]$/.exec(bounds || '');
+  const m = /^\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]\s*\[\s*(-?\d+)\s*,\s*(-?\d+)\s*\]$/.exec(String(bounds || '').trim());
   if (!m) return null;
   const [x1, y1, x2, y2] = m.slice(1).map(Number);
+  // 零宽/零高或反向的节点在屏幕上没有可点区域，点它只会点到左上角，必须丢弃。
+  if (x2 - x1 <= 0 || y2 - y1 <= 0) return null;
   return { x1, y1, x2, y2, cx: Math.round((x1 + x2) / 2), cy: Math.round((y1 + y2) / 2) };
 };
+
+// 按文字挑控件：先精确、再包含、最后按 id 包含。
+const pickTarget = (nodes, needle) => nodes.find((n) => n.label === needle && n.bounds)
+  || nodes.find((n) => n.label.includes(needle) && n.bounds)
+  || nodes.find((n) => (n.id || '').includes(needle) && n.bounds)
+  || null;
 
 export function collectNodes(root) {
   const nodes = [];
@@ -48,10 +66,19 @@ export function collectNodes(root) {
 export async function dumpUi(timeoutMs = 20000) {
   const file = TMP + '/dsh-ui-' + Date.now() + '.json';
   const result = await shText('uitest dumpLayout -p ' + file, timeoutMs);
-  if (result.code !== 0) throw new Error('dumpLayout 失败：' + result.text.trim().slice(0, 300));
-  const buffer = await getLink().execBuffer('cat ' + file + '; rm -f ' + file, timeoutMs);
-  const parsed = JSON.parse(buffer.toString('utf8'));
-  return collectNodes(parsed);
+  // dumpLayout 失败时同样可能返回退出码 0，只能靠它自己的文案判断。
+  const failed = /^\s*DumpLayout failed:/m.test(result.text || '');
+  let buffer;
+  try {
+    if (result.code !== 0 || failed) throw new Error('dumpLayout 失败：' + (result.text.trim().slice(0, 300) || '无输出'));
+    buffer = await getLink().execBuffer('cat ' + file + '; rm -f ' + file, timeoutMs);
+  } catch (error) {
+    try { await getLink().exec('rm -f ' + file, 5000); } catch { /* 清理失败不影响主错误 */ }
+    throw error;
+  }
+  const body = buffer.toString('utf8').trim();
+  if (!body.startsWith('{') && !body.startsWith('[')) throw new Error('dumpLayout 输出不是 JSON：' + body.slice(0, 200));
+  return collectNodes(JSON.parse(body));
 }
 
 const describe = (node, index) => (index + 1) + '. ' + (node.label ? JSON.stringify(node.label) : '(无文字' + (node.id ? ':' + node.id : '') + ')') +
@@ -90,15 +117,37 @@ async function uiClick(args) {
   if (!(Number.isFinite(x) && Number.isFinite(y))) {
     const needle = typeof args.text === 'string' ? args.text.trim() : '';
     if (!needle) return result(false, 'invalid_args', 'click 需要 x/y 坐标，或 text 指定要点的文字', '');
-    const { nodes } = await dumpUi();
-    const exact = nodes.find((n) => n.label === needle && n.bounds);
-    const loose = exact || nodes.find((n) => n.label.includes(needle) && n.bounds) || nodes.find((n) => (n.id || '').includes(needle) && n.bounds);
+    // 「等它出现再点」一步完成：省掉「dump → 判断 → 再 dump」的往返。
+    const budget = Number.isFinite(args.waitMs) ? Math.max(0, Math.min(20000, args.waitMs)) : 0;
+    const deadline = Date.now() + budget;
+    let loose = null;
+    for (;;) {
+      const { nodes } = await dumpUi();
+      loose = pickTarget(nodes, needle);
+      if (loose || Date.now() >= deadline) break;
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
     if (!loose) return result(false, 'not_found', '界面上没找到「' + needle + '」', '');
     x = loose.bounds.cx; y = loose.bounds.cy;
   }
-  const run = await shText('uitest uiInput click ' + Math.round(x) + ' ' + Math.round(y));
-  if (run.code !== 0) return result(false, 'click_failed', run.text.trim().slice(0, 300), '');
+  const run = await uiCommand('uitest uiInput click ' + Math.round(x) + ' ' + Math.round(y));
+  if (!run.ok) return result(false, 'click_failed', run.text.slice(0, 300), '');
   return result(true, 'ok', '已点击 ' + Math.round(x) + ',' + Math.round(y), '');
+}
+
+async function uiLongClick(args) {
+  let x = args.x, y = args.y;
+  if (!(Number.isFinite(x) && Number.isFinite(y))) {
+    const needle = typeof args.text === 'string' ? args.text.trim() : '';
+    if (!needle) return result(false, 'invalid_args', 'longclick 需要 x/y 坐标，或 text 指定控件文字', '');
+    const { nodes } = await dumpUi();
+    const target = pickTarget(nodes, needle);
+    if (!target) return result(false, 'not_found', '界面上没找到「' + needle + '」', '');
+    x = target.bounds.cx; y = target.bounds.cy;
+  }
+  const run = await uiCommand('uitest uiInput longClick ' + Math.round(x) + ' ' + Math.round(y));
+  if (!run.ok) return result(false, 'longclick_failed', run.text.slice(0, 300), '');
+  return result(true, 'ok', '已长按 ' + Math.round(x) + ',' + Math.round(y), '');
 }
 
 async function uiInput(args) {
@@ -111,10 +160,10 @@ async function uiInput(args) {
     if (!field) return result(false, 'not_found', '没找到可输入的输入框，请先 click 目标输入框再用 x/y 指定', '');
     x = field.bounds.cx; y = field.bounds.cy;
   }
-  const tap = await shText('uitest uiInput click ' + Math.round(x) + ' ' + Math.round(y));
-  if (tap.code !== 0) return result(false, 'click_failed', tap.text.trim().slice(0, 300), '');
-  const run = await shText('uitest uiInput inputText ' + Math.round(x) + ' ' + Math.round(y) + ' ' + shellQuote(value));
-  if (run.code !== 0) return result(false, 'input_failed', run.text.trim().slice(0, 300), '');
+  const tap = await uiCommand('uitest uiInput click ' + Math.round(x) + ' ' + Math.round(y));
+  if (!tap.ok) return result(false, 'click_failed', tap.text.slice(0, 300), '');
+  const run = await uiCommand('uitest uiInput inputText ' + Math.round(x) + ' ' + Math.round(y) + ' ' + shellQuote(value));
+  if (!run.ok) return result(false, 'input_failed', run.text.slice(0, 300), '');
   return result(true, 'ok', '已在 ' + Math.round(x) + ',' + Math.round(y) + ' 输入 ' + value.length + ' 个字符', '');
 }
 
@@ -122,15 +171,15 @@ async function uiSwipe(args) {
   const nums = [args.x1, args.y1, args.x2, args.y2].map(Number);
   if (!nums.every(Number.isFinite)) return result(false, 'invalid_args', 'swipe 需要 x1/y1/x2/y2', '');
   const speed = Number.isFinite(args.speed) ? Math.round(args.speed) : 600;
-  const run = await shText('uitest uiInput swipe ' + nums.map((n) => Math.round(n)).join(' ') + ' ' + speed);
-  if (run.code !== 0) return result(false, 'swipe_failed', run.text.trim().slice(0, 300), '');
+  const run = await uiCommand('uitest uiInput swipe ' + nums.map((n) => Math.round(n)).join(' ') + ' ' + speed);
+  if (!run.ok) return result(false, 'swipe_failed', run.text.slice(0, 300), '');
   return result(true, 'ok', '已滑动', '');
 }
 
 async function uiKey(args) {
   const key = typeof args.key === 'string' && args.key.trim() ? args.key.trim() : 'Back';
-  const run = await shText('uitest uiInput keyEvent ' + shellQuote(key));
-  if (run.code !== 0) return result(false, 'key_failed', run.text.trim().slice(0, 300), '');
+  const run = await uiCommand('uitest uiInput keyEvent ' + shellQuote(key));
+  if (!run.ok) return result(false, 'key_failed', run.text.slice(0, 300), '');
   return result(true, 'ok', '已发送按键 ' + key, '');
 }
 
@@ -157,7 +206,7 @@ async function uiWait(args) {
   return result(true, 'ok', '已等待 ' + ms + 'ms', '');
 }
 
-const uiActions = { dump: uiDump, click: uiClick, input: uiInput, swipe: uiSwipe, key: uiKey, shot: uiShot, wait: uiWait };
+const uiActions = { dump: uiDump, click: uiClick, longclick: uiLongClick, input: uiInput, swipe: uiSwipe, key: uiKey, shot: uiShot, wait: uiWait };
 
 async function appAction(args) {
   const action = String(args.action || 'list');
@@ -215,14 +264,15 @@ const definitions = [
       return result(run.code === 0, run.code === 0 ? 'ok' : 'exit_' + run.code, run.text.trim().slice(0, 6000), run.text.trim().slice(0, 12000));
     } },
   { name: 'mcp__phone__ui',
-    description: '直接操作用户的手机界面：dump 读取当前屏幕控件树（含中心坐标），click 点按（坐标或文字），input 输入文字，swipe 滑动，key 发按键（Back/Home/Power），shot 截图存档，wait 等待。可用来操作任意第三方 App。坐标是手机像素，dump 返回的「中心 x,y」可直接用于 click。',
+    description: '直接操作用户的手机界面：dump 读取当前屏幕控件树（含中心坐标），click 点按（坐标或按文字，可带 waitMs 等文字出现再点），longclick 长按，input 输入文字，swipe 滑动，key 发按键（Back/Home/Power），shot 截图存档，wait 等待。可用来操作任意第三方 App。坐标是手机像素，dump 返回的「中心 x,y」可直接用于 click；每个动作用 uitest 的 No Error 回执确认真实生效，失败会返回错误而不是静默成功。',
     parameters: { type: 'object', additionalProperties: false, properties: {
-      action: { type: 'string', enum: ['dump', 'click', 'input', 'swipe', 'key', 'shot', 'wait'], description: '要做的动作' },
+      action: { type: 'string', enum: ['dump', 'click', 'longclick', 'input', 'swipe', 'key', 'shot', 'wait'], description: '要做的动作' },
       text: str('click 用它按文字找控件；input 用它作为要输入的文字'),
       filter: str('dump 时只保留包含该子串的控件'), limit: num('dump 最多列出多少个控件，默认 150'),
       x: num('点击/输入的 x 坐标'), y: num('点击/输入的 y 坐标'),
       x1: num('滑动起点 x'), y1: num('滑动起点 y'), x2: num('滑动终点 x'), y2: num('滑动终点 y'),
-      speed: num('滑动速度，默认 600'), key: str('键名：Back/Home/Power 等'), ms: num('wait 毫秒') },
+      speed: num('滑动速度，默认 600'), key: str('键名：Back/Home/Power 等'), ms: num('wait 毫秒'),
+      waitMs: num('click 用文字定位时，最多等多少毫秒让它出现（默认 0 只查一次），例如 8000') },
       required: ['action'] },
     run: async (args) => {
       const action = String(args.action || '');
