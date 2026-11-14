@@ -10,6 +10,33 @@
 
 ---
 
+## CI 转绿（2026-11-14，纯 CI/文档改动，不产生新 HAP）
+
+**问题**：推到 `fengs2021/dshgo-ohos` 后 GitHub Actions 的 `CI` 全红，失败作业两个：
+1. `Generated files, tooling, SDK, web` → 步骤「Generated files are in sync」，日志 `guide: README.md: want one line \`> dsh-go 1.0.25\` (app/pubspec.yaml), found ['1.0.11']`。
+2. `Runtime and bridge` → 步骤「Install a throwaway patched DSH」，日志 `rtbuild.py patch-dsh: error: the following arguments are required: --target`，退出码 2。
+
+**根因**：
+1. 我们每轮发版只改 `app/pubspec.yaml` 的版本，没有同步用户手册的版本行；`app/tool/guide_sync.py` 要求 `docs/guide/README.md`、`docs/guide/harmony/README.md` 及生成的 `app/assets/skills/dsh-go-guide/{README,harmony-README}.md` 里各有一行 `> dsh-go <pubspec 版本>`（`guide_sync.py:46 VERSION_LINE`、`:231` 报错点）。这四行停在 `1.0.11`。
+2. ohos/v8 把 `rtbuild.py patch-dsh` 的 `--target` 改成了必填（`rtbuild.py:1566`），但 `.github/workflows/ci.yml:204` 还是上游的旧调用，没传 `--target`，于是 CI 在打补丁那步直接 argparse 退出。
+
+**改动**：
+
+| 文件 | 改动 |
+| --- | --- |
+| `docs/guide/README.md`、`docs/guide/harmony/README.md`、`app/assets/skills/dsh-go-guide/README.md`、`app/assets/skills/dsh-go-guide/harmony-README.md` | 版本行 `> dsh-go 1.0.11` → `> dsh-go 1.0.26`（与 `app/pubspec.yaml` 的 `version: 1.0.26+26` 对齐） |
+| `tooling/ohos/bump-version.sh`（新增） | 一条命令同时改 `app/pubspec.yaml` 与四个手册版本行，并跑 `guide_sync.py` 自查，避免下次发版再拉红 CI |
+| `.github/workflows/ci.yml:204` | `patch-dsh … --dsh-version "$version"` → 追加 `--target android`（该 CI 作业本来就是 Android 目标的垃圾前缀验证） |
+
+**验证**：
+- `python3 app/tool/guide_sync.py` → `guide: 26 files checked and built`，退出码 0（改前报两条 version 行错误）。
+- 本地按 CI 步骤复现 android 目标打补丁：`npm ci --ignore-scripts`（596 packages, 13 s）→ `python3 -I runtime/lib/rtbuild.py patch-dsh --prefix /root/andtest --dsh-version 0.2.2-rc.1 --target android` → 全链 30+ 个 diff 全部 `patched`，退出码 0。
+- 本地 `node --test runtime/tests/*.test.mjs` 的 8 个 not ok 都是本机环境缺件（`examples/` 被 sparse checkout 排除导致 `ERR_MODULE_NOT_FOUND`、缺 `dsh_ohos_publication` linked binding），非代码问题；以 CI 结果为准。
+
+**已知限制**：版本号每涨一次都要同步这四行手册版本；下一轮发版前先跑 `python3 app/tool/guide_sync.py` 自查。
+
+---
+
 ## v36 — versionCode 26 / 1.0.26：会话「未知工具结果」冷启动自愈
 
 **问题**：手机会话反复报 `本轮运行失败 Previous tool results require reconciliation before another step — call mcp__phone__session with action=release (or start a new session)`，重启 App、甚至 v34 加了 `mcp__phone__session` 放行工具之后仍然不自愈。
