@@ -19,6 +19,17 @@ function lifecycleCapabilities(ctx) {
   return { computePermission: 'unknown', resume: 'none' };
 }
 
+// The market's install path lands through the pure-JS package manager that
+// preload registers on this global. Reading its shape is a property lookup on
+// the live instance: it opens no journal, touches no file and spawns nothing.
+// Absent bridge = unsupported; a half-registered one is not proof of anything.
+function marketInstallCapability() {
+  const manager = globalThis.__dshOhosPackageManager;
+  if (manager === undefined || manager === null) return 'unsupported';
+  const seam = ['runProfilePnpm', 'viewProfilePackage', 'readRegistry', 'parseArguments', 'profileDirectory'];
+  return seam.every(name => typeof manager[name] === 'function') ? 'supported' : 'unknown';
+}
+
 // Read installed services only. This must not load an addon, probe a command,
 // inspect the filesystem, or retry a publication while answering a GET.
 export function runtimeCapabilities(ctx, bootId) {
@@ -44,7 +55,7 @@ export function runtimeCapabilities(ctx, bootId) {
     python: support(subprocess?.python),
     // Presence alone does not prove that code generation is permitted.
     wasm: typeof globalThis.WebAssembly === 'undefined' ? 'unsupported' : 'unknown',
-    plugins: { bundled: bundled ? 'supported' : 'unknown', marketInstall: 'unsupported' },
+    plugins: { bundled: bundled ? 'supported' : 'unknown', marketInstall: marketInstallCapability() },
     // The signed HAP's native inventory and per-module load observations are
     // not yet supplied by the host. Do not turn a package name into "loaded".
     nativeModules: null,

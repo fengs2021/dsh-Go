@@ -25,6 +25,12 @@ const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const rows = [];
 const route = '/dsh-go/v1/runtime-capabilities';
 const { capabilities: subprocessCapabilities } = await import(pathToFileURL(join(tree, 'runtime/ohos/process/commands.mjs')));
+// marketInstall follows the live bridge, not a policy constant: the child is
+// launched with the OHOS preload, so the expectation is derived from that same
+// tree — preload registers the package manager seam, the capability sees it.
+const marketInstallExpectation = await readFile(join(tree, 'runtime/ohos/preload.mjs'), 'utf8')
+  .then(async text => (text.includes('__dshOhosPackageManager') && await stat(join(tree, 'runtime/ohos/plugins/package-manager.mjs')).then(() => true, () => false))
+    ? 'supported' : 'unsupported');
 
 function exchange(base, { path = route, method = 'GET', cookie, headers = {} } = {}) {
   return new Promise((resolve, reject) => {
@@ -157,7 +163,7 @@ for (const name of ['before-route', 'available', 'unsupported', 'disabled-after-
     assert.equal(first.processSpawn, 'unsupported');
     assert.equal(first.nodeScripts, subprocessCapabilities.nodeScripts);
     assert.equal(first.python, 'unsupported'); assert.equal(first.wasm, 'unsupported');
-    assert.deepEqual(first.plugins, { bundled: 'supported', marketInstall: 'unsupported' });
+    assert.deepEqual(first.plugins, { bundled: 'supported', marketInstall: marketInstallExpectation });
     assert.equal(first.nativeModules, null);
     assert.deepEqual(first.storage, { sessionLock: 'main-thread' });
     assert.deepEqual(first.background, { policy: 'may-freeze', computePermission: 'unknown', resume: 'none' });
