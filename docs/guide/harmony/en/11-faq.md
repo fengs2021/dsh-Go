@@ -48,7 +48,17 @@ The top of the system actions page says where things stand:
 - **Not available in this version**: this version doesn't support system actions.
 - **You're connected to a remote host**: switch to **This phone**.
 
-If the AI says it isn't supported: seeing the screen, tapping inside other apps, reading the clipboard, finding apps by name and SMS can't be done. Alarms and timers need a version with system reminders. See [System actions](04-phone-control.md).
+If the AI says it isn't supported: with system actions, seeing the screen, tapping inside other apps, reading the clipboard, finding apps by name and SMS can't be done. Alarms and timers need a version with system reminders. See [Phone control](04-phone-control.md).
+
+## Screen control doesn't work
+
+Seeing the screen and tapping inside other apps is screen control, which needs the phone's debug interface. Ask the AI to check the phone debug channel:
+
+- No debug port: turn on Wireless debugging in developer options and leave it on.
+- Timed out or refused: the phone asks whether to allow debugging the first time; choose Always allow. If no dialog appears, revoke the debugging authorisation in developer options and try again.
+- A new phone, or a revoked authorisation: approve it once more.
+
+See [Phone control](04-phone-control.md). The real-time log on the local engine page names the step too.
 
 ## The pet is gone
 

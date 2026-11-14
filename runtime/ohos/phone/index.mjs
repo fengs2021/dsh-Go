@@ -5,6 +5,7 @@ import { registerPhoneTools } from './tools.mjs';
 import { registerUiTools, shText, dumpUi } from './ui-tools.mjs';
 import { registerSessionTools } from './session-tools.mjs';
 import { startProgressFeed } from './progress-feed.mjs';
+import { diagnoseHdc } from './hdc-link.mjs';
 
 export const name = 'dsh-go-ohos-phone';
 export const inject = ['tools', 'ohosLifecycle', 'approval'];
@@ -33,6 +34,11 @@ export function apply(ctx) {
         console.error('[phone-hdc] probe ok ' + (Date.now() - t0) + 'ms rc=' + r.code + ' out=' + brief(r.text, 200));
       } catch (error) {
         console.error('[phone-hdc] probe failed ' + (Date.now() - t0) + 'ms: ' + ((error && error.message) || error));
+        // 第一次使用要用户动手：把该做的几步写进 engine.log（本机引擎页的实时日志里能直接看到）。
+        try {
+          const report = await diagnoseHdc();
+          for (const hint of report.hints) console.error('[phone-hdc] 下一步：' + hint);
+        } catch (inner) { console.error('[phone-hdc] diagnose failed: ' + ((inner && inner.message) || inner)); }
         return;
       }
       // 界面树自检：dump 当前屏幕，证明 uitest dumpLayout + 二进制回传在本进程内可用。

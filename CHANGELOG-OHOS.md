@@ -10,6 +10,37 @@
 
 ---
 
+## v38 · 手机操作手册改口径 + 首次使用授权引导（2026-11-14，1.0.28+28）
+
+**问题**：用户手册 `docs/guide/harmony/{zh,en}/04-phone-control.md` 写的是「鸿蒙版没有手机操控……不看屏幕，也不点按其他应用，系统不允许」，
+而 ohos/v8 早已实现界面操作（`mcp__phone__ui` 的 dump/click/input/swipe/key/shot + `mcp__phone__app` 启停应用）。
+说明书与实际能力相反；同时没有任何地方告诉新用户「第一次要让手机信任调试密钥」——这一步不做，界面操作永远只报鉴权超时。
+
+**改动**：
+
+| 文件 | 改动 |
+| --- | --- |
+| `docs/guide/harmony/zh/04-phone-control.md` | 重写：手机操作分两条路（系统操作 = 应用内开关走系统公开接口；界面操作 = 本机引擎调试通道）。新增「界面操作：第一次要授权」四步（开发者选项 → 无线调试保持开启 → 在对话里让 AI 检查手机调试通道 → 系统弹窗选「始终允许」；没弹窗就撤销授权重试）、「界面操作能做什么／做不到」「界面操作的安全」。系统操作原章节保留，仅把「看屏幕、点按其他应用做不到」改为指向界面操作 |
+| `docs/guide/harmony/en/04-phone-control.md` | 同内容的英文版（Phone control / system actions + screen control） |
+| `docs/guide/harmony/README.md` | 索引第 04 行中英文改成「手机操作 / Phone control」并概括新内容 |
+| `docs/guide/harmony/SKILL.md` | 第 8 条改写：用户问「怎么让 AI 操作别的应用」时先讲两条路与首次授权四步，不再照旧说「鸿蒙版没有手机操控」 |
+| `docs/guide/harmony/{zh,en}/11-faq.md` | 新增「界面操作用不了 / Screen control doesn't work」：按自检结果分三种（无调试端口 / 鉴权超时 / 换手机或撤销后）给动作 |
+| `runtime/ohos/phone/index.mjs` | 启动探针失败时改调 `diagnoseHdc()`，把 hints 逐条写进 `engine.log`（`[phone-hdc] 下一步：…`），本机引擎页的实时日志即可看到该做哪一步 |
+| `app/pubspec.yaml` + 四份 README 版本行 | 1.0.27+27 → 1.0.28+28（`tooling/ohos/bump-version.sh`，同时重生成 `app/assets/skills/dsh-go-guide/`） |
+
+**验证**：
+- `python3 app/tool/guide_sync.py --check` → `guide: 26 files checked`，退出 0（UI 路径 nav 注解、**粗体**必须是本语言 ARB 标签、zh 不用「会话／实验」、链接可达等规则全过）。
+- 手册资产重建：`app/assets/skills/dsh-go-guide/harmony-zh-04-phone-control.md` 含 9 处「界面操作」，`manifest.json` 映射未变。
+- runtime 重新组合：`compose-runtime.py` → `COMPOSE_RC=0`，`runtimeVersion ohos-26e09fc7c48fd074145d5c5e`，payload 12378 文件 / 45 815 193 B。
+- 构建：见下条（本文件同版本追加）。
+
+**已知限制**：
+- 系统「是否允许调试」弹窗只能用户手点，App 不能代点；因此「无需授权」不可能，只能把步骤写清并让工具/日志在失败时直接说出下一步。
+- 用户设置页是 Flutter（本机无 flutter SDK，改动进不了 HAP），所以没有新增 App 内的引导开关或引导页；引导出口只有三处：手册（随 App 安装的 dsh-go-guide 技能）、手机工具返回文案、本机引擎页实时日志。
+- 界面操作要求屏幕亮着、且只在本机引擎的对话里生效；远程主机模式下两条路都不可用。
+
+---
+
 ## v37 · 调试密钥引导（2026-11-14，1.0.27+27）
 
 **问题**：手机工具（`mcp__phone__shell` / `mcp__phone__ui` / `mcp__phone__app`）靠 App 进程内的 HDC 客户端鉴权，
