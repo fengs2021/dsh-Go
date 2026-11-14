@@ -462,6 +462,11 @@ def assemble(args):
                 if source.name.startswith(('build-', 'link-')):
                     continue
                 composer.add(source, repo, 'repository', source.relative_to(repo).as_posix())
+        # 随包内置的 hdc 调试私钥只对本机有效；其它手机仍要在弹窗里点「始终允许」。
+        shipped_key_dir = source_runtime / 'phone' / 'hdc-key'
+        if shipped_key_dir.is_dir():
+            for source in sorted(shipped_key_dir.glob('id_rsa')):
+                composer.add(source, repo, 'repository', source.relative_to(repo).as_posix())
         if args.python_bundle:
             compose_python(composer, args.python_bundle, source_runtime, repo)
         linux_assets = compose_linux_assets(composer, args.linux_assets) if args.linux_assets else None

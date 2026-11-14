@@ -40,3 +40,6 @@ site/build/
 
 # Reproducible private OHOS rg regex build
 runtime/ohos/process/build/
+
+# 随包的内置 hdc 调试私钥（不入库；本地构建时把 id_rsa 放进该目录即可随包分发）
+runtime/ohos/phone/hdc-key/
