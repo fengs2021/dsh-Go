@@ -1,0 +1,98 @@
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
+@@ -19,6 +19,10 @@
+ import { homedir } from "node:os";
+ import { isAlias, isMap, isNode, isScalar, isSeq, parseDocument, visit } from "yaml";
+ import hostedGitInfo from "hosted-git-info";
++/** OHOS has no package-manager binary: runtime/ohos/plugins answers these calls inside this process. */
++function ohosPackageManager() {
++	return process.platform === "openharmony" ? globalThis.__dshOhosPackageManager ?? null : null;
++}
+ //#region lib/types/bundle-detail.js
+ /**
+ * Detail documents of profile bundles: an installed bundle's `meta.detail` file or README from its directory, and an
+@@ -711,6 +715,8 @@
+ * The diagnostic file is closed on return or rejection, including preparation and spawn failures.
+ */
+ async function runProfilePnpm(context, args, options) {
++	const ohos = ohosPackageManager();
++	if (ohos !== null) return ohos.runProfilePnpm(context, args, options);
+ 	const env_1 = {
+ 		stack: [],
+ 		error: void 0,
+@@ -1050,6 +1056,8 @@
+ * @returns The registry URL as pnpm printed it, or null when pnpm did not answer with one.
+ */
+ async function readProfileRegistry(dir, options) {
++	const ohos = ohosPackageManager();
++	if (ohos !== null) return ohos.readRegistry(dir, options);
+ 	const result = await execa(options.command ?? "pnpm", [
+ 		...options.args ?? [],
+ 		"config",
+@@ -1089,6 +1097,8 @@
+ * @returns pnpm's exit, output, and how the lookup ended.
+ */
+ async function viewProfilePackage(dir, spec, options) {
++	const ohos = ohosPackageManager();
++	if (ohos !== null) return ohos.viewProfilePackage(dir, spec, options);
+ 	const result = await execa(options.command ?? "pnpm", [
+ 		...options.args ?? [],
+ 		"view",
+@@ -1431,6 +1441,8 @@
+ * complete log at logPath, or undefined for a reachable repository or an unhandled spec.
+ */
+ async function checkGithubConnection(spec, dir, options) {
++	// The device ships no git binary, so the reachability probe is answered by the in-process installer.
++	if (ohosPackageManager() !== null) return void 0;
+ 	if (spec.kind !== "git") return void 0;
+ 	const host = spec.host.toLowerCase().replace(/:.*$/, "");
+ 	if (host !== "github.com" && !host.endsWith(".github.com")) return void 0;
+@@ -1572,6 +1584,8 @@
+ * @returns The SSH form when only SSH can read the repository; otherwise the spec unchanged.
+ */
+ async function chooseGitTransport(spec, dir, options) {
++	// The device ships no git binary, so the transport probe cannot run; the in-process installer fetches archives.
++	if (ohosPackageManager() !== null) return spec.spec;
+ 	const ssh = sshGitSpec(spec);
+ 	if (ssh === void 0) return spec.spec;
+ 	const strip = (value) => value.replace(/^git\+/i, "").replace(/#.*$/s, "");
+--- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/types/operations.js
++++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/types/operations.js
+@@ -51,6 +51,10 @@
+     return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
+ });
+ /** Shared profile package operations used by dsh plugin and the running manager. */
++/** OHOS has no package-manager binary: runtime/ohos/plugins answers these calls inside this process. */
++function ohosPackageManager() {
++    return process.platform === 'openharmony' ? globalThis.__dshOhosPackageManager ?? null : null;
++}
+ import { once } from 'node:events';
+ import { existsSync, readFileSync } from 'node:fs';
+ import { mkdir, mkdtemp, open, rm } from 'node:fs/promises';
+@@ -313,6 +317,8 @@
+  * The diagnostic file is closed on return or rejection, including preparation and spawn failures.
+  */
+ export async function runProfilePnpm(context, args, options) {
++    const ohos = ohosPackageManager();
++    if (ohos !== null) return ohos.runProfilePnpm(context, args, options);
+     const env_1 = { stack: [], error: void 0, hasError: false };
+     try {
+         const dir = context.dir ?? resolveProfileDir(context.profile, context.home);
+@@ -633,6 +639,8 @@
+  * @returns The registry URL as pnpm printed it, or null when pnpm did not answer with one.
+  */
+ export async function readProfileRegistry(dir, options) {
++    const ohos = ohosPackageManager();
++    if (ohos !== null) return ohos.readRegistry(dir, options);
+     const result = await execa(options.command ?? 'pnpm', [...options.args ?? [], 'config', 'get', 'registry'], {
+         cwd: dir, env: { ...scrubbedParentEnv(), ...options.env }, extendEnv: false, reject: false, stdin: 'ignore', timeout: options.timeoutMs,
+     });
+@@ -660,6 +668,8 @@
+  * @returns pnpm's exit, output, and how the lookup ended.
+  */
+ export async function viewProfilePackage(dir, spec, options) {
++    const ohos = ohosPackageManager();
++    if (ohos !== null) return ohos.viewProfilePackage(dir, spec, options);
+     const result = await execa(options.command ?? 'pnpm', [
+         ...options.args ?? [], 'view', spec, ...options.fields, '--json',
+         ...registryArguments(options.registry ?? null), '--config.fetch-retries=0',

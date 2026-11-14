@@ -740,8 +740,9 @@ def main():
     # Optional entries that would reach a real process past the OH subprocess backend.
     for name in ['forge-github-unavailable', 'liveshare-owner-unavailable', 'market-git-unavailable']:
         g.node_tests(name, [rt + name + '.test.mjs'], needs=('android-targets',))
-    # The package manager's public methods: refused on OH, and the same calls off it.
-    for driver in ['plugin-install-refusal', 'plugin-registry-refusal']:
+    # The package manager's profile operations: answered by the in-process OH bridge, and the same
+    # calls off it. Each driver runs the same rows standalone when the mode argument is absent.
+    for driver in ['plugin-install-bridge', 'plugin-registry-bridge']:
         script = s / (rt + driver + '.mjs')
         g.run(driver + '-ohos', lambda script=script, driver=driver: g.node('--jitless', '--import', s / 'runtime/ohos/sim/preload.mjs', script, prefix(), o / (driver + '-ohos.json'), 'ohos'),
               env={'DSH_GO_OHOS_SIM_PLATFORM': 'openharmony', 'DSH_GO_OHOS_SIM_ADDONS': '[]'}, needs=('android-targets',))

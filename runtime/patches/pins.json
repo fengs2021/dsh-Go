@@ -1404,14 +1404,14 @@
         }
       }
     },
-    "zzzzzzzzzzzzz-ohos-plugin-install-refusal.diff": {
+    "zzzzzzzzzzzzz-ohos-plugin-install-bridge.diff": {
       "0.2.2-rc.1": {
         "node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js": {
-          "after": "38bc99d9150695996b9374649ccd0ab3842abd47193862a06451f9071e0b8725",
+          "after": "8a2b6dcadbb95ba5c900bdefdc605cc7db3d1f10e01f76d0533db543e222f4af",
           "before": "67261e96bd96782e6bdfebb5e5e167ba85ae8b22e9a27023d71d07bb5f248ae0"
         },
         "node_modules/@deepseek-ai/dsh-plugin-manager/lib/types/operations.js": {
-          "after": "5affde0680b345f4e52d0cfe8dea101db9729aa6a2e4c586b70f93ddd7659f73",
+          "after": "8069ea1416a1edb3c5f59aaf7d6a77886ee17cf3bb476bc6e52ceca87390a804",
           "before": "5886367b89cde0db08f4f9645afeb6c8a21ecb0be8a3f92d2459b433c9019661"
         }
       }
@@ -1448,6 +1448,14 @@
         }
       }
     },
+    "zzzzzzzzzzzzzzz-ohos-ptc-plain-javascript.diff": {
+      "0.2.2-rc.1": {
+        "node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js": {
+          "after": "8cd4675608711612b63f8619e4dc320ea781c3c972a8fc16c8a443558aef70b1",
+          "before": "952ffdd55654ccaedce2a9c004b68028fdcb31085987cc969d02438076260738"
+        }
+      }
+    },
     "zzzzzzzzzzzzzzz-read-line-surrogate.diff": {
       "0.2.2-rc.1": {
         "node_modules/@deepseek-ai/dsh-tool-fs/lib/index.js": {
@@ -1461,6 +1469,14 @@
         "node_modules/@deepseek-ai/dsh-tool-workflow/lib/index.js": {
           "after": "e8f701007332dbd36ce764608a434db6a4ab5387c71570b05e221a8daac3adc3",
           "before": "9d7ccb5238318aae82cbf6ae497f00c2b45e4afa29ed430c7b5c7e7e2cd409e4"
+        }
+      }
+    },
+    "zzzzzzzzzzzzzzzz-ohos-ptc-preset-native.diff": {
+      "0.2.2-rc.1": {
+        "node_modules/@deepseek-ai/dsh-web-app/presets/ptc.patch.yml": {
+          "after": "6f034b20a5aa9d8f8f56648666a92d307f6e17c3f0a0747064236bcbfcc75d41",
+          "before": "ce02148b1fd575cc93071744180468cd305bdcd50dbfdd3b9b0605c5281d283d"
         }
       }
     },
@@ -1553,22 +1569,6 @@
         "node_modules/@deepseek-ai/dsh-repeat-tool-reminder/lib/index.js": {
           "after": "07160bc51a4246d5473a0704e9f3f97cdec1ed70ce0b87d0c1e7f19a542345c6",
           "before": "c27587fc302f45c9ea6863bfaa2f96894a8a67e894ddfd74cf02477a79ab67e5"
-        }
-      }
-    },
-    "zzzzzzzzzzzzzzz-ohos-ptc-plain-javascript.diff": {
-      "0.2.2-rc.1": {
-        "node_modules/@deepseek-ai/dsh-ptc-runtime-node/lib/index.js": {
-          "before": "952ffdd55654ccaedce2a9c004b68028fdcb31085987cc969d02438076260738",
-          "after": "8cd4675608711612b63f8619e4dc320ea781c3c972a8fc16c8a443558aef70b1"
-        }
-      }
-    },
-    "zzzzzzzzzzzzzzzz-ohos-ptc-preset-native.diff": {
-      "0.2.2-rc.1": {
-        "node_modules/@deepseek-ai/dsh-web-app/presets/ptc.patch.yml": {
-          "before": "ce02148b1fd575cc93071744180468cd305bdcd50dbfdd3b9b0605c5281d283d",
-          "after": "6f034b20a5aa9d8f8f56648666a92d307f6e17c3f0a0747064236bcbfcc75d41"
         }
       }
     }
@@ -1771,7 +1771,7 @@
       "zzzzzzzzzzzz-ohos-composition.diff",
       "zzzzzzzzzzzz-ohos-runtime-capabilities.diff",
       "zzzzzzzzzzzzz-ohos-lifecycle.diff",
-      "zzzzzzzzzzzzz-ohos-plugin-install-refusal.diff",
+      "zzzzzzzzzzzzz-ohos-plugin-install-bridge.diff",
       "zzzzzzzzzzzzzz-ohos-composition-imports.diff",
       "ohos-forge-github-unavailable.diff",
       "ohos-liveshare-owner-unavailable.diff",
