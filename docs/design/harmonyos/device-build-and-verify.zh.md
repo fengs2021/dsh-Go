@@ -592,3 +592,18 @@ billion-context 的「原生插件模式」是让代理进程住进客户端里�
 | v55 | 1.0.45+45 | `ohos-1981436a1cd172953cb7e172` | `6a9983a41057d784e82b814e9690211e` | `d223fc9933fcd61cad923104c05a3b31` |
 
 构建脚本：`scripts/compose52.sh`（v54）/ `compose53.sh`（v55）、`scripts/fullhap54.sh` / `fullhap55.sh`；签名表达式 `tools/hokit-asar/resign-expr-v54.js` / `resign-expr-v55.js`。
+
+## 17. 手机端截图要落在「会话工作区」而不是进程 cwd（2026-11-16 07:4x，v56）
+
+- 现象：会话里 AI 用 `mcp__phone__ui action=shot` 截图，有时能看见、有时报写不进目录；同一个会话里又想把手机文件 `cp` 进工作区，报 `EACCES: 路径不在工作区或本次运行的临时目录内`。用户在轨迹里贴出的结论是「shot 存到 `process.cwd()/phone-shots`，而引擎进程 cwd 是沙箱根 `/`，不可写」。
+- 根因：`runtime/ohos/phone/ui-tools.mjs` 原来写 `const shotDir = () => path.join(process.cwd(), 'phone-shots')`。引擎进程 cwd 不保证是会话工作区（真机上常是 `/`），因此 `mkdir` 直接被拒，图留在手机侧，模型的 `read_image` 永远读不到。
+- 修法（v56，`runtime/ohos/phone/ui-tools.mjs`）：
+  - 新增 `resolveShotDir(workspace)`：只要传进来的是绝对路径就用它，否则退回 `process.cwd()`；`shotDir(context)` 从中取。
+  - 工具注册处新增 `sessionWorkspace(exec)`，从 `exec.agent.session.header.cwd`（`@deepseek-ai/dsh-session` 的 `SessionHeader.cwd`，会话创建时的绝对工作目录）取工作区；`execute(args, exec)` 把它传给 `definition.run(args, { workspace })`。
+  - 动作表改成工厂 `uiActions(context)`，`shot` 与 `script` 里套的 `shot` 都带上下文；写盘失败时返回 `shot_failed` 并说明「截图拿到了 N 字节但写不进工作区 <目录>」，不再静默丢图。
+  - 成功时 data 变成相对工作区的路径（如 `phone-shots/shot-1794786391865.jpg`），配 `read_image` 直接可读。
+- 测试：`runtime/tests/ohos/phone-ui-tools.test.mjs` 18 → **20 例**，新增「截图目录跟着会话工作区走」「sessionWorkspace 从上下文取 cwd」两例；`node --test` 20 pass / 0 fail。
+- 产物：v56 = 1.0.46+46，runtimeVersion `ohos-63cb03ea26c6daaec797ff38`，unsigned `1fef496646702146c10a7c3a679b32ba`（274,339,861 B）、signed `a958095992be3f806919257c1056aa41`（274,416,503 B）；装机后设备上 `files/dsh-runtime/tree/runtime/ohos/phone/ui-tools.mjs` 含 `resolveShotDir`（`grep -c` = 2），即新运行时已生效。
+- 顺带记下两条硬事实（不要重复踩）：
+  - `/data/local/tmp` 是 `drwxrwx--x 7 shell shell`（0771），App 进程（uid 20020326）连列目录都不行，只能按确切路径读 0644 的单个文件；所以「bash 把设备文件搬进工作区」走不通。
+  - 完全权限（`danger-full-access`）只决定审批，不放开路径；路径围栏在 `runtime/ohos/process/runtime.mjs:80`（`this.roots = 工作区 + 临时目录`）与 `runtime/ohos/process/filesystem.mjs:44`（那条中文 EACCES 的出处）。

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectNodes, registerUiTools, phoneUiCatalog, classifyFailure, readNativeSnapshot, runScript } from '../../ohos/phone/ui-tools.mjs';
+import { collectNodes, registerUiTools, phoneUiCatalog, classifyFailure, readNativeSnapshot, runScript, resolveShotDir, sessionWorkspace } from '../../ohos/phone/ui-tools.mjs';
 import { resolveKeyPath, fingerprintOf, loadOrCreateKey, frame, FrameReader, HdcLink } from '../../ohos/phone/hdc-link.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -238,4 +238,23 @@ test('script 拒绝空/超长/嵌套/未知动作/非对象步骤', async () => 
     assert.match(outcome.message, pattern);
     assert.equal(outcome.dispatched, false);
   }
+});
+
+test('截图目录跟着会话工作区走，不再依赖引擎 cwd', () => {
+  assert.equal(resolveShotDir('/data/storage/el2/base/files/runtime/rootfs/root/workspace/DSH-Go'),
+    join('/data/storage/el2/base/files/runtime/rootfs/root/workspace/DSH-Go', 'phone-shots'));
+  // 拿不到绝对工作区时退回进程 cwd（旧行为），不会抛错。
+  assert.equal(resolveShotDir(undefined), join(process.cwd(), 'phone-shots'));
+  assert.equal(resolveShotDir(''), join(process.cwd(), 'phone-shots'));
+  assert.equal(resolveShotDir('relative/DSH-Go'), join(process.cwd(), 'phone-shots'));
+});
+
+test('sessionWorkspace 从工具执行上下文里取会话 cwd', () => {
+  const wrapper = (cwd) => ({ agent: { session: { header: { cwd } } } });
+  assert.equal(sessionWorkspace(wrapper('/data/x/DSH-Go')), '/data/x/DSH-Go');
+  assert.equal(sessionWorkspace(wrapper('C:/Users/x')), undefined);
+  assert.equal(sessionWorkspace(wrapper(undefined)), undefined);
+  assert.equal(sessionWorkspace({}), undefined);
+  assert.equal(sessionWorkspace(undefined), undefined);
+  assert.equal(sessionWorkspace({ agent: { session: { header: {} } } }), undefined);
 });

@@ -7,7 +7,13 @@ const TMP = '/data/local/tmp';
 const shellQuote = (value) => "'" + String(value).replace(/'/g, "'\\''") + "'";
 // 截图必须落在会话工作区里：模型的 fs 工具（read_image）只读得到工作区，
 // 只有让它能"看见"屏幕，才能在拿不到无障碍节点的 Android 容器/游戏界面上按坐标点击。
-const shotDir = () => path.join(process.cwd(), 'phone-shots');
+// 截图必须落在**本会话的工作区**里：模型的 read_image 只读得到工作区，而引擎进程的 cwd
+// 可能是沙箱根 /（不可写）。调用方把 session.header.cwd 传进来，缺失时才退回 process.cwd()。
+export function resolveShotDir(workspace) {
+  const base = typeof workspace === 'string' && workspace.startsWith('/') ? workspace : process.cwd();
+  return path.join(base, 'phone-shots');
+}
+const shotDir = (context = {}) => resolveShotDir(context.workspace);
 const text = (value) => [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }];
 
 export async function shText(command, timeoutMs = 30000) {
@@ -213,7 +219,7 @@ async function uiKey(args) {
   return result(true, 'ok', '已发送按键 ' + key, '');
 }
 
-async function uiShot() {
+async function uiShot(args = {}, context = {}) {
   const file = TMP + '/dsh-shot-' + Date.now() + '.jpeg';
   const run = await shText('snapshot_display -f ' + file, 25000);
   if (run.code !== 0) return result(false, 'shot_failed', run.text.trim().slice(0, 300), '');
@@ -221,13 +227,18 @@ async function uiShot() {
   if (buffer.length < 1000 || buffer[0] !== 0xff || buffer[1] !== 0xd8) {
     return result(false, 'shot_failed', '截图数据异常（' + buffer.length + ' 字节）', '');
   }
-  const dir = shotDir();
-  fs.mkdirSync(dir, { recursive: true });
+  const dir = shotDir(context);
   const name = 'shot-' + Date.now() + '.jpg';
   const target = path.join(dir, name);
-  fs.writeFileSync(target, buffer);
-  try { fs.chmodSync(target, 0o644); } catch { /* 只读挂载时忽略 */ }
-  return result(true, 'ok', '截图已保存到工作区，用 read_image 读取即可看见屏幕', 'phone-shots/' + name + ' (' + buffer.length + ' 字节)');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(target, buffer);
+    try { fs.chmodSync(target, 0o644); } catch { /* 只读挂载时忽略 */ }
+  } catch (error) {
+    return result(false, 'shot_failed',
+      '截图拿到了 ' + buffer.length + ' 字节，但写不进工作区 ' + dir + '：' + ((error && error.message) || error), '');
+  }
+  return result(true, 'ok', '截图已保存到工作区，用 read_image 读取即可看见屏幕', path.relative(context.workspace || process.cwd(), target) + ' (' + buffer.length + ' 字节)');
 }
 
 async function uiWait(args) {
@@ -269,9 +280,12 @@ export async function runScript(steps, actions, effects = SCRIPT_EFFECTS) {
   return result(true, 'ok', '已按顺序执行 ' + steps.length + ' 步', lines.join('\n'), dispatched);
 }
 
-const uiScript = (args) => runScript(args.steps, uiActions);
-
-const uiActions = { dump: uiDump, click: uiClick, longclick: uiLongClick, input: uiInput, swipe: uiSwipe, key: uiKey, shot: uiShot, wait: uiWait, script: uiScript };
+const UI_ACTIONS = ['dump', 'click', 'longclick', 'input', 'swipe', 'key', 'shot', 'wait', 'script'];
+// 动作表每次按上下文生成：只有 shot 需要知道工作区在哪（script 里套 shot 也一样）。
+function uiActions(context = {}) {
+  return { dump: uiDump, click: uiClick, longclick: uiLongClick, input: uiInput, swipe: uiSwipe, key: uiKey,
+    shot: (args) => uiShot(args, context), wait: uiWait, script: (args) => runScript(args.steps, uiActions(context)) };
+}
 
 async function appAction(args) {
   const action = String(args.action || 'list');
@@ -340,10 +354,10 @@ const definitions = [
       waitMs: num('click 用文字定位时，最多等多少毫秒让它出现（默认 0 只查一次），例如 8000'),
       steps: { type: 'array', description: 'script 用：按顺序执行的动作数组，最多 20 步，每步和单独调用时同样的参数，例如 [{"action":"click","text":"设置"},{"action":"wait","ms":800},{"action":"dump","filter":"Linux"}]', items: { type: 'object' } } },
       required: ['action'] },
-    run: async (args) => {
+    run: async (args, context) => {
       const action = String(args.action || '');
-      const handler = uiActions[action];
-      if (!handler) return result(false, 'invalid_args', 'action 只支持 ' + Object.keys(uiActions).join('/'), '');
+      const handler = uiActions(context)[action];
+      if (!handler) return result(false, 'invalid_args', 'action 只支持 ' + UI_ACTIONS.join('/'), '');
       return handler(args);
     } },
   { name: 'mcp__phone__hdc',
@@ -403,6 +417,12 @@ function askBeforeRunning(ctx) {
   });
 }
 
+// 工具的 execute 拿得到真实会话：session.header.cwd 就是这个会话的工作区。
+export function sessionWorkspace(exec) {
+  const cwd = exec?.agent?.session?.header?.cwd;
+  return typeof cwd === 'string' && cwd.startsWith('/') ? cwd : undefined;
+}
+
 export function registerUiTools(ctx) {
   const disposers = [];
   disposers.push(askBeforeRunning(ctx));
@@ -412,8 +432,8 @@ export function registerUiTools(ctx) {
         name: definition.name, description: definition.description, parameters: definition.parameters,
         timeoutMs: 120000,
         output: { schema, render: (_args, value) => text(value) },
-        async execute(args) {
-          try { return await definition.run(args || {}); }
+        async execute(args, exec) {
+          try { return await definition.run(args || {}, { workspace: sessionWorkspace(exec) }); }
           catch (error) {
             const outcome = classifyFailure(error);
             return result(outcome.ok, outcome.code, outcome.message + (outcome.dispatched ? nativeHint() : ''), '', outcome.dispatched);
