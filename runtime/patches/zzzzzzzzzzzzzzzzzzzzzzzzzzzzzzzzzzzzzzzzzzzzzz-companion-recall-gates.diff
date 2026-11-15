@@ -123,7 +123,7 @@
  		try {
 +			dshGoRecall.guardSession(loopCtx, { sessionId: id, operation: source === "resume" ? "resume" : "create", recallHistory: session.dshGoRecallHistory });
  			ownerCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(id);
- 			if (parentAgent !== void 0) ownerCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(parentAgent.id);
+ 			if (session.header.parentSession !== void 0) ownerCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(session.header.parentSession);
  			assertAgentOptions(agentOptions);
 @@ -1,6 +1,7 @@
  	* @returns the owned handle and stored cursor, or `undefined` without a backend.

@@ -857,8 +857,8 @@
       },
       "0.2.2-rc.3": {
         "node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js": {
-          "after": "4841cd65efd1b478c157914063cb1ed9b12d9c939adcaeadc91107a7b8310055",
-          "before": "50fc1cd220a48d8c978e11745782dcccec6f902fd876e01d9e635551783ac3a5"
+          "after": "7acc1bcfa51a3f071cb2b619a77eed44c13f75878d3bf1ebb84ab360ada563ee",
+          "before": "4e69a151f3f5ae251d2c0958e7d82d7776b64758e1c7fb2411c85aacaa155ff9"
         }
       }
     },
@@ -871,8 +871,8 @@
       },
       "0.2.2-rc.3": {
         "node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js": {
-          "after": "ac06aa8548953266a9f69e577691e35c49a4e995f849119ee3e9f7afb9ecc4c1",
-          "before": "4841cd65efd1b478c157914063cb1ed9b12d9c939adcaeadc91107a7b8310055"
+          "after": "646566fb27241fb31b3eff6da12862bba3ff776478492bba4df9f5a419e8b570",
+          "before": "7acc1bcfa51a3f071cb2b619a77eed44c13f75878d3bf1ebb84ab360ada563ee"
         }
       }
     },
@@ -1373,7 +1373,7 @@
       },
       "0.2.2-rc.3": {
         "node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js": {
-          "after": "0a579022d34d560c8d3a5c8366dae9a54355f5a1c0af07c04c5af7e321f01b7d",
+          "after": "eb9b2e7d0750b0a68a663fb59b22cda86445e1f37558566050528451401ec0cb",
           "before": "f09f60814d4e96a880f41b9fc3832f33c56a28f954f48810d8439ce83ad6ffa8"
         },
         "node_modules/@deepseek-ai/dsh-schedule/lib/index.js": {
@@ -1561,8 +1561,8 @@
       },
       "0.2.2-rc.3": {
         "node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js": {
-          "after": "36da563af25c59a07e28b1543f8e904839b0ff20ac0bf82b70e22c3abc8ee35c",
-          "before": "0a579022d34d560c8d3a5c8366dae9a54355f5a1c0af07c04c5af7e321f01b7d"
+          "after": "24460dcf0bd35b4246fd62077d97eb423135bb0b770a4f2127dc654fc5b6fc18",
+          "before": "eb9b2e7d0750b0a68a663fb59b22cda86445e1f37558566050528451401ec0cb"
         }
       }
     },
@@ -2195,7 +2195,7 @@
       },
       "0.2.2-rc.3": {
         "node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js": {
-          "after": "8f09eba6f60ff26c105a7c9e9f5713ffd208f399ee1ca928fff13e9c33a448c3",
+          "after": "551181ffced70507eb3a9985e9857e6d38c2b60f8d16e4b78f4981a55d74ce82",
           "before": "29c5e92ae4af4e130f9901650d61d7d939f4525d9101ed9f920ecdf056d59049"
         }
       }
@@ -2657,8 +2657,8 @@
       },
       "0.2.2-rc.3": {
         "node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js": {
-          "after": "07142422da102cfe990a225a53c51f9f31cf37ad76ae12f93a91882d0f2f53ae",
-          "before": "6c940bedc36a377005a654c09db9ef25c9347f102990a34394e59e995c4fb32c"
+          "after": "a92d3426f5fddbc66cba005dddcab00b66782b30fff24136142b46c8a859d5d6",
+          "before": "937a24348fb9ad152df59728e531f24e9c5e59010006e1c003813b133f2bf2d7"
         },
         "node_modules/@deepseek-ai/dsh-http-proxy/lib/index.js": {
           "after": "ec7fc5130aca15a6dde603471d37de46937110195374c4805364a317bc6de882",
@@ -3195,8 +3195,8 @@
       },
       "0.2.2-rc.3": {
         "node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js": {
-          "after": "433d97d02e86d35f8fe2560327eb152eafc4b0ae7f049f1ed6fa5dd8123a07d5",
-          "before": "8f09eba6f60ff26c105a7c9e9f5713ffd208f399ee1ca928fff13e9c33a448c3"
+          "after": "7287caa66891cc622e7fc86fe73ec8c328ac07ef737a9b278d953b8ab68dbe71",
+          "before": "551181ffced70507eb3a9985e9857e6d38c2b60f8d16e4b78f4981a55d74ce82"
         }
       }
     },
@@ -3209,8 +3209,8 @@
       },
       "0.2.2-rc.3": {
         "node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js": {
-          "after": "50fc1cd220a48d8c978e11745782dcccec6f902fd876e01d9e635551783ac3a5",
-          "before": "433d97d02e86d35f8fe2560327eb152eafc4b0ae7f049f1ed6fa5dd8123a07d5"
+          "after": "4e69a151f3f5ae251d2c0958e7d82d7776b64758e1c7fb2411c85aacaa155ff9",
+          "before": "7287caa66891cc622e7fc86fe73ec8c328ac07ef737a9b278d953b8ab68dbe71"
         }
       }
     },
@@ -3343,8 +3343,8 @@
       },
       "0.2.2-rc.3": {
         "node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js": {
-          "after": "6c940bedc36a377005a654c09db9ef25c9347f102990a34394e59e995c4fb32c",
-          "before": "36da563af25c59a07e28b1543f8e904839b0ff20ac0bf82b70e22c3abc8ee35c"
+          "after": "937a24348fb9ad152df59728e531f24e9c5e59010006e1c003813b133f2bf2d7",
+          "before": "24460dcf0bd35b4246fd62077d97eb423135bb0b770a4f2127dc654fc5b6fc18"
         },
         "node_modules/@deepseek-ai/dsh-compaction-basic/lib/index.js": {
           "after": "fd6d900a53274f4d24cd0a9a179a4decc08ed67d3a97b374d6b1d30bebca5ce0",

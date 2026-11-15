@@ -168,7 +168,7 @@
  		const untrack = this.ownership.track(dispose);
  		try {
 +			ownerCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(id);
-+			if (parentAgent !== void 0) ownerCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(parentAgent.id);
++			if (session.header.parentSession !== void 0) ownerCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(session.header.parentSession);
  			assertAgentOptions(agentOptions);
  			ownerCtx.fiber.assertActive();
  			/* v8 ignore next -- unreachable backstop for factory ownership */
