@@ -400,3 +400,35 @@ v44（1.0.34+34，含 `[linux]` 诊断）engine.log 第 4299–4300 行：
    否则 `[Fail]ExecuteCommand need connect-key? please confirm a device by help info`。
 2. 不要在别的 cwd 里传 Windows 绝对路径——会被拼到当前 cwd 后面
    （`D:\…\workspace\D:/Users/…` no such file）。先 `cd <WS>/hap-build` 再传相对文件名。
+
+## 12. Dart 改动怎么进包：AOT artifact 工作流（2026-11-15 v47/v48 定案）
+
+### 12.1 事实：app.so 不在本机产生
+- `tooling/ohos/check-arkts.sh` 只做 `cp "$AOT/arm64-v8a/app.so" "$LIBS/libapp.so"`（第 362 行附近），**不编译 Dart**。
+- app.so 来自 GitHub Actions `.github/workflows/ohos-compile.yml`（`runs-on: macos-latest`，`flutter assemble -dTargetPlatform=ohos-arm64 -dBuildMode=release … ohos_aot_bundle_release_ohos-arm64`），产物名 `ohos-aot-<sha40>`。
+- 本机是 WSL2 x86_64，oh-flutter 只发布 macOS 版 `gen_snapshot`/`frontend_server`，Linux 版快照格式对不上（`app/ohos/README.md` 宿主表）→ **本机编不了，只能等 CI**。
+- 只改 `runtime/` 里 JS 的改动走 compose + `runtime.zip`，不需要新 AOT；**改 `app/lib`、`app/pubspec.yaml`、`packages/` 必须换 AOT**。
+
+### 12.2 症状：改了 Dart 但界面没变（v47 踩过）
+v46 与 v47 的 `libs/arm64-v8a/libapp.so` md5 完全相同（`226421fb…`），新代码字符串（如 `tavern-model-channel-`）在包内 grep 不到。看包就能判定，不必装机。
+
+### 12.3 正确配方
+1. 推代码到 fork 的 `port/v42`，触发（或手动 Run workflow）`OHOS compile`；
+2. `python3 <WS>/scripts/aot-fetch.py <commit-sha> /root/aot<NN> [--wait MINUTES]`：轮询 run、下载 artifact、解压、写 `AOT_COMMIT`，并**自动把 `native_assets/libs/arm64-v8a/libsqlite3.so` 换成鸿蒙版**（见 12.4）；
+3. `check-arkts.sh --full --aot /root/aot<NN> …` 打包（`scripts/fullhap48.sh` 是模板：编译根在 ext4，55 s）；
+4. 拿包核对：`unzip … libs/arm64-v8a/libapp.so` 后 `strings | grep <新符号>` 与 md5；再签名装机。
+
+### 12.4 坑：CI artifact 里的 libsqlite3.so 是 glibc 版
+新 artifact 的 `native_assets/libs/arm64-v8a/libsqlite3.so`（1,870,928 B，md5 `d931376102ee2946d61cffb86cd1fb41`）在 macOS runner 上链了 glibc，`audit-hap` 直接失败：
+`libsqlite3.so needs libc.so.6, outside the set and the SDK sysroot`、`needs ld-linux-aarch64.so.1`、大量 `@GLIBC_2.17` 未解析符号。
+必须用鸿蒙版覆盖：`<WS>/build/ohos-native/libsqlite3.so`（1,437,976 B，md5 `fb0662179b9a0171dc6cb18f777be5de`，来自 `tooling/ohos/build-sqlite3-native.py`）；进包 strip 后是 1,437,800 B md5 `0ea0b5537d71f07326bb31c3705dc5c7`。`aot-fetch.py` 已自动做这一步（扫 native_assets 下所有 .so，命中 `libc.so.6` 且不是 sqlite 就报错停）。
+
+### 12.5 守卫（防止再发旧 UI）
+`check-arkts.sh --full` 在 AOT 存在性检查之后加了陈旧守卫：`$AOT/AOT_COMMIT` 存在且该 commit 在本仓库可解析时，若 `git log --format=%h $aot_commit..HEAD -- app/lib app/pubspec.yaml packages` 非空就直接 `die`（提示重跑 workflow）；没有 `AOT_COMMIT` 的老 AOT 退化为 `find … -newer app.so` 只告警。
+
+### 12.6 v46–v48 产物
+| 版本 | 版本号 | unsigned md5 | signed md5 | libapp.so md5 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| v46 | 1.0.36+36 | `f0254fbd87355d09765ac5f0bd941cc2` | `a3c056e7b823c874bef1f4c39ff39230` | `226421fb5dd4399445b767007706c9ed` | runtime 加 script 能力；Dart 仍是 v42 的 |
+| v47 | 1.0.37+37 | `8acf64c4901434303b3f1b2bfac8e038` | `5491cfd5c485e77e28501590c62b82a8` | 同上（**作废**） | 舞台渠道代码没进包 |
+| v48 | 1.0.38+38 | `91b2016fdd8fee80c05a3c8f54fb26c9` | `19338ca433984b914b15446021b9e166` | `5d36a41aa393b3100de33560ab42f890` | AOT from run 43715353136 (f9e60bfd)，含舞台渠道 |

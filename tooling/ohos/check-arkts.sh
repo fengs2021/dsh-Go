@@ -119,6 +119,26 @@ if [ "$FULL" = 1 ]; then
       "$NATIVE/libdsh_flock.so" "$NATIVE/libdsh_require_builtin.so" "$NODE_HEADERS/node_api.h"; do
     [ -f "$file" ] || die "$file is missing"
   done
+
+  # This app.so is not built here: it is the "OHOS compile" artifact, compiled on a
+  # macOS runner from an earlier commit (the device has no AOT compiler). Editing
+  # Dart after that commit and reusing the old artifact ships the old UI — v47 was
+  # built that way from v46's app.so and the stage still showed only the official
+  # models. --aot takes the directory the workflow artifact unpacks to, which
+  # records the commit it was built from in AOT_COMMIT.
+  if [ -f "$AOT/AOT_COMMIT" ]; then
+    aot_commit="$(head -1 "$AOT/AOT_COMMIT" | tr -d '[:space:]')"
+    if [ -n "$aot_commit" ] && git -C "$REPO" cat-file -e "$aot_commit^{commit}" 2>/dev/null; then
+      stale="$(git -C "$REPO" log --format=%h "$aot_commit..HEAD" -- app/lib app/pubspec.yaml packages | head -3 | tr '\n' ' ')"
+      [ -z "$stale" ] ||
+        die "the AOT was built at $aot_commit, before the Dart changes in $stale: rerun the .github/workflows/ohos-compile.yml workflow (Actions → OHOS compile → Run workflow on this branch) and pass the artifact it produces"
+    else
+      echo "check-arkts: AOT_COMMIT names $aot_commit, which this checkout doesn't have; skipping the staleness check" >&2
+    fi
+  else
+    newer="$(find "$REPO/app/lib" "$REPO/packages" -name '*.dart' -newer "$AOT/arm64-v8a/app.so" -print -quit 2>/dev/null)"
+    [ -z "$newer" ] || echo "check-arkts: warning: $newer is newer than the AOT; if it is Dart the package ships the old UI" >&2
+  fi
 fi
 
 [ "$CLEAN" = 0 ] || rm -rf "$WORK"
