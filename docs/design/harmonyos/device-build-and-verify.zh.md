@@ -505,3 +505,43 @@ v46 与 v47 的 `libs/arm64-v8a/libapp.so` md5 完全相同（`226421fb…`）�
 2. **真机自动化注入中文会失败**（工具限制，非 App 缺陷）
    - `uitest uiInput text "…"` 传中文返回 `No Error` 但输入框没内容，界面改弹系统「请点击系统粘贴按钮，允许本次读取剪贴板」；ASCII（`hello`）正常。
    - 以后测中文输入走剪贴板 + 「粘贴」按钮，或直接用 ASCII 验证链路。
+
+## 15. 让 billion-context 压缩代理在手机上真的跑起来（2026-11-15 23:11 → 11-16 00:04，v50–v53）
+
+billion-context 的「原生插件模式」是让代理进程住进客户端里：插件在运行期自己 spawn 一个 proxy 子进程并指向 `http://127.0.0.1:<port>`。手机侧一开始一直报「当前 dsh 进程未绑定 bili 代理」，因为三道鸿蒙沙箱门依次挡住，v50/v52/v53 逐个打开。
+
+### 15.1 三道门（按被挡的顺序）
+
+| # | 症状（原文） | 出处 | vNN 修法 |
+| --- | --- | --- | --- |
+| 1 | `bili: cannot find a Node runtime to spawn the proxy (this process is not Node) — set BILLION_CONTEXT_NODE` | 插件 `dist/agent/dsh-native.js` 的 `resolveNodeRuntime()` 用 `basename(process.execPath)==='node'` 判断 | v50：`runtime/ohos/process/child-process.mjs` 把 `process.execPath`/`process.argv[0]` 虚拟化成 `/dsh-go/ohos/bin/node`（该路径早在 `command-router.mjs` 的 `isNode` 表里 → spawn 走 `pluginNode` 车道） |
+| 2 | `EACCES: 工作目录不在授权工作区内`（`runtime/ohos/process/runtime.mjs` 校验 `spec.cwd`） | 插件 spawn 不传 cwd，facade 回落 `process.cwd()` | v51：facade 默认 cwd 取授权工作区之一 |
+| 3 | `EACCES: OHOS_SANDBOX_DENIED: Node script entry is outside the authorized roots` | `runtime/ohos/process/node-script.mjs:99` 要求脚本入口在 roots 内，而代理脚本在 `…/profiles/web/node_modules/billion-context/dist/` | v52：新增 `scriptRoots(roots, extra)`，把 `profileDirectories`（插件安装树）并入脚本入口与 worker fs 的可读根；`command-router.mjs` 的 `pluginNode` 传 `pluginRoots` |
+| 4 | `bili: failed to start: EACCES: OHOS_SANDBOX_DENIED: Node script path is outside its authorized workspace…`（栈顶 `node-worker-paths.mjs` ← `ensureConfigTemplate` ← `dist/index.js`） | worker 内被 patch 的 fs 还要读写 `$HOME/.config/billion-context/`、`$HOME/.local/state/billion-context/` | v53：`command-router.mjs` 导出 `pluginHelperRoots() = [...profileDirectories, process.env.HOME]`（只放宽「插件助手可读写」，会话 cwd 仍受 roots 限制） |
+
+### 15.2 成功证据（v53，真机）
+
+```
+文件：/data/app/el2/100/base/io.github.ccch1mneyyy.dsh_app/files/runtime/rootfs/root/.local/state/billion-context/bili.log
+2026-11-16T00:04:20.772 [info] [v=0.1.212] acp-proxy v0.1.212 (pid 12890) listening on http://127.0.0.1:18787
+   — web UI: http://127.0.0.1:18787/__bili/ — zero-config: prefix any baseURL with http://127.0.0.1:18787/bili/ — MITM proxy on (whitelist)
+之后持续：[conn#N] tcp closed reason=idle-timeout age=… reqs=17   ← 有真实请求走过
+计数：grep -ac 'acp-proxy v0.1.212' = 8 次启动；grep -ac 'proxy bootstrap failed' = 3077（全部是历史累计）
+```
+
+用户 00:06 确认「刚才的页面就是 bili 的设置页面」，不再出现「未绑定」提示。压缩代理子进程日志在 `<app>/cache/dsh-runtime/ohos-process/bili-proxy-<port>.log`（`/data/storage/el2/base/cache/…` 是同一位置但 shell 读不了，要用 el2/100/base 那条）。
+
+### 15.3 v50–v53 产物
+
+| 版本 | pubspec | runtimeVersion | unsigned md5 | signed md5 |
+| --- | --- | --- | --- | --- |
+| v52 | 1.0.42+42 | ohos-aad2af02794a892b7df12415 | f93d3454995042b34487f665e9b09ea1 | 36c54eb7afc118356d1a89a98b9d3dda |
+| v53 | 1.0.43+43 | ohos-97634bf3a258d5801dfb04a4 | 6aaf212aff74bf53ba1bf27fef303dd3 | 744116529649e70b443796513a64e5cc |
+
+（v50/v51 见提交 a35eae7c 与 v51 日志；v52 起 compose50/compose51 + fullhap52/fullhap53，仍走 /root/b44 的 native 与 /root/aot50 的 AOT，构建 60 s 级。）
+
+### 15.4 教训
+
+- 插件「原生模式」在鸿蒙上的阻力不在插件本身，而在我们自己的进程沙箱：**execPath 身份、脚本入口白名单、worker fs 根、cwd** 四个面各有一道检查，插件会依次撞上。排查顺序照上表从上往下走，一轮只解一道。
+- 放宽可读根时坚持「会话写权限不放宽」：`pluginHelperRoots` 只给插件助手（`pluginNode` 车道），普通会话 node 仍用 `canonicalRoots`。
+- 插件中文文案在 `dist/agent/dsh-native-client.js` 里是 \uXXXX 转义字典（`var zh = {...}`），grep 中文字面量永远 0 命中——查文案直接看字典对象。

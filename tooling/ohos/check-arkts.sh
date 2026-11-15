@@ -130,8 +130,13 @@ if [ "$FULL" = 1 ]; then
     aot_commit="$(head -1 "$AOT/AOT_COMMIT" | tr -d '[:space:]')"
     if [ -n "$aot_commit" ] && git -C "$REPO" cat-file -e "$aot_commit^{commit}" 2>/dev/null; then
       stale="$(git -C "$REPO" log --format=%h "$aot_commit..HEAD" -- app/lib app/pubspec.yaml packages | head -3 | tr '\n' ' ')"
-      [ -z "$stale" ] ||
+      if [ -n "$stale" ] && [ "${DSH_ALLOW_STALE_AOT:-0}" != "1" ]; then
         die "the AOT was built at $aot_commit, before the Dart changes in $stale: rerun the .github/workflows/ohos-compile.yml workflow (Actions → OHOS compile → Run workflow on this branch) and pass the artifact it produces"
+      elif [ -n "$stale" ]; then
+        # Only for a rebuild that provably touches no Dart (a version bump, a runtime
+        # script): the shortcut is opt-in so the default stays refuse-and-recompile.
+        echo "check-arkts: keeping the AOT built at $aot_commit despite later changes in $stale (DSH_ALLOW_STALE_AOT=1)" >&2
+      fi
     else
       echo "check-arkts: AOT_COMMIT names $aot_commit, which this checkout doesn't have; skipping the staleness check" >&2
     fi

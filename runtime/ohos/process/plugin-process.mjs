@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { createWriteStream, readlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { spawnPluginCommand } from './command-router.mjs';
+import { pluginWorkingDirectory, spawnPluginCommand } from './command-router.mjs';
 
 const failure = (code, message) => Object.assign(new Error(message), { code });
 const unsupported = detail => { throw failure('ERR_OHOS_PROCESS_OPTION', `${detail} 在 App 内命令后端不可用；可连接电脑执行`); };
@@ -45,7 +45,7 @@ export class ChildProcess extends EventEmitter {
   disconnect() { unsupported('IPC'); }
 }
 
-export function createChildProcessFacade(spawnJob) {
+export function createChildProcessFacade(spawnJob, { defaultCwd } = {}) {
   function spawn(file, args = [], options = {}) {
     if (!Array.isArray(args)) { options = args ?? {}; args = []; }
     validText(file, 'file');
@@ -76,7 +76,9 @@ export function createChildProcessFacade(spawnJob) {
     if (io.some(x => !['pipe', 'ignore', 'inherit'].includes(x)) || io[0] === 'inherit') unsupported('继承stdin或外部stdio句柄');
     const child = new ChildProcess();
     child.spawnfile = file; child.spawnargs = [file, ...args];
-    const spec = { argv: child.spawnargs, cwd: options.cwd instanceof URL ? fileURLToPath(options.cwd) : options.cwd ?? process.cwd(),
+    const fallbackCwd = typeof defaultCwd === 'function' ? defaultCwd() : defaultCwd;
+    const spec = { argv: child.spawnargs,
+      cwd: options.cwd instanceof URL ? fileURLToPath(options.cwd) : options.cwd ?? fallbackCwd ?? process.cwd(),
       env: options.env, signal: options.signal, graceMs: 1000,
       stdio: { stdin: io[0], stdout: io[1] === 'ignore' ? { maxBytes: 0 } : io[1],
         stderr: io[2] === 'ignore' ? { maxBytes: 0 } : io[2] } };
@@ -176,7 +178,7 @@ export function createChildProcessFacade(spawnJob) {
   const fork = () => unsupported('Node fork IPC');
   return Object.freeze({ spawn, execFile, exec, spawnSync: sync, execFileSync: sync, execSync: sync, fork, ChildProcess });
 }
-const facade = createChildProcessFacade(spawnPluginCommand);
+const facade = createChildProcessFacade(spawnPluginCommand, { defaultCwd: pluginWorkingDirectory });
 export const { spawn, execFile, exec, spawnSync, execFileSync, execSync, fork } = facade;
 export default facade;
 export { facade as 'module.exports' };

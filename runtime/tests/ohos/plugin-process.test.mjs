@@ -74,6 +74,15 @@ test('an unreadable stdio descriptor is ignored instead of refusing the spawn', 
   assert.deepEqual(await closed(child), { code: 7, signal: null });
 });
 
+test('a helper spawned without a cwd inherits the scratch directory, not the app cwd', async t => {
+  const specs = [];
+  const job = { started: Promise.resolve(), done: new Promise(() => {}), stdin: null, stdout: null, stderr: null };
+  const facade = createChildProcessFacade(spec => { specs.push(spec); return job; }, { defaultCwd: () => '/scratch/root' });
+  facade.spawn('node', ['helper.js']);
+  facade.spawn('node', ['helper.js'], { cwd: '/elsewhere' });
+  assert.deepEqual(specs.map(spec => spec.cwd), ['/scratch/root', '/elsewhere']);
+});
+
 test('non-Node commands fail clearly without Linux and failed spawn emits no spawn/exit', async t => {
   const f = await setup(t), child = f.cp.spawn('gh', ['--version'], { cwd: f.work }), order = [];
   let error; child.on('error', e => { error = e; order.push('error'); });

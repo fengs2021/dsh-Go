@@ -13,7 +13,8 @@ export default class OhSubprocessRuntime extends SubprocessRuntime {
     // Agent and plugin commands such as gh, python3 and pip run in the App's Linux.
     this.backend = new CommandRouter({ ...config, onSpillFailure },
       { linux: roots => createLinuxCommandBackend({ control: this.linux, ...roots, onSpillFailure }) });
-    this.pluginProcess = createChildProcessFacade(spec => this.backend.spawnPlugin(spec));
+    this.pluginProcess = createChildProcessFacade(spec => this.backend.spawnPlugin(spec),
+      { defaultCwd: () => this.backend.temporaryRoot });
     this.capabilities = this.backend.capabilities;
     ctx.inject(['webServer'], webCtx => registerLinuxControlRoutes(webCtx, this.linux));
     ctx.effect(() => () => this.linux.shutdown(), 'ohos Linux joined shutdown');

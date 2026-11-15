@@ -1,6 +1,7 @@
 import { basename } from 'node:path';
 import { VirtualSubprocessRuntime } from './runtime.mjs';
 import { pythonCommandName } from './python-backend.mjs';
+import { profileDirectories } from '../plugins/store.mjs';
 
 const error = (code, message) => Object.assign(new Error(message), { code });
 const isNode = command => ['node', '/bin/node', '/usr/bin/node', '/dsh-go/ohos/bin/node', process.execPath].includes(command);
@@ -19,7 +20,8 @@ export class CommandRouter {
       if (virtualCommands.has(basename(argv[0]))) return;
       return this.select(argv, policy);
     }, linux: () => this.linux });
-    this.pluginNode = new VirtualSubprocessRuntime({ ...config, temporaryRoot: this.virtual.temporaryRoot }, { concurrent: true });
+    this.pluginNode = new VirtualSubprocessRuntime({ ...config, temporaryRoot: this.virtual.temporaryRoot },
+      { concurrent: true, pluginRoots: pluginHelperRoots });
     this.linux = typeof linux === 'function'
       ? linux({ workspaceRoots: this.virtual.workspaceRoots, temporaryRoot: this.virtual.temporaryRoot }) : linux;
     this.capabilities = Object.freeze({ ...this.virtual.capabilities,
@@ -84,6 +86,15 @@ export class CommandRouter {
   }
 }
 
+// A plugin helper loads code its own installed package ships and keeps its state in the engine
+// home (…/.config, …/.local/state), so both trees are readable. The working directory still comes
+// from the session roots: this never widens where a plugin helper may start.
+export function pluginHelperRoots() {
+  const roots = [...profileDirectories];
+  if (typeof process.env.HOME === 'string' && process.env.HOME) roots.push(process.env.HOME);
+  return roots;
+}
+
 // Each Cordis effect owns its registration. Context-bound facades dispatch
 // directly to their router; this compatibility entry requires one live owner.
 const bindings = new Map();
@@ -91,6 +102,13 @@ export function bindPluginCommands(runtime) {
   const ticket = {};
   bindings.set(ticket, runtime);
   return () => { bindings.delete(ticket); };
+}
+// A helper spawned without a cwd would inherit this process's directory, which is
+// not a workspace and fails the confinement check. The owner's scratch directory
+// is inside the roots every plugin command may use, so it stands in for it.
+export function pluginWorkingDirectory() {
+  const owners = new Set([...bindings.values()].filter(runtime => !runtime.closed));
+  return owners.size === 1 ? [...owners][0].temporaryRoot : undefined;
 }
 export function spawnPluginCommand(spec) {
   const owners = new Set([...bindings.values()].filter(runtime => !runtime.closed));

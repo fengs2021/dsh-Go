@@ -40,6 +40,7 @@ export class VirtualSubprocessRuntime {
   #resourceFailures = new Set();
   #createOwnedGitServer;
   #selectExternal;
+  #pluginRoots;
   #linux;
   #concurrent;
 
@@ -47,6 +48,8 @@ export class VirtualSubprocessRuntime {
     // Explicit trusted test seam; never read from Worker messages or DSH config.
     this.#createOwnedGitServer = internals.createOwnedGitServer ?? createOwnedGitServer;
     this.#selectExternal = internals.selectExternal;
+    // Plugin helpers may execute code shipped inside an installed plugin package.
+    this.#pluginRoots = typeof internals.pluginRoots === 'function' ? internals.pluginRoots : () => [];
     // The owner's Linux backend, looked up when a shell starts.
     this.#linux = internals.linux ?? (() => undefined);
     this.#concurrent = internals.concurrent === true;
@@ -280,7 +283,7 @@ export class VirtualSubprocessRuntime {
           let worker;
           if (nodeTask) {
             try {
-              worker = createNodeScriptWorker({ args: argv.slice(1), cwd, roots,
+              worker = createNodeScriptWorker({ args: argv.slice(1), cwd, roots, pluginRoots: this.#pluginRoots(),
                 workspaceRoots: [policy?.workspaceRoot ?? cwd], readOnly: policy?.mode === 'read-only', env: workerEnv,
                 stdin: typeof spec.stdio.stdin === 'object' ? spec.stdio.stdin.data : '',
                 streamStdin: spec.stdio.stdin === 'pipe' });

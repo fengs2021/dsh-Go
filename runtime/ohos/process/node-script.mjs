@@ -12,6 +12,23 @@ export function formatNodeScriptError(error) {
 
 const failure = (code, message) => Object.assign(new Error(message), { code });
 const inside = (root, path) => path === root || path.startsWith(root + '/');
+
+// A plugin helper executes code its own package already ships and trusts. Its install tree joins the
+// Worker's readable roots so the entry and the modules it imports resolve; the working directory stays
+// confined to the session roots, so a command still never starts outside the workspace.
+export function scriptRoots(roots, extra = []) {
+  const canonical = [];
+  for (const root of [...roots, ...extra]) {
+    let real;
+    try { real = realpathSync(root); }
+    catch { continue; }
+    if (real === '/' || canonical.includes(real)) continue;
+    try { if (!statSync(real).isDirectory()) continue; }
+    catch { continue; }
+    canonical.push(real);
+  }
+  return canonical;
+}
 const preloadURLs = [new URL('../preload.mjs', import.meta.url).href, new URL('./node-worker-preload.mjs', import.meta.url).href];
 export function nodeScriptAvailable() {
   if (globalThis[Symbol.for('dsh.go.ohos.nodeWorker.preload')] !== 1) return false;
@@ -68,13 +85,14 @@ function inlineEntry(source, mode, cwd) {
 }
 
 /** Native script entries preserve CJS/ESM main semantics; inline code uses the same guarded Worker. */
-export function createNodeScriptWorker({ args, cwd, roots, workspaceRoots, readOnly = false, env, stdin = '', streamStdin = false }) {
+export function createNodeScriptWorker({ args, cwd, roots, workspaceRoots, pluginRoots = [], readOnly = false, env, stdin = '', streamStdin = false }) {
   if (!nodeScriptAvailable()) throw failure('ERR_OHOS_NODE_PRELOAD_REQUIRED', 'Node scripts require the inherited OHOS product preload');
   if (!Array.isArray(args) || args.some(value => typeof value !== 'string' || value.includes('\0'))) throw new TypeError('Node script arguments must be NUL-free strings');
   if (args[0] === '--') args = args.slice(1);
   if (typeof cwd !== 'string' || !isAbsolute(cwd) || !Array.isArray(roots) || !Array.isArray(workspaceRoots)) throw new TypeError('Node script requires explicit absolute working roots');
   const canonicalCwd = realpathSync(cwd);
   const canonicalRoots = roots.map(root => realpathSync(root)), canonicalWorkspaces = workspaceRoots.map(root => realpathSync(root));
+  const canonicalScriptRoots = scriptRoots(canonicalRoots, pluginRoots);
   if (canonicalRoots.includes('/') || canonicalWorkspaces.includes('/')
       || !canonicalWorkspaces.some(root => inside(root, canonicalCwd))
       || !canonicalRoots.some(root => inside(root, canonicalCwd))) throw failure('EACCES', 'EACCES: OHOS_SANDBOX_DENIED: Node script entry or cwd is outside the authorized roots');
@@ -96,13 +114,13 @@ export function createNodeScriptWorker({ args, cwd, roots, workspaceRoots, readO
   } else {
     if (!args[0] || args[0].startsWith('-')) throw failure('ERR_OHOS_NODE_SCRIPT_ARGUMENTS', 'Unsupported Node option; use a script, -e, -p, --version or stdin');
     const filename = realpathSync(resolve(canonicalCwd, args[0]));
-    if (!canonicalRoots.some(root => inside(root, filename))) throw failure('EACCES', 'EACCES: OHOS_SANDBOX_DENIED: Node script entry is outside the authorized roots');
+    if (!canonicalScriptRoots.some(root => inside(root, filename))) throw failure('EACCES', 'EACCES: OHOS_SANDBOX_DENIED: Node script entry is outside the authorized roots');
     if (!statSync(filename).isFile()) throw failure('ERR_OHOS_NODE_SCRIPT_ARGUMENTS', 'Node script entry must be a regular file');
     if (!/\.(?:js|cjs|mjs)$/.test(filename)) throw failure('ERR_OHOS_NODE_SCRIPT_ARGUMENTS', 'This Node Worker backend accepts .js, .cjs and .mjs files');
     entry = pathToFileURL(filename); argv = args.slice(1);
   }
   return new Worker(entry, {
-    workerData: { dshOhosNodeScript: { protocol: 1, cwd: canonicalCwd, roots: canonicalRoots,
+    workerData: { dshOhosNodeScript: { protocol: 1, cwd: canonicalCwd, roots: canonicalScriptRoots,
       workspaceRoots: canonicalWorkspaces, readOnly, stdin: input, streamStdin, inline } },
     argv, env, stdin: streamStdin, stdout: true, stderr: true,
     resourceLimits: { maxOldGenerationSizeMb: 256 },
