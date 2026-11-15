@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { isMainThread } from 'node:worker_threads';
 import { noteLinux } from './diagnostics.mjs';
+import { quarantineRetained } from './instance.mjs';
 import { linuxHostPaths } from './host-paths.mjs';
 import { deriveLinuxJobDiagnostic } from './job-diagnostics.mjs';
 import { LinuxProxyPolicy, withoutInheritedProxy } from './proxy.mjs';
@@ -17,6 +18,13 @@ const bounded = (value, limit, nul = false) => typeof value === 'string' && Buff
 // A routed command that cannot run ends with this shell status and message.
 const routed = (exitCode, code, message) => Object.assign(new Error(message), { code, exitCode });
 const settings = '设置 · 能力 · Linux 环境';
+// Failures that mean the retained private instance cannot be resumed: a replaced
+// App process left it mid-flight, or its recorded bytes no longer match. The lock
+// already proved no other owner is alive, so these are recoverable by quarantining
+// the retained bytes once and provisioning again.
+const recoverableRetained = new Set(['ERR_OHOS_LINUX_RECOVERY_REQUIRED', 'ERR_OHOS_LINUX_INSTANCE_CORRUPT',
+  'ERR_OHOS_LINUX_RETAINED_INSTANCE', 'ERR_OHOS_LINUX_ASSET_GENERATION', 'ERR_OHOS_LINUX_IMAGE_INTEGRITY',
+  'ERR_OHOS_LINUX_TARGET_IDENTITY', 'ERR_OHOS_LINUX_DIRECTORY_IDENTITY']);
 const emptyOutput = () => ({ encoding: 'base64', data: '', totalBytes: 0, retainedBytes: 0, truncated: false });
 const output = collector => {
   if (!collector) return emptyOutput();
@@ -162,7 +170,20 @@ export class LinuxControl {
       signal.throwIfAborted();
       this.#owner = module.createLinuxInstallationOwner({ ...this.#paths, manifest, exports: this.#exports,
         onProgress: event => this.#progressEvent(event) });
-      const result = await this.#owner.install({ signal });
+      let result;
+      try { result = await this.#owner.install({ signal }); }
+      catch (cause) {
+        // Only a retained-instance refusal is retried, and only once: a first boot
+        // failure with a fresh instance must still surface as itself.
+        if (!recoverableRetained.has(codeOf(cause))) throw cause;
+        const moved = await quarantineRetained(this.#paths.directory);
+        noteLinux('retained Linux instance quarantined code=' + codeOf(cause) + ' moved=' + moved.join(','), cause);
+        if (moved.length === 0) throw cause;
+        if (!this.#closing && this.#enabled) this.#progressEvent({ stage: 'quarantined' });
+        this.#owner = module.createLinuxInstallationOwner({ ...this.#paths, manifest, exports: this.#exports,
+          onProgress: event => this.#progressEvent(event) });
+        result = await this.#owner.install({ signal });
+      }
       this.#backend = result.backend; signal.throwIfAborted();
       if (this.#backend.state !== 'opened' || this.#backend.closed) throw fail('ERR_OHOS_LINUX_UNKNOWN', 'Guest opening did not remain valid');
       if (!this.#closing && this.#enabled) this.#phase = 'enabled';

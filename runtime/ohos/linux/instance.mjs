@@ -53,6 +53,27 @@ function decode(text, expected) {
   return value;
 }
 
+/**
+ * Move every retained entry aside instead of overwriting it.
+ *
+ * A replaced App process can leave a writable instance recorded as active or
+ * booting: the flock proves no live owner, but the record still forbids an
+ * automatic overwrite. Quarantining keeps the user's bytes on disk for manual
+ * recovery while letting the environment be provisioned again.
+ */
+export async function quarantineRetained(directory, { fs = promises } = {}) {
+  const kept = name => name === '.lock' || name.startsWith('.quarantine-');
+  const names = (await fs.readdir(directory)).filter(name => !kept(name));
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  const moved = [];
+  for (const name of names) {
+    const target = '.quarantine-' + stamp + '-' + name.replace(/^\./, '');
+    await fs.rename(join(directory, name), join(directory, target));
+    moved.push(target);
+  }
+  return moved;
+}
+
 // All paths are fixed below the host-captured private root. The real native
 // flock is held until retirement AND metadata handling finish; its inode is
 // never replaced. fs is injectable only for precise persistence fault tests.
@@ -114,7 +135,7 @@ export async function openLinuxInstance({ directory, manifest, lockExclusive }, 
     }
     const namedLock = await fs.lstat(lockPath, { bigint: true });
     if (!privateFile(namedLock) || !same(namedLock, lockInfo)) throw fail('ERR_OHOS_LINUX_LOCK_IDENTITY', 'Linux lock path changed during acquisition');
-    const names = (await fs.readdir(directory)).filter(name => name !== '.lock');
+    const names = (await fs.readdir(directory)).filter(name => name !== '.lock' && !name.startsWith('.quarantine-'));
     if (names.length) {
       existing = true;
       if (names.length !== 1 || !/^\.installation-[A-Za-z0-9_-]+$/.test(names[0])) throw fail('ERR_OHOS_LINUX_RETAINED_INSTANCE', 'Ambiguous retained Linux data requires explicit recovery');

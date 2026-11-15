@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { LinuxInstallationOwner } from '../../ohos/linux/owner.mjs';
+import { quarantineRetained } from '../../ohos/linux/instance.mjs';
 import { ownerFixture, until } from './linux-control-fixture.mjs';
 
 const record = active => join(active.directory, 'instance.json');
@@ -50,6 +51,24 @@ test('normal controlled close reopens the same real target with fresh epoch and 
   assert.equal((await read(active)).state, 'active');
   assert.equal((await second.dispose()).cleanCheckpoint, true);
   assert.equal((await read(active)).guestClose.epoch, reopened.active.epoch);
+});
+
+test('a retained instance left mid-flight is quarantined aside and provisioned again', async t => {
+  const { f, owner, active } = await installed(t);
+  // A replaced App process leaves the record dirty without ever cleaning up.
+  const saved = await read(active);
+  await fs.writeFile(record(active), JSON.stringify({ ...saved, state: 'booting' }) + '\n');
+  const { owner: blocked } = await next(t, f);
+  await assert.rejects(blocked.install(), { code: 'ERR_OHOS_LINUX_RECOVERY_REQUIRED' });
+  const moved = await quarantineRetained(f.data);
+  assert.equal(moved.length, 1); assert.match(moved[0], /^\.quarantine-\d{8}-\d{6}-installation-/);
+  await fs.access(join(f.data, moved[0]));
+  const g = await ownerFixture(t), fresh = g.createOwner({ directory: f.data });
+  const provisioned = await fresh.install();
+  assert.equal(fresh.bootMode, 'install');
+  assert.equal(g.counts().created, 1);
+  assert.equal((await read(provisioned.active)).state, 'active');
+  assert.equal((await fresh.dispose()).cleanCheckpoint, true);
 });
 
 test('dirty consume directory sync failure prevents native create and retains the visible booting record', async t => {
