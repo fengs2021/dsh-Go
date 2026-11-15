@@ -545,3 +545,50 @@ billion-context 的「原生插件模式」是让代理进程住进客户端里�
 - 插件「原生模式」在鸿蒙上的阻力不在插件本身，而在我们自己的进程沙箱：**execPath 身份、脚本入口白名单、worker fs 根、cwd** 四个面各有一道检查，插件会依次撞上。排查顺序照上表从上往下走，一轮只解一道。
 - 放宽可读根时坚持「会话写权限不放宽」：`pluginHelperRoots` 只给插件助手（`pluginNode` 车道），普通会话 node 仍用 `canonicalRoots`。
 - 插件中文文案在 `dist/agent/dsh-native-client.js` 里是 \uXXXX 转义字典（`var zh = {...}`），grep 中文字面量永远 0 命中——查文案直接看字典对象。
+
+## 16. 让压缩代理的上游转发真的通：WebAssembly → node:http dispatcher（2026-11-16 00:10–00:46，v54–v55）
+
+### 16.1 症状链
+| 轮次 | 现象 | 原因 | 修法 |
+| --- | --- | --- | --- |
+| v53 | `502 "acp-proxy failure: unknown <private-host>"`，bili.log：`fetch failed <- WebAssembly is not defined … proxy=direct` | 插件用自己的 bundled undici，`new Agent()` 要实例化 llhttp 的 WASM；手机端引擎无 `WebAssembly` | — |
+| v54 | 同上（全局符号发布没被用到） | `fetchWithTimeout` 里 `dispatcher: opts.dispatcher ?? directDispatcher(...)` **永远显式传 dispatcher**，绕过 `Symbol.for('undici.globalDispatcher.1')` | 改它的取用点 |
+| v55 | `WebAssembly` 报错归零，请求真正转发 | `patchBundledTransport()` 把 `new import_undici.Agent({…})` 换成「优先用 `Symbol.for('dsh.go.ohos.net').dispatcher`」 | ✅ |
+
+- 关键源码（手机端 `…/profiles/web/node_modules/billion-context/dist/index.js`）：
+  `function fetchWithTimeout(url,opts,timeoutMs,externalSignal,forceDirect){ … dispatcher: opts.dispatcher ?? directDispatcher(idleTimerDelayOverrideMs ?? effective) … }`；
+  `function directDispatcher(timeoutMs){ … agent = new import_undici.Agent({ headersTimeout: timeoutMs, bodyTimeout: timeoutMs, ...(ca ? { connect: { ca } } : {}) }) … }`。
+- 它那份 undici 的 `require_global.js` 只认 `Symbol.for('undici.globalDispatcher.1')`，且 `lazyllhttp()` 只有 `UNDICI_NO_WASM_SIMD` 一个开关（SIMD/非 SIMD 两条路都要 WebAssembly），**没有任何环境变量能关掉 WASM**。
+
+### 16.2 两处改动
+1. `runtime/ohos/net/fetch.mjs`：新增 `publishUndiciDispatcher(dispatcher)`，把我们的 dispatcher 挂到 `Symbol.for('undici.globalDispatcher.1')` 与 `…2` 上。**只顶替「本来就没人用」或「undici 默认 Agent」的位置**，已有显式主人就放弃（`published:false`）。遇到的坑：undici 定义这两个属性为 `writable:true, configurable:false`，再 `defineProperty` 会抛 `TypeError: Cannot redefine property`，必须用普通赋值。
+2. `runtime/ohos/process/vendor-patch.mjs`（新文件）：`patchBundledTransport(filename)` 在插件子进程启动前给它 bundle 里那段 `new import_undici.Agent({…})` 打补丁，改成
+   `agent = globalThis[Symbol.for('dsh.go.ohos.net')]?.dispatcher ?? (new import_undici.Agent({…}))`，
+   并以 `/* dsh-ohos:transport */` 标记幂等；写 `<file>.dsh-vendor` 再 rename 覆盖。接线点在 `runtime/ohos/process/node-script.mjs` 脚本入口校验通过之后。
+   - 只对白名单后缀生效（当前 `/billion-context/dist/index.js`）；找不到锚点只记 `[ohos-vendor] no transport anchor in …`，不动文件。
+   - 第 1 处（全局符号）本身不解决 billion-context，但保留：对「用全局 fetch 的自带 undici 插件」有效且无副作用。
+
+### 16.3 测试
+- `runtime/tests/ohos/vendor-transport-patch.test.mjs`（4 例）：打补丁 / 重复调用 cached / 无锚点 skipped / 非目标文件 undefined。
+- `runtime/tests/ohos/net-undici-global-dispatcher.test.mjs`（5 例）：每例起干净子进程并**动态** `import`（静态 import 会先把符号定义成 non-configurable）。含「已有显式 owner 就让位」「重复 install 幂等」「非 OHOS 不动全局」。
+- 四个文件合并：`node --test runtime/tests/ohos/vendor-transport-patch.test.mjs runtime/tests/ohos/net-undici-global-dispatcher.test.mjs runtime/tests/ohos/node-script-entry-roots.test.mjs runtime/tests/ohos/plugin-helper-roots.test.mjs` → **12 pass / 0 fail**。
+- 既有 `net-proxy-env.test.mjs`（20 fail）、`net.test.mjs`、`net-bootstrap.test.mjs` 需要真机 preload，改动前后结果一致，非回归。
+
+### 16.4 真机证据（v55，1.0.45+45）
+- 重启后代理第 10 次 listening；设备上 `dist/index.js` `grep -c 'dsh-ohos:transport'` = 1，原锚点 = 0。
+- bili.log 最后一条 `WebAssembly is not defined` 停在 **00:30:37（第 8074 行）**，00:38 之后 `[error]` 为 0；`forward POST → https://…/v1/chat/completions` 正常发出，00:40:11 出现 `[acp-usage] input=38554 cached=3840 (cache hit 10%)` —— **压缩代理的上游转发真的通了**。
+- 累计计数（含历史）：`forward POST` 189、`upstream request failed` 158、`WebAssembly is not defined` 154、`upstream 524` 17。
+
+### 16.5 剩下的 524 是网关侧（不是 App）
+- 现象：多个会话同时 `← upstream 524`：`{"title":"Error 524: A timeout occurred", "zone":"wbtx.fengs.fun", "detail":"The origin web server did not return a complete response within the 120-second Proxy Read Timeout window…"}`，另有 `upstream awaiting first byte ≥30s` 与 `upstream-reset (pre-response network failure): fetch failed`。
+- 独立取证（PC 上直连该网关，不带 key，看 TTFB）：`GET /v1/models` 返回 401 的 TTFB 采样 **23.9 s / 6.7 s / 3.1 s / 2.3 s / 2.2 s**，还夹一次连接失败（`code=000`）；同一时刻 `api.deepseek.com` 的 401 TTFB 是 **0.11 s / 0.19 s**。
+- 结论：Cloudflare 边缘到源站（用户自建网关 wb-proxy / cloudflared / nginx 那条链）本身就慢，>120 s 就会回 524。App 侧只能做重试与提示，根治要在网关。
+- 另有 `[degenerate-turn] plugin-passthrough-openai: turn ended length (max-output) with zero visible text and zero tool calls (thinking present)` —— 中转模型把额度全花在思考上、没吐正文，属模型/中转行为。
+
+### 16.6 产物
+| 版本 | 版本号 | runtimeVersion | unsigned md5 | signed md5 |
+| --- | --- | --- | --- | --- |
+| v54 | 1.0.44+44 | `ohos-c4b25566fe0fa2b656b5cbb4` | `a79b27c4cfa728fa55be76fb960abed3` | `f108e247d5d231a056b914ac12ff8149` |
+| v55 | 1.0.45+45 | `ohos-1981436a1cd172953cb7e172` | `6a9983a41057d784e82b814e9690211e` | `d223fc9933fcd61cad923104c05a3b31` |
+
+构建脚本：`scripts/compose52.sh`（v54）/ `compose53.sh`（v55）、`scripts/fullhap54.sh` / `fullhap55.sh`；签名表达式 `tools/hokit-asar/resign-expr-v54.js` / `resign-expr-v55.js`。

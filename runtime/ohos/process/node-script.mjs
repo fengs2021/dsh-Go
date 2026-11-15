@@ -3,6 +3,7 @@ import { isAbsolute, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { Worker } from 'node:worker_threads';
 import { inspect } from 'node:util';
+import { patchBundledTransport } from './vendor-patch.mjs';
 
 // Worker error events may carry any deserialized thrown value, including null.
 export function formatNodeScriptError(error) {
@@ -117,6 +118,7 @@ export function createNodeScriptWorker({ args, cwd, roots, workspaceRoots, plugi
     if (!canonicalScriptRoots.some(root => inside(root, filename))) throw failure('EACCES', 'EACCES: OHOS_SANDBOX_DENIED: Node script entry is outside the authorized roots');
     if (!statSync(filename).isFile()) throw failure('ERR_OHOS_NODE_SCRIPT_ARGUMENTS', 'Node script entry must be a regular file');
     if (!/\.(?:js|cjs|mjs)$/.test(filename)) throw failure('ERR_OHOS_NODE_SCRIPT_ARGUMENTS', 'This Node Worker backend accepts .js, .cjs and .mjs files');
+    patchBundledTransport(filename);
     entry = pathToFileURL(filename); argv = args.slice(1);
   }
   return new Worker(entry, {
