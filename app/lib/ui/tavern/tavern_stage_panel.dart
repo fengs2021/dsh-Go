@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
+import '../../state/providers_state.dart';
 import '../../tavern/tavern_backgrounds.dart';
 import '../../tavern/tavern_bookmarks.dart';
 import '../../tavern/tavern_card_theme.dart';
@@ -37,6 +38,7 @@ import 'tavern_chat_files.dart';
 import 'tavern_inspector_page.dart';
 import 'tavern_lorebooks_page.dart';
 import 'tavern_message_edit_page.dart';
+import 'tavern_model_picker.dart';
 import 'tavern_personas.dart';
 import 'tavern_presets_page.dart';
 import 'tavern_runs_page.dart';
@@ -203,6 +205,12 @@ class _Session extends ConsumerWidget {
     final persona = ref.watch(tavernPersonaSelectionProvider(chatId)).value?.persona;
     final preset = ref.watch(tavernPresetSelectionProvider(chatId)).value;
     final presets = ref.watch(tavernPresetsProvider).value ?? const <TavernPresetSummary>[];
+    // 模型: the official endpoint's, or one of 模型服务' channels; the row
+    // shows which and the picker holds both (tavern_model_picker.dart).
+    final route = settings.providerRoute;
+    final snapshot = route == null ? null : ref.watch(customProvidersProvider).value;
+    final channel = tavernChannelOf(settings, snapshot);
+    final channelKeyStored = route != null && (ref.watch(tavernProviderKeyStoredProvider(route)).value ?? false);
     final characterId = this.characterId;
 
     /// On a phone the panel is a drawer: close it on the way to a page.
@@ -224,17 +232,24 @@ class _Session extends ConsumerWidget {
         SettingsSection(
           title: l10n.tavernSessionUsing,
           margin: const EdgeInsets.only(bottom: 12),
+          // A channel without its key cannot answer: say so here rather than
+          // let the next reply fail on its own.
+          footer: route != null && !channelKeyStored ? Text(l10n.tavernProviderKeyMissing) : null,
           children: [
-            SettingsSegmentTile<String>(
+            SettingsTile(
               key: const ValueKey('tavern-session-model'),
-              title: l10n.tavernSettingsModel,
+              icon: AppIcons.model,
               tinted: false,
-              segments: [
-                PillSegment(tavernModels[0], l10n.tavernModelFlash),
-                PillSegment(tavernModels[1], l10n.tavernModelPro),
-              ],
-              selected: settings.model,
-              onChanged: (value) => unawaited(model.setModel(value)),
+              title: l10n.tavernSettingsModel,
+              value: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 190),
+                child: Text(
+                  tavernModelChoiceLabel(context, settings, channel),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              onTap: busy ? null : () => unawaited(showTavernModelPicker(context)),
             ),
             SettingsSwitchTile(
               key: const ValueKey('tavern-session-thinking'),

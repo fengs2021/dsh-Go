@@ -1,3 +1,4 @@
+import 'package:dsh_app/state/providers_state.dart';
 import 'package:dsh_app/tavern/tavern_preview.dart';
 import 'package:dsh_app/tavern/tavern_provider.dart';
 import 'package:dsh_app/tavern/tavern_settings.dart';
@@ -10,6 +11,7 @@ import 'package:dsh_tavern/dsh_tavern.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -43,7 +45,12 @@ class _Recorded extends PreviewTavern {
   }
 }
 
-Future<String> _open(WidgetTester tester, PreviewTavern tavern, {Size size = const Size(390, 844)}) async {
+Future<String> _open(
+  WidgetTester tester,
+  PreviewTavern tavern, {
+  Size size = const Size(390, 844),
+  List<Override> overrides = const [],
+}) async {
   SharedPreferences.setMockInitialValues({});
   final chat = (await tester.runAsync(() => tavern.createChat('sample-innkeeper')))!;
   tester.view.physicalSize = size * 2;
@@ -51,7 +58,7 @@ Future<String> _open(WidgetTester tester, PreviewTavern tavern, {Size size = con
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [tavernProvider.overrideWith((ref) => tavern)],
+      overrides: [tavernProvider.overrideWith((ref) => tavern), ...overrides],
       child: MaterialApp(
         theme: withTestFonts(buildLightTheme()),
         locale: const Locale('zh', 'CN'),
@@ -117,12 +124,15 @@ void main() {
       expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
     }
 
-    await tester.tap(
-      find.descendant(of: find.byKey(const ValueKey('tavern-session-model')), matching: find.text('V4 Pro')),
-    );
+    // 模型 is one row: the picker behind it holds both sources.
+    expect(find.text('Flash'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('tavern-session-model')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('tavern-model-official-${tavernModels[1]}')));
     await tester.pumpAndSettle();
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString(TavernSettingsController.modelKey), tavernModels[1]);
+    expect(find.text('V4 Pro'), findsOneWidget); // the row says so now
 
     await tester.scrollUntilVisible(
       find.byKey(const ValueKey('tavern-character-details')),
@@ -135,6 +145,71 @@ void main() {
     Navigator.of(tester.element(find.byType(TavernCharacterPage))).pop();
     await tester.pumpAndSettle();
     expect(find.byType(TavernStagePanel), findsNothing); // the drawer closed on the way
+  });
+
+  testWidgets('本局: the 模型 row also offers 模型服务\' channels, and picking one keeps its model', (tester) async {
+    await _open(
+      tester,
+      _Recorded(),
+      overrides: [
+        customProvidersProvider.overrideWith(
+          (ref) async => const ProvidersSnapshot(
+            supported: true,
+            providers: [
+              CustomProvider(
+                id: 'custom-wb',
+                displayName: 'WB Proxy',
+                api: ProviderApi.openaiCompletions,
+                baseUrl: 'http://127.0.0.1:9100/v1',
+                models: [ProviderModelSpec(id: 'hy4-preview'), ProviderModelSpec(id: 'hy4-pro')],
+              ),
+              // Not Chat Completions: the tavern's one transport cannot use
+              // it, so it stays out of the picker (tavernModelSourceNote).
+              CustomProvider(
+                id: 'custom-claude',
+                displayName: 'Claude GW',
+                api: ProviderApi.anthropicMessages,
+                models: [ProviderModelSpec(id: 'claude-1')],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    await tester.tap(find.byKey(const ValueKey('bot-action')));
+    await tester.pumpAndSettle();
+    expect(find.text('Flash'), findsOneWidget); // still the official one
+
+    await tester.tap(find.byKey(const ValueKey('tavern-session-model')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('tavern-model-channel-custom-wb')), findsOneWidget);
+    expect(find.byKey(const ValueKey('tavern-model-channel-custom-claude')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('tavern-model-channel-custom-wb-hy4-pro')));
+    await tester.pumpAndSettle();
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(TavernSettingsController.providerRouteKey), 'custom-wb');
+    expect(prefs.getString(TavernSettingsController.providerModelKey), 'hy4-pro');
+    expect(find.text('WB Proxy · hy4-pro'), findsOneWidget); // the row says which channel
+
+    // Back to the official endpoint: one tap, and the model is the official
+    // one again rather than the channel's.
+    await tester.tap(find.byKey(const ValueKey('tavern-session-model')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(ValueKey('tavern-model-official-${tavernModels[0]}')));
+    await tester.pumpAndSettle();
+    expect(prefs.getString(TavernSettingsController.providerRouteKey), isNull);
+    expect(find.text('Flash'), findsOneWidget);
+  });
+
+  testWidgets('本局: with no channel to pick, the picker says where they come from', (tester) async {
+    await _open(tester, _Recorded());
+    await tester.tap(find.byKey(const ValueKey('bot-action')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('tavern-session-model')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(ValueKey('tavern-model-official-${tavernModels[0]}')), findsOneWidget);
+    expect(find.textContaining('模型服务'), findsWidgets);
   });
 
   testWidgets('本局 gives this chat a preset of its own, or the default again', (tester) async {
