@@ -65,6 +65,9 @@ python3 runtime/ohos/package/compose-runtime.py --target ohos \
 
 ### 1.3 打 HAP
 
+> ⚠ 编译根不要放工作文件夹（drvfs/9p）：会挂死在 `prepare-sdk.py` 或 `prepare-forks.py` 的 rename 上。
+> 固定用 ext4 编译根、只回传 HAP，配方与实测时延见 §10。
+
 ```sh
 sed -i "s/^version: .*/version: 1.0.31+31/" app/pubspec.yaml
 bash tooling/ohos/check-arkts.sh --sdk /root/sdk --work /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/arkts-hap41 \
@@ -288,3 +291,112 @@ ohos-arm64-release-artifacts.zip（15,485,641，md5 ef9d1896730d4824175157ff0fda
   装机前先确认手机连的 Wi-Fi 与 PC 同网段且「无线调试」开着，否则只有 [Fail]Connect failed。
 - 装包命令与验收方法见 §5、§6；「酒馆可打开」的判据是进入酒馆页不弹引擎错误，
   hilog 里没有 sqlite3 / Failed to load dynamic library 报错。
+
+## 10. 编译根必须放 ext4（2026-11-15 定案，v44 起）
+
+**结论先写**：HAP 编译根不能放工作文件夹（drvfs / 9p），否则不是「慢」而是「必挂」；
+编译根固定用 ext4（`/root/b44`、`/root/b45` …），只把最终 HAP 回落到
+`<工作文件夹>/hap-build/`。ext4 上整包 **70 秒**，drvfs 上 20 分钟起步且会挂死。
+
+### 10.1 症状（三个不同的失败面）
+
+| 位置 | 症状 | 真因 |
+| --- | --- | --- |
+| `prepare-sdk.py` | 进程 `state D`、`wchan=p9_client_rpc`，几十分钟不动 | 单条 9p RPC 挂死（不是盘坏：同时刻 dd 4k×200 = 9.9 MB/s 正常） |
+| `prepare-forks.py:131` | `PermissionError: [Errno 13] … .fork-stage-xxxx -> …/prepared-forks/webview_flutter_ohos` | Windows 侧不允许 rename 覆盖已存在目录 |
+| `hvigor` 整体 | 20+ 分钟，热缓存也不快 | 每次全树 sha256 校验 14k 文件 + 小文件海量读写 |
+
+### 10.2 正确配方（fullhap44c.sh / fullhap45.sh）
+
+前置：把输入件与工具链缓存搬进 ext4 编译根，**只搬一次**，之后按目录存在就跳过：
+
+```bash
+export HOME=/root JAVA_HOME=/mnt/e/tools/ohbuild/jdk TMPDIR=/root/tmp45
+export PATH=/root/node-host/bin:/root/sdk/native/llvm/bin:/usr/local/bin:/usr/bin:/bin
+export https_proxy=http://127.0.0.1:7890 http_proxy=http://127.0.0.1:7890
+
+mkdir -p /root/b45/work
+# ① 下载 + fork 克隆缓存必须从上一版编译根复制过来（ext4→ext4 秒级）
+[ -d /root/b45/work/dl ] || cp -a /root/b44/work/{dl,embedding,tools} /root/b45/work/
+[ -d /root/b45/work/dl ] || cp -a /root/b44/work/sdk-hms-* /root/b45/work/ 2>/dev/null
+# ② runtime zip（compose 产物）拷进来
+cp -f <WS>/build/compose46/dsh-runtime-rawfile.zip /root/b45/runtime.zip
+
+cd <WS>/port40
+bash tooling/ohos/check-arkts.sh --sdk /root/sdk --work /root/b45/work --hms-stubs --full \
+  --aot /root/b44/aot --native /root/b44/native \
+  --runtime /root/b45/runtime.zip --node-headers /root/node-src/src
+```
+
+产物：`/root/b45/work/check-XXXX/app/ohos/entry/build/default/outputs/default/entry-default-unsigned.hap`
+（`check-XXXX` 每次随机，用 `ls -t /root/b45/work | head -1` 取最新），再 `cp` 到
+`<WS>/hap-build/dsh-ohos-vNN-unsigned.hap` 签名。
+
+### 10.3 缓存里必须保留 dl/forks
+
+`dl/forks/*` 是 7 个鸿蒙 fork 的 git 克隆（11 MB）。不搬进新编译根时，
+check-arkts 会去 atomgit promisor 远端补对象并失败：
+
+```
+fatal: could not fetch a367f93f… from promisor remote
+check-arkts: clone failed: https://atomgit.com/oh-flutter/flutter_packages.git image_picker-v1.2.1-ohos-1.0.1
+```
+
+### 10.4 实测时延
+
+| 阶段 | drvfs | ext4 |
+| --- | --- | --- |
+| 工具链缓存搬迁 | — | 33.8 s（一次性） |
+| 全量打包（hvigor + AOT + native + 205 MB runtime + audit） | ≥20 min，中途挂死 | **70 s** |
+| 大文件回传 drvfs | 145 MB/s（rsync 实测） | — |
+
+## 11. v43–v45 实测结论（2026-11-15）
+
+### 11.1 Linux 环境「出错了」的真因（v44 取证）
+
+设备上 App 私有目录**可读**（此前认为读不到是错的）：`hdc shell`（uid 2000）能读
+`/data/app/el2/100/base/io.github.ccch1mneyyy.dsh_app/files/`；只有
+`files/linux-tools/`（`drwx------ 20020326`）读不到。
+引擎进程 stderr 落在 `files/dsh-runtime/engine.log`（含 `[linux]` 诊断行），
+不必依赖 hilog —— ArkTS 侧不打日志，`hilog | grep linux` 一直是空的。
+
+v44（1.0.34+34，含 `[linux]` 诊断）engine.log 第 4299–4300 行：
+
+```
+[linux] install start instance=51e92b3d-… attempt=979d24e4-…
+[linux] install failed … ownerState=cancelled-before-vm
+  ERR_OHOS_LINUX_RECOVERY_REQUIRED: The retained Linux instance has no confirmed clean close;
+  automatic overwrite is forbidden
+```
+
+结论：不是镜像损坏、不是内存不足。`files/linux-tools/` 里留着上一次没有干净关闭的实例
+（`instance.json` 停在 `booting`/`active`），`openLinuxInstance()` 按安全契约拒绝覆盖 ⇒ 每次启动
+都失败，UI 停「出错了」+ restartRequired。`hdc install` 强杀旧进程正是制造这种残留的元凶。
+`files/linux-tools` 的 mtime 停在 v41 最后一次成功（10:04），之后 v42/v43 再没写进过任何东西。
+
+修法（提交 733a60bf，v45 起生效）：`control.mjs` 的 `#install` 捕获「残留实例类」错误码
+（`ERR_OHOS_LINUX_RECOVERY_REQUIRED` / `INSTANCE_CORRUPT` / `RETAINED_INSTANCE` /
+`ASSET_GENERATION` / `IMAGE_INTEGRITY` / `TARGET_IDENTITY` / `DIRECTORY_IDENTITY`）后调用
+`instance.mjs` 新增的 `quarantineRetained()`，把旧实例整体改名成
+`.quarantine-YYYYMMDD-HHMMSS-<原名>`，再用新 owner 重试一次；`moved.length===0` 则原样抛出。
+自愈必须放 control 层而不是 owner 层——`linux-instance.test.mjs:64`、
+`linux-instance-process.test.mjs:79,91` 断言 owner 必须拒绝（created/downloads 均为 0）。
+
+### 11.2 v43 / v44 / v45 产物事实
+
+| 版本 | versionCode | runtimeVersion | HAP 未签名 | HAP 已签名 | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| v43 | 33 / 1.0.33 | — | — | 已装 16:06 包 | 无任何 Linux 侧日志，取证不可用 |
+| v44 | 34 / 1.0.34 | ohos-ec90025405e15ff7a04aafa7 | 274,324,190 B / md5 430368b6a81d04078fe33497198ef1b0 | 274,400,117 B / md5 25c13eed3951cd38c53bda1dbed8bac2 | 只带 `[linux]` 诊断日志，取到真码 |
+| v45 | 35 / 1.0.35 | ohos-d0378a6e4d61d36a1c72cb4e | 274,324,991 B | 274,400,119 B / md5 92a4c20de68bbbbcf0ed3cdaf45685e8 | 含 733a60bf 隔离自愈；**2026-11-15 17:50 装机时手机掉线，尚未验证** |
+
+`runtime.zip` 从 v41 的 87,458,968 B / 12,425 条目涨到 205,335,121 B / 55,554 条目，
+是因为 rc.3 的 npm 包里带 `src/*.ts`；HAP 因此从 155 MB 涨到 274 MB。
+
+### 11.3 hdc 装机的两个硬坑
+
+1. 目标列表同时有 TCP 与 USB serial 时必须显式指定：
+   `hdc.exe -t 192.168.2.102:45957 install -r dsh-ohos-vNN-signed.hap`，
+   否则 `[Fail]ExecuteCommand need connect-key? please confirm a device by help info`。
+2. 不要在别的 cwd 里传 Windows 绝对路径——会被拼到当前 cwd 后面
+   （`D:\…\workspace\D:/Users/…` no such file）。先 `cd <WS>/hap-build` 再传相对文件名。
