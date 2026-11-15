@@ -21,6 +21,7 @@
   - 视觉小说逐字显示、自动、跳过（4cff2d12），没合上的引号也按对白上色。
   - 旧回复本来就能左右滑换备选，只是不带 ‹ ›。
   - v47：舞台「本局」的「模型」行也能直接选「设置 · 模型服务」里的自定义渠道（渠道 + 模型一次选完），不再只有官方 Flash / V4 Pro；见 [harmonyos/v47-tavern-stage-channel.zh.md](harmonyos/v47-tavern-stage-channel.zh.md)。
+  - v49：渠道真正能用了 —— 酒馆从**这台手机**直连渠道：每渠道一个「连接地址」（默认渠道自己的，回环时提示换成局域网地址）和一个只留在手机的密钥，带「测试连接」；不再误跳 DeepSeek 密钥页；见 [harmonyos/v49-tavern-channel-phone.zh.md](harmonyos/v49-tavern-channel-phone.zh.md)。
 - 正则：Pro 的 T11 已经把脚本分成写回、提示词、显示三路，还缺两样：
   - 给 App 用的显示接口；
   - 超时保护：常驻 Isolate，超时就杀。

@@ -3,14 +3,15 @@
 // DeepSeek key (settings_state.dart) or from one of the user's custom channels
 // (自定义渠道, 模型服务) — see [TavernSettings.providerRoute]. No key is stored
 // here: the DeepSeek one lives in the app's settings, a channel's in the
-// provider key vault (provider_keys.dart) and the engine's credential store.
+// provider key vault (provider_keys.dart) or, for this phone, in
+// tavern_channel_connection.dart; the engine keeps its own credential store.
 
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../state/provider_keys.dart';
+import 'tavern_channel_connection.dart';
 
 /// The models the tavern offers, cheapest first.
 const tavernModels = ['deepseek-flash', 'deepseek-v4-pro'];
@@ -68,6 +69,7 @@ class TavernSettings {
     this.islandOffline = false,
     this.canvas = false,
     this.costAlert = 0,
+    this.channelBaseUrls = const {},
     this.loaded = false,
   });
 
@@ -122,6 +124,16 @@ class TavernSettings {
   /// DeepSeek's list prices) is said to over the composer. One of
   /// [tavernCostAlerts]; 0 is off.
   final double costAlert;
+
+  /// The address this phone dials, per channel route, when the channel's own
+  /// is not what a phone can reach (tavern_channel_connection.dart). A route
+  /// with no entry uses the channel's Base URL.
+  final Map<String, String> channelBaseUrls;
+
+  /// The address to dial for [route] from this phone; null to use the
+  /// channel's own.
+  String? channelBaseUrl(String route) => channelBaseUrls[route];
+
   final bool loaded;
 
   TavernSettings copyWith({
@@ -144,6 +156,7 @@ class TavernSettings {
     bool? islandOffline,
     bool? canvas,
     double? costAlert,
+    Map<String, String>? channelBaseUrls,
   }) => TavernSettings(
     model: model ?? this.model,
     // A null argument above cannot clear a field, hence the flags.
@@ -163,6 +176,7 @@ class TavernSettings {
     islandOffline: islandOffline ?? this.islandOffline,
     canvas: canvas ?? this.canvas,
     costAlert: costAlert ?? this.costAlert,
+    channelBaseUrls: channelBaseUrls ?? this.channelBaseUrls,
     loaded: true,
   );
 }
@@ -185,6 +199,10 @@ class TavernSettingsController extends Notifier<TavernSettings> {
   static const islandOfflineKey = 'tavern.islandOffline';
   static const canvasKey = 'tavern.canvas';
   static const costAlertKey = 'tavern.costAlert';
+
+  /// `tavern.channelBaseUrl.<route>`: the address this phone dials for one
+  /// channel (tavern_channel_connection.dart).
+  static const channelBaseUrlPrefix = 'tavern.channelBaseUrl.';
 
   @override
   TavernSettings build() {
@@ -215,6 +233,7 @@ class TavernSettingsController extends Notifier<TavernSettings> {
         islandOffline: prefs.getBool(islandOfflineKey) ?? false,
         canvas: prefs.getBool(canvasKey) ?? false,
         costAlert: _oneOf(prefs.getDouble(costAlertKey), tavernCostAlerts, 0),
+        channelBaseUrls: _channelBaseUrls(prefs),
         loaded: true,
       );
     } catch (_) {
@@ -327,6 +346,36 @@ class TavernSettingsController extends Notifier<TavernSettings> {
     await _save((prefs) => prefs.setDouble(costAlertKey, usd));
   }
 
+  /// The per-channel addresses stored on this phone.
+  static Map<String, String> _channelBaseUrls(SharedPreferences prefs) {
+    final addresses = <String, String>{};
+    for (final key in prefs.getKeys()) {
+      if (!key.startsWith(channelBaseUrlPrefix)) continue;
+      final value = (prefs.getString(key) ?? '').trim();
+      if (value.isEmpty) continue;
+      addresses[key.substring(channelBaseUrlPrefix.length)] = value;
+    }
+    return addresses;
+  }
+
+  /// Where the tavern dials [route] from this phone; null (or empty) goes back
+  /// to the channel's own address.
+  Future<void> setChannelBaseUrl(String route, String? url) async {
+    final trimmed = url?.trim() ?? '';
+    final next = Map<String, String>.of(state.channelBaseUrls);
+    if (trimmed.isEmpty) {
+      next.remove(route);
+    } else {
+      next[route] = trimmed;
+    }
+    state = state.copyWith(channelBaseUrls: next);
+    await _save(
+      (prefs) => trimmed.isEmpty
+          ? prefs.remove('$channelBaseUrlPrefix$route')
+          : prefs.setString('$channelBaseUrlPrefix$route', trimmed),
+    );
+  }
+
   /// [value] trimmed, or null when it is empty (an unset preference).
   static String? _nonEmpty(String? value) {
     final trimmed = value?.trim() ?? '';
@@ -346,22 +395,14 @@ class TavernSettingsController extends Notifier<TavernSettings> {
 
 final tavernSettingsProvider = NotifierProvider<TavernSettingsController, TavernSettings>(TavernSettingsController.new);
 
-/// Whether this phone's copy of a channel's key (provider_keys.dart) is there.
-///
-/// Only a key typed in the app for the **local** engine has one: a key typed
-/// while a remote host was active lives on that host only. The tavern calls from
-/// here, so that is the copy it can read; a channel with no key in this vault
-/// reads as missing, and the settings page says where to type it
-/// (设置 · 模型服务).
-final tavernProviderKeyStoredProvider = FutureProvider.autoDispose.family<bool, String>((ref, route) async {
-  try {
-    final keys = await ref.watch(providerKeyVaultProvider).readAll();
-    return (keys[route] ?? '').trim().isNotEmpty;
-  } catch (_) {
-    // No secure storage (a test, a platform without it): nothing stored here.
-    return false;
-  }
-});
+/// Whether this phone holds a key for a channel: the one typed in the tavern
+/// itself (tavern_channel_connection.dart) or the vault's copy (a key typed in
+/// the app while the **local** engine was active). A key that lives only on a
+/// remote host reads as missing here — the tavern calls from this phone, so
+/// that is the only copy it can use.
+final tavernProviderKeyStoredProvider = FutureProvider.autoDispose.family<bool, String>(
+  (ref, route) async => await tavernChannelKey(ref, route) != null,
+);
 
 /// One chat's own layout, over 酒馆设置's; null follows the setting.
 class TavernChatLayoutController extends Notifier<TavernLayout?> {

@@ -13433,6 +13433,33 @@
   "tavernGroupErrorInvalidLimit": "每轮至少要有一个人说话",
   "tavernGroupErrorInvalidOrder": "排的顺序和群里的成员对不上，请重新打开再排",
   "tavernGroupErrorHostInUse": "这个角色是一个群聊的群主，先删掉那个群聊",
+  "tavernChannelAddress": "连接地址",
+  "tavernChannelAddressDefault": "渠道默认",
+  "tavernChannelAddressHint": "留空则用渠道自己的地址",
+  "tavernChannelAddressLoopback": "这个地址是本机回环，手机会连到它自己。改成主机的局域网地址，例如 http://192.168.1.10:8080/v1",
+  "tavernChannelKeyHint": "「设置 › 模型服务」里这个渠道的密钥",
+  "tavernChannelNote": "酒馆从这台手机直接连这个地址，不经主机。",
+  "tavernChannelPhone": "渠道连接",
+  "tavernChannelProbe": "测试连接",
+  "tavernChannelProbeFailed": "连不上：{message}",
+  "@tavernChannelProbeFailed": {
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "tavernChannelProbeOk": "连接正常 · 列出 {count} 个模型",
+  "@tavernChannelProbeOk": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tavernChannelReset": "恢复渠道默认",
+  "tavernChannelSave": "保存",
+  "tavernErrorChannelNoKey": "这个渠道在这台手机上还没有密钥，在「酒馆 › 我的 › 渠道连接」里填一下",
   "updateCheck": "检查更新",
   "updateAutoCheck": "自动检查更新",
   "updateAutoCheckDaily": "每天检查一次",

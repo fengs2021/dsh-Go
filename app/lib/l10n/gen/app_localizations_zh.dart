@@ -22233,6 +22233,49 @@ class L10nZh extends L10n {
   String get tavernGroupErrorHostInUse => '这个角色是一个群聊的群主，先删掉那个群聊';
 
   @override
+  String get tavernChannelAddress => '连接地址';
+
+  @override
+  String get tavernChannelAddressDefault => '渠道默认';
+
+  @override
+  String get tavernChannelAddressHint => '留空则用渠道自己的地址';
+
+  @override
+  String get tavernChannelAddressLoopback => '这个地址是本机回环，手机会连到它自己。改成主机的局域网地址，例如 http://192.168.1.10:8080/v1';
+
+  @override
+  String get tavernChannelKeyHint => '「设置 › 模型服务」里这个渠道的密钥';
+
+  @override
+  String get tavernChannelNote => '酒馆从这台手机直接连这个地址，不经主机。';
+
+  @override
+  String get tavernChannelPhone => '渠道连接';
+
+  @override
+  String get tavernChannelProbe => '测试连接';
+
+  @override
+  String tavernChannelProbeFailed(String message) {
+    return '连不上：$message';
+  }
+
+  @override
+  String tavernChannelProbeOk(int count) {
+    return '连接正常 · 列出 $count 个模型';
+  }
+
+  @override
+  String get tavernChannelReset => '恢复渠道默认';
+
+  @override
+  String get tavernChannelSave => '保存';
+
+  @override
+  String get tavernErrorChannelNoKey => '这个渠道在这台手机上还没有密钥，在「酒馆 › 我的 › 渠道连接」里填一下';
+
+  @override
   String get updateCheck => '检查更新';
 
   @override

@@ -23465,6 +23465,51 @@ class L10nEn extends L10n {
   String get tavernGroupErrorHostInUse => 'This character hosts a group chat; delete that chat first';
 
   @override
+  String get tavernChannelAddress => 'Address';
+
+  @override
+  String get tavernChannelAddressDefault => 'Channel default';
+
+  @override
+  String get tavernChannelAddressHint => 'Leave it empty to use the channel\'s own';
+
+  @override
+  String get tavernChannelAddressLoopback =>
+      'This address is this machine\'s loopback, so the phone would dial itself. Use the host\'s LAN address, e.g. http://192.168.1.10:8080/v1';
+
+  @override
+  String get tavernChannelKeyHint => 'The key this channel has under Settings › Model services';
+
+  @override
+  String get tavernChannelNote => 'The tavern dials this address from this phone, not through the host.';
+
+  @override
+  String get tavernChannelPhone => 'Channel connection';
+
+  @override
+  String get tavernChannelProbe => 'Test connection';
+
+  @override
+  String tavernChannelProbeFailed(String message) {
+    return 'Can\'t connect: $message';
+  }
+
+  @override
+  String tavernChannelProbeOk(int count) {
+    return 'Connected · $count models listed';
+  }
+
+  @override
+  String get tavernChannelReset => 'Reset to the channel default';
+
+  @override
+  String get tavernChannelSave => 'Save';
+
+  @override
+  String get tavernErrorChannelNoKey =>
+      'This channel has no key on this phone yet; add one in Tavern › Me › Channel connection';
+
+  @override
   String get updateCheck => 'Check for updates';
 
   @override

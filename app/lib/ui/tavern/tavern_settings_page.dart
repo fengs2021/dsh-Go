@@ -12,6 +12,7 @@ import '../../state/app_mode_state.dart';
 import '../../state/providers_state.dart';
 import '../../state/attachments.dart' show formatBytes;
 import '../../state/settings_state.dart';
+import '../../tavern/tavern_channel_connection.dart';
 import '../../tavern/tavern_generation.dart';
 import '../../tavern/tavern_provider.dart';
 import '../../tavern/tavern_quick_replies.dart';
@@ -23,12 +24,12 @@ import '../common/app_sheet.dart';
 import '../common/sheet_title_bar.dart';
 import '../modes/mode_switch.dart';
 import '../onboarding/api_key_page.dart';
-import '../providers/providers_page.dart';
 import '../settings/settings_widgets.dart';
 import '../shell/page_frame.dart';
 import '../theme/app_icons.dart';
 import '../theme/theme.dart';
 import 'tavern_backup.dart';
+import 'tavern_channel_sheet.dart';
 import 'tavern_import_files.dart';
 import 'tavern_personas.dart';
 import 'tavern_preset_page.dart';
@@ -111,6 +112,10 @@ List<Widget> tavernSettingsGroups(BuildContext context, WidgetRef ref) {
       ? null
       : channelModels.first;
   final channelKeyStored = route != null && (ref.watch(tavernProviderKeyStoredProvider(route)).value ?? false);
+  // What this phone dials: the address typed for the channel, else its own.
+  final channelAddressOverride = route == null ? null : settings.channelBaseUrl(route);
+  final channelAddress = channelAddressOverride ?? channel?.baseUrl;
+  final channelLoopback = channelAddress != null && tavernChannelLoopback(channelAddress);
 
   /// Which channel the calls go to: the ones 模型服务 declares, read now
   /// because the list is the engine's and may still be arriving.
@@ -255,15 +260,37 @@ List<Widget> tavernSettingsGroups(BuildContext context, WidgetRef ref) {
           value: Text(channelModel ?? l10n.tavernProviderModelNone),
           onTap: channelModels.isEmpty ? null : () => unawaited(pickChannelModel()),
         ),
+        // The channel's address and key as **this phone** has them: the tavern
+        // dials from here, so a channel whose Base URL is the host's loopback
+        // needs the address a phone can reach typed in.
+        SettingsTile(
+          key: const ValueKey('tavern-provider-address'),
+          icon: AppIcons.link,
+          title: l10n.tavernChannelAddress,
+          subtitle: l10n.tavernChannelAddressHint,
+          value: Text(channelAddressOverride ?? l10n.tavernChannelAddressDefault),
+          onTap: () => unawaited(showTavernChannelSheet(context, route: route)),
+        ),
         SettingsTile(
           key: const ValueKey('tavern-provider-key'),
           icon: channelKeyStored ? AppIcons.apiKey : AppIcons.noApiKey,
           title: l10n.tavernProviderKey,
-          subtitle: l10n.tavernProviderKeySubtitle,
+          subtitle: l10n.tavernChannelNote,
           value: Text(channelKeyStored ? l10n.tavernApiKeySet : l10n.tavernProviderKeyMissing),
-          onTap: () =>
-              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ProvidersPage())),
+          onTap: () => unawaited(showTavernChannelSheet(context, route: route)),
         ),
+        if (channelLoopback)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+            child: Text(
+              l10n.tavernChannelAddressLoopback,
+              key: const ValueKey('tavern-provider-address-warning'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.error,
+                height: 1.5,
+              ),
+            ),
+          ),
       ] else ...[
         SettingsSegmentTile<String>(
           key: const ValueKey('tavern-model'),

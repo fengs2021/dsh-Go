@@ -59,6 +59,7 @@ import '../theme/app_icons.dart';
 import '../theme/theme.dart';
 import '../wallpaper/wallpaper_backdrop.dart';
 import 'tavern_arrive.dart';
+import 'tavern_channel_sheet.dart';
 import 'tavern_canvas_view.dart';
 import 'tavern_component_view.dart';
 import 'tavern_group_page.dart';
@@ -499,7 +500,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
               action: switch (kind) {
                 // Trying again cannot help until the key is there.
                 TavernFailure.noKey ||
-                TavernFailure.badKey => (label: l10n.commonSettings, onPressed: _openKeySettings),
+                TavernFailure.badKey => _keyAction(),
                 // Nothing stored: the line is back in the composer, send it
                 // again. Half a reply: write that reply again.
                 _ => (
@@ -653,7 +654,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
                   error: _failureText(kind, detail),
                   action: switch (kind) {
                     TavernFailure.noKey ||
-                    TavernFailure.badKey => (label: l10n.commonSettings, onPressed: _openKeySettings),
+                    TavernFailure.badKey => _keyAction(),
                     // Kept: the group goes on from it. Not kept: send it again.
                     _ => (
                       label: l10n.commonRetry,
@@ -684,8 +685,8 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
   /// nothing; muted or not.
   void _speak(String characterId) {
     if (_running) return;
-    if (_tavern is! TavernPreview && !ref.read(settingsProvider).hasApiKey) {
-      _openKeySettings();
+    if (_keyMissingNow()) {
+      _keyAction().onPressed();
       return;
     }
     unawaited(HapticFeedback.selectionClick());
@@ -763,7 +764,9 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
   String _failureText(TavernFailure kind, String? detail) {
     final l10n = context.l10n;
     return switch (kind) {
-      TavernFailure.noKey => l10n.tavernErrorNoKey,
+      TavernFailure.noKey => ref.read(tavernSettingsProvider).providerRoute == null
+          ? l10n.tavernErrorNoKey
+          : l10n.tavernErrorChannelNoKey,
       TavernFailure.badKey => l10n.tavernErrorBadKey,
       TavernFailure.busy => l10n.tavernErrorBusy,
       TavernFailure.network => l10n.tavernErrorNetwork,
@@ -784,8 +787,8 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
       return;
     }
     // No key yet: the line would only fail. Keep it, and go and add one.
-    if (_tavern is! TavernPreview && !ref.read(settingsProvider).hasApiKey) {
-      _openKeySettings();
+    if (_keyMissingNow()) {
+      _keyAction().onPressed();
       return;
     }
     if (slash != null) {
@@ -1057,11 +1060,39 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
       };
       _action = switch (failure?.$1) {
         null => null,
-        TavernFailure.noKey || TavernFailure.badKey => (label: l10n.commonSettings, onPressed: _openKeySettings),
+        TavernFailure.noKey || TavernFailure.badKey => _keyAction(),
         _ => (label: l10n.commonRetry, onPressed: _impersonate),
       };
     });
     if (failure == null) _focus.requestFocus();
+  }
+
+  /// Where the key the calls need is set: a channel keeps its own (酒馆 › 我的
+  /// › 渠道连接), the official endpoint keeps the DeepSeek one.
+  ({String label, VoidCallback onPressed}) _keyAction() {
+    final route = ref.read(tavernSettingsProvider).providerRoute;
+    if (route == null) return (label: context.l10n.commonSettings, onPressed: _openKeySettings);
+    return (
+      label: context.l10n.tavernChannelPhone,
+      onPressed: () => unawaited(showTavernChannelSheet(context, route: route)),
+    );
+  }
+
+  /// Whether a key is known to be missing for the calls this chat makes, as of
+  /// now (a guard, outside build): unknown counts as present, so the call gets
+  /// to report its own failure.
+  bool _keyMissingNow() {
+    if (_tavern is TavernPreview) return false;
+    final route = ref.read(tavernSettingsProvider).providerRoute;
+    if (route == null) return !ref.read(settingsProvider).hasApiKey;
+    return ref.read(tavernProviderKeyStoredProvider(route)).value == false;
+  }
+
+  /// The same, for build: the channel's own key when a channel is the source.
+  bool _hasKeyForCalls(WidgetRef ref) {
+    final route = ref.watch(tavernSettingsProvider.select((s) => s.providerRoute));
+    if (route == null) return ref.watch(settingsProvider.select((s) => s.hasApiKey));
+    return ref.watch(tavernProviderKeyStoredProvider(route)).value ?? true;
   }
 
   /// Where the DeepSeek key is set (as 酒馆设置 opens it); the line waits in
@@ -1605,8 +1636,8 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // No key yet: say so before the first line, not after it fails.
-              if (!preview && _error == null && !ref.watch(settingsProvider.select((s) => s.hasApiKey)))
-                _KeyMissing(onAdd: _openKeySettings),
+              if (!preview && _error == null && !_hasKeyForCalls(ref))
+                _KeyMissing(onAdd: _keyAction().onPressed),
               if (_error == null && scriptsWaiting > 0 && hintCharacter != null)
                 Padding(
                   key: const ValueKey('tavern-scripts-hint'),
@@ -1648,7 +1679,7 @@ class _TavernChatPageState extends ConsumerState<TavernChatPage> {
                   onSendOptions: _input.text.isEmpty ? null : () => unawaited(_sendOptions()),
                   onStop: _stop,
                   voice: _voice,
-                  placeholder: !preview && !ref.watch(settingsProvider.select((s) => s.hasApiKey))
+                  placeholder: !preview && !_hasKeyForCalls(ref)
                       ? l10n.tavernComposerNoKey
                       : l10n.tavernComposerHint(name),
                   leading: TavernPersonaKey(chatId: widget.chatId, enabled: !_running),

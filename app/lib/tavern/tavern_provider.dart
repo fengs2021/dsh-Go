@@ -9,10 +9,10 @@ import 'package:dsh_tavern/dsh_tavern.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../state/provider_keys.dart';
 import '../state/providers_state.dart';
 import '../state/settings_state.dart';
 import 'deferred_tavern.dart';
+import 'tavern_channel_connection.dart';
 import 'tavern_script_host.dart';
 import 'tavern_settings.dart';
 
@@ -38,10 +38,12 @@ final tavernProvider = Provider<Tavern>((ref) {
 /// A channel is used only when it speaks OpenAI Chat Completions (the one
 /// transport llm/model_client.dart speaks) and lists at least one model. While
 /// the channel list is not read back yet (engine offline, still loading) the
-/// official endpoint stands in, rather than a half-configured call. Its key is
-/// this phone's copy (provider_keys.dart); with none the call fails
-/// TavernFailure.noKey before anything is sent, and 酒馆设置 says where to type
-/// it. 费用/用量 estimates stay DeepSeek's list prices.
+/// official endpoint stands in, rather than a half-configured call. Its key and
+/// its address are this phone's own (tavern_channel_connection.dart): a channel
+/// declared on a desktop may point at that machine's loopback and keep its key
+/// only there. With no key the call fails TavernFailure.noKey before anything
+/// is sent, and 酒馆设置 says where to type it. 费用/用量 estimates stay
+/// DeepSeek's list prices.
 TavernModelConfig tavernModelConfig(Ref ref, TavernSettings settings) {
   final route = settings.providerRoute;
   final provider = route == null ? null : ref.read(customProvidersProvider).value?.byId(route);
@@ -51,11 +53,12 @@ TavernModelConfig tavernModelConfig(Ref ref, TavernSettings settings) {
   final models = [for (final model in provider.models) model.id];
   final chosen = settings.providerModel;
   return TavernModelConfig(
-    apiKey: () async {
-      final key = (await _providerKeys(ref))[provider.id]?.trim() ?? '';
-      return key.isEmpty ? null : key;
-    },
-    baseUrl: provider.baseUrl,
+    // The key typed for this channel on this phone, else the vault's copy: a
+    // key that lives only on a remote host cannot be read from here.
+    apiKey: () => tavernChannelKey(ref, provider.id),
+    // [TavernSettings.channelBaseUrl]: a channel's own address may be the
+    // host's loopback, which a phone can only dial to itself.
+    baseUrl: settings.channelBaseUrl(provider.id) ?? provider.baseUrl,
     model: chosen != null && models.contains(chosen) ? chosen : models.first,
     // Only DeepSeek's own host takes its thinking field and /beta endpoint; a
     // channel proxying DeepSeek is still an ordinary OpenAI endpoint.
@@ -73,15 +76,6 @@ TavernModelConfig _officialModelConfig(Ref ref, TavernSettings settings) => Tave
   model: settings.model,
   thinking: settings.thinking,
 );
-
-Future<Map<String, String>> _providerKeys(Ref ref) async {
-  try {
-    return await ref.read(providerKeyVaultProvider).readAll();
-  } catch (_) {
-    // No secure storage (a test, a platform without it): no key, then.
-    return const {};
-  }
-}
 
 /// The app's host for card scripts, one per tavern: what the engine delivers
 /// to a canvas page's script context goes to that page.

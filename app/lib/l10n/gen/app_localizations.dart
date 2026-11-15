@@ -40748,6 +40748,84 @@ abstract class L10n {
   /// **'这个角色是一个群聊的群主，先删掉那个群聊'**
   String get tavernGroupErrorHostInUse;
 
+  /// No description provided for @tavernChannelAddress.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接地址'**
+  String get tavernChannelAddress;
+
+  /// No description provided for @tavernChannelAddressDefault.
+  ///
+  /// In zh, this message translates to:
+  /// **'渠道默认'**
+  String get tavernChannelAddressDefault;
+
+  /// No description provided for @tavernChannelAddressHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'留空则用渠道自己的地址'**
+  String get tavernChannelAddressHint;
+
+  /// No description provided for @tavernChannelAddressLoopback.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个地址是本机回环，手机会连到它自己。改成主机的局域网地址，例如 http://192.168.1.10:8080/v1'**
+  String get tavernChannelAddressLoopback;
+
+  /// No description provided for @tavernChannelKeyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'「设置 › 模型服务」里这个渠道的密钥'**
+  String get tavernChannelKeyHint;
+
+  /// No description provided for @tavernChannelNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'酒馆从这台手机直接连这个地址，不经主机。'**
+  String get tavernChannelNote;
+
+  /// No description provided for @tavernChannelPhone.
+  ///
+  /// In zh, this message translates to:
+  /// **'渠道连接'**
+  String get tavernChannelPhone;
+
+  /// No description provided for @tavernChannelProbe.
+  ///
+  /// In zh, this message translates to:
+  /// **'测试连接'**
+  String get tavernChannelProbe;
+
+  /// No description provided for @tavernChannelProbeFailed.
+  ///
+  /// In zh, this message translates to:
+  /// **'连不上：{message}'**
+  String tavernChannelProbeFailed(String message);
+
+  /// No description provided for @tavernChannelProbeOk.
+  ///
+  /// In zh, this message translates to:
+  /// **'连接正常 · 列出 {count} 个模型'**
+  String tavernChannelProbeOk(int count);
+
+  /// No description provided for @tavernChannelReset.
+  ///
+  /// In zh, this message translates to:
+  /// **'恢复渠道默认'**
+  String get tavernChannelReset;
+
+  /// No description provided for @tavernChannelSave.
+  ///
+  /// In zh, this message translates to:
+  /// **'保存'**
+  String get tavernChannelSave;
+
+  /// No description provided for @tavernErrorChannelNoKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个渠道在这台手机上还没有密钥，在「酒馆 › 我的 › 渠道连接」里填一下'**
+  String get tavernErrorChannelNoKey;
+
   /// No description provided for @updateCheck.
   ///
   /// In zh, this message translates to:
