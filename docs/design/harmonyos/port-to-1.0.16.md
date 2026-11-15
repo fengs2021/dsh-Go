@@ -108,3 +108,15 @@
 
 **推送（2026-11-15）**：`git push fork port/v40:port/v40` → `fengs2021/dsh-Go` 的 `refs/heads/port/v40` = `ce13c895`。
 底座提交 `1948e7b7` 尚未进 fork（fork 的 `claude/harmonyos-ohos` 停在 `f47b11dd` = 2026-11-10），所以这条分支挂在 fork 上是一个**新分支**，没有改动任何上游分支。旧线 v16–v39 仍在 `fengs2021/dsh-Go` 的 `ohos/v8` = `e0162393`。
+
+## 阶段 4（2026-11-15 晚）：`script` 批量动作 + 现状专题文档
+
+用户把诉求说清楚了：不要投屏插件（`ns-zzj/dsh-hos-scrcpy` 的 provider 要桌面 JVM + 网页会话挂载点，手机版里没有），要的是**原生操作鸿蒙**。盘点结论是这套能力早就在包里——读屏、点按、长按、滑动、输入、按键、截图、应用启停都有，真机也跑通过（v30–v32 的 engine 日志里有 `[phone-hdc] probe ok … uid=2000(shell)` 与 `[phone-probe] dump ok 4364ms screen=1320x2848 nodes=42`）。真正缺的是「一次只能做一个动作」，所以补了批量动作，并把现状写成专题文档。
+
+| 文件 | 改动 |
+| --- | --- |
+| `runtime/ohos/phone/ui-tools.mjs` | 新增 `runScript(steps, actions, effects)`（导出，纯逻辑）与 `uiScript` 包装，动作表加 `script`；上限 20 步，拒绝空/超长/嵌套/未知 action/非对象步骤，首个失败即停并回报已完成步骤，`dispatched` 只由真正生效的点击类动作置位；`mcp__phone__ui` 的 description、`action` 枚举、`steps` 参数、审批文案同步 |
+| `runtime/tests/ohos/phone-ui-tools.test.mjs` | +5 例 script 用例，总数 13 → **18** |
+| `docs/design/harmonyos/phone-native-control.zh.md`（新） | 能力矩阵（工具/动作）、坐标与控件挑选、成功口径与三态、`script` 用法、截图给模型看的链路、授权路径、真机验证 recipe、证据、已知缺口、与 scrcpy 插件的对照 |
+
+**证据**：`node --check` 通过；`node --test runtime/tests/ohos/phone-ui-tools.test.mjs` → **18 pass / 0 fail**（844 ms）。`script` 尚未在真机上跑过，上机时先用 2–3 步小脚本试。

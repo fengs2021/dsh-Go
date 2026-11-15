@@ -236,7 +236,42 @@ async function uiWait(args) {
   return result(true, 'ok', '已等待 ' + ms + 'ms', '');
 }
 
-const uiActions = { dump: uiDump, click: uiClick, longclick: uiLongClick, input: uiInput, swipe: uiSwipe, key: uiKey, shot: uiShot, wait: uiWait };
+// 一串动作一次发完：打开设置 → 找到那一项 → 点进去 → 读回来，本来要五六次工具往返。
+// 每步都用上面同一套动作函数（同一套成功口径），不做任何"新命令"，只是把它们顺序串起来。
+const SCRIPT_MAX_STEPS = 20;
+const SCRIPT_EFFECTS = new Set(['click', 'longclick', 'input', 'swipe', 'key']);
+// 真正的执行体与动作表解耦：单测可以用假动作跑完整条链路，不需要真机。
+export async function runScript(steps, actions, effects = SCRIPT_EFFECTS) {
+  if (!Array.isArray(steps) || steps.length === 0) return result(false, 'invalid_args', 'script 需要 steps 数组，每步形如 {"action":"click","text":"设置"}', '');
+  if (steps.length > SCRIPT_MAX_STEPS) return result(false, 'invalid_args', 'script 最多 ' + SCRIPT_MAX_STEPS + ' 步，请拆成几次调用', '');
+  const lines = [];
+  let dispatched = false;
+  for (const [index, step] of steps.entries()) {
+    const no = index + 1;
+    if (!step || typeof step !== 'object' || Array.isArray(step)) return result(false, 'invalid_args', '第 ' + no + ' 步不是对象', lines.join('\n'), dispatched);
+    const action = String(step.action || '');
+    // 嵌套会把"几步"变成不可预测的树，直接拒绝：要长序列就多调几次。
+    if (action === 'script') return result(false, 'invalid_args', 'script 不能嵌套 script', lines.join('\n'), dispatched);
+    const handler = Object.hasOwn(actions, action) ? actions[action] : null;
+    if (!handler) return result(false, 'invalid_args', '第 ' + no + ' 步的 action 不支持：' + (action || '(空)'), lines.join('\n'), dispatched);
+    let outcome;
+    try { outcome = await handler(step); }
+    catch (error) {
+      const failure = classifyFailure(error);
+      return result(false, failure.code, '第 ' + no + ' 步 ' + action + ' 出错：' + failure.message, lines.join('\n'), dispatched || failure.dispatched);
+    }
+    if (outcome.ok && effects.has(action)) dispatched = true;
+    const detail = String(outcome.message || '').replace(/\s+/g, ' ').trim().slice(0, 160) +
+      (outcome.data ? ' · ' + String(outcome.data).replace(/\s+/g, ' ').trim().slice(0, 240) : '');
+    lines.push(no + '. ' + action + ' · ' + (outcome.ok ? 'ok' : outcome.code) + ' · ' + detail);
+    if (!outcome.ok) return result(false, outcome.code, '第 ' + no + ' 步 ' + action + ' 失败：' + outcome.message, lines.join('\n'), dispatched || outcome.dispatched === true);
+  }
+  return result(true, 'ok', '已按顺序执行 ' + steps.length + ' 步', lines.join('\n'), dispatched);
+}
+
+const uiScript = (args) => runScript(args.steps, uiActions);
+
+const uiActions = { dump: uiDump, click: uiClick, longclick: uiLongClick, input: uiInput, swipe: uiSwipe, key: uiKey, shot: uiShot, wait: uiWait, script: uiScript };
 
 async function appAction(args) {
   const action = String(args.action || 'list');
@@ -294,15 +329,16 @@ const definitions = [
       return result(run.code === 0, run.code === 0 ? 'ok' : 'exit_' + run.code, run.text.trim().slice(0, 6000), run.text.trim().slice(0, 12000));
     } },
   { name: 'mcp__phone__ui',
-    description: '直接操作用户的手机界面：dump 读取当前屏幕控件树（含中心坐标），click 点按（坐标或按文字，可带 waitMs 等文字出现再点），longclick 长按，input 输入文字，swipe 滑动，key 发按键（Back/Home/Power），shot 截图存档，wait 等待。可用来操作任意第三方 App。坐标是手机像素，dump 返回的「中心 x,y」可直接用于 click；每个动作用 uitest 的 No Error 回执确认真实生效，失败会返回错误而不是静默成功。',
+    description: '直接操作用户的手机界面：dump 读取当前屏幕控件树（含中心坐标），click 点按（坐标或按文字，可带 waitMs 等文字出现再点），longclick 长按，input 输入文字，swipe 滑动，key 发按键（Back/Home/Power），shot 截图存档，wait 等待，script 按顺序执行多步。可用来操作任意第三方 App。坐标是手机像素，dump 返回的「中心 x,y」可直接用于 click；每个动作用 uitest 的 No Error 回执确认真实生效，失败会返回错误而不是静默成功。要连做好几步（进设置→找那一项→点进去→读回来）时用 script 一次发完，比一步步往返快得多；script 遇到第一个失败就停，并回报已完成的步骤。',
     parameters: { type: 'object', additionalProperties: false, properties: {
-      action: { type: 'string', enum: ['dump', 'click', 'longclick', 'input', 'swipe', 'key', 'shot', 'wait'], description: '要做的动作' },
+      action: { type: 'string', enum: ['dump', 'click', 'longclick', 'input', 'swipe', 'key', 'shot', 'wait', 'script'], description: '要做的动作' },
       text: str('click 用它按文字找控件；input 用它作为要输入的文字'),
       filter: str('dump 时只保留包含该子串的控件'), limit: num('dump 最多列出多少个控件，默认 150'),
       x: num('点击/输入的 x 坐标'), y: num('点击/输入的 y 坐标'),
       x1: num('滑动起点 x'), y1: num('滑动起点 y'), x2: num('滑动终点 x'), y2: num('滑动终点 y'),
       speed: num('滑动速度，默认 600'), key: str('键名：Back/Home/Power 等'), ms: num('wait 毫秒'),
-      waitMs: num('click 用文字定位时，最多等多少毫秒让它出现（默认 0 只查一次），例如 8000') },
+      waitMs: num('click 用文字定位时，最多等多少毫秒让它出现（默认 0 只查一次），例如 8000'),
+      steps: { type: 'array', description: 'script 用：按顺序执行的动作数组，最多 20 步，每步和单独调用时同样的参数，例如 [{"action":"click","text":"设置"},{"action":"wait","ms":800},{"action":"dump","filter":"Linux"}]', items: { type: 'object' } } },
       required: ['action'] },
     run: async (args) => {
       const action = String(args.action || '');
@@ -347,6 +383,8 @@ const describeCall = (name, args) => {
     if (typeof args?.text === 'string' && args.text) parts.push(args.text);
     if (Number.isFinite(args?.x) && Number.isFinite(args?.y)) parts.push(args.x + ',' + args.y);
     if (Number.isFinite(args?.x1) && Number.isFinite(args?.y2)) parts.push(args.x1 + ',' + args.y1 + '→' + args.x2 + ',' + args.y2);
+    // script 的审批弹窗必须能看出"要连点哪几步"，否则用户只看到 script 两个字就要点同意。
+    if (Array.isArray(args?.steps)) parts.push(args.steps.length + ' 步：' + args.steps.map((step) => String(step?.action || '?')).join('→'));
     return parts.join(' · ').slice(0, 200);
   }
   if (name === 'mcp__phone__app') return [String(args?.action || ''), String(args?.app || '')].filter(Boolean).join(' · ');

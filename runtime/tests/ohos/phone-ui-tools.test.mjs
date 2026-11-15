@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { collectNodes, registerUiTools, phoneUiCatalog, classifyFailure, readNativeSnapshot } from '../../ohos/phone/ui-tools.mjs';
+import { collectNodes, registerUiTools, phoneUiCatalog, classifyFailure, readNativeSnapshot, runScript } from '../../ohos/phone/ui-tools.mjs';
 import { resolveKeyPath, fingerprintOf, loadOrCreateKey, frame, FrameReader, HdcLink } from '../../ohos/phone/hdc-link.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -164,4 +164,78 @@ test('hdc 连不上时错误标成「未派发」：重试不会重复执行动�
     const link = new HdcLink({ port: 1, connectTimeoutMs: 1500, keyPath: join(dir, 'id_rsa') });
     await assert.rejects(() => link.exec('id'), (error) => error.hdcPhase === 'not_dispatched' && Boolean(error.executionNonce));
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ---- script：一次调用把"进设置→点那一项→读回来"连起来 ----
+const recorder = (behaviour = {}) => {
+  const calls = [];
+  const action = (name) => async (step) => {
+    calls.push({ name, step });
+    const custom = behaviour[name];
+    if (custom) return custom(step, calls.length);
+    return { ok: true, code: 'ok', message: name + ' ok', data: '' };
+  };
+  const actions = { dump: action('dump'), click: action('click'), input: action('input'), wait: action('wait'),
+    boom: async () => { throw Object.assign(new Error('连接断了'), { hdcPhase: 'not_dispatched' }); } };
+  return { calls, actions };
+};
+
+test('script 顺序执行多步并保留每步结果', async () => {
+  const { calls, actions } = recorder();
+  const outcome = await runScript([{ action: 'click', text: '设置' }, { action: 'wait', ms: 500 }, { action: 'dump', filter: 'Linux' }], actions);
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.code, 'ok');
+  assert.equal(outcome.dispatched, true, '点过屏幕就必须标成已派发');
+  assert.deepEqual(calls.map((c) => c.name), ['click', 'wait', 'dump']);
+  assert.match(outcome.data, /1\. click · ok/);
+  assert.match(outcome.data, /3\. dump · ok/);
+  assert.match(outcome.message, /3 步/);
+});
+
+test('script 只读动作不算已派发（失败后可安全重试）', async () => {
+  const { actions } = recorder();
+  const outcome = await runScript([{ action: 'dump' }, { action: 'wait', ms: 1 }], actions);
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.dispatched, false);
+});
+
+test('script 遇第一个失败就停，前面的结果照原样回报', async () => {
+  const { calls, actions } = recorder({ click: (step, n) => (n === 2
+    ? { ok: false, code: 'failed', message: '没找到「不存在」', data: '', dispatched: false }
+    : { ok: true, code: 'ok', message: 'ok', data: '' }) });
+  const outcome = await runScript([{ action: 'dump' }, { action: 'click', text: '不存在' }, { action: 'dump' }], actions);
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.code, 'failed');
+  assert.equal(outcome.dispatched, false, '第一步是 dump，第二步点了但没生效 → 不应说已派发');
+  assert.equal(calls.length, 2, '失败后不许继续跑后面的步骤');
+  assert.match(outcome.message, /第 2 步 click 失败/);
+  assert.match(outcome.data, /1\. dump/);
+  assert.doesNotMatch(outcome.data, /3\./);
+});
+
+test('script 中途抛错按三态归类，且已生效的动作仍标 dispatched', async () => {
+  const { actions } = recorder();
+  const outcome = await runScript([{ action: 'click' }, { action: 'boom' }], actions);
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.code, 'failed');
+  assert.equal(outcome.dispatched, true, '第一步已经点下去了，不能让人直接重试');
+  assert.match(outcome.message, /第 2 步 boom 出错/);
+});
+
+test('script 拒绝空/超长/嵌套/未知动作/非对象步骤', async () => {
+  const { actions } = recorder();
+  const cases = [
+    [[], /steps 数组/],
+    [Array.from({ length: 21 }, () => ({ action: 'dump' })), /最多 20 步/],
+    [[{ action: 'script', steps: [] }], /不能嵌套/],
+    [[{ action: 'format' }], /不支持：format/],
+    [[null], /不是对象/],
+  ];
+  for (const [steps, pattern] of cases) {
+    const outcome = await runScript(steps, actions);
+    assert.equal(outcome.ok, false, JSON.stringify(steps));
+    assert.equal(outcome.code, 'invalid_args');
+    assert.match(outcome.message, pattern);
+    assert.equal(outcome.dispatched, false);
+  }
 });
