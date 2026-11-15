@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
 import '../../state/app_mode_state.dart';
+import '../../state/providers_state.dart';
 import '../../state/attachments.dart' show formatBytes;
 import '../../state/settings_state.dart';
 import '../../tavern/tavern_generation.dart';
@@ -22,6 +23,7 @@ import '../common/app_sheet.dart';
 import '../common/sheet_title_bar.dart';
 import '../modes/mode_switch.dart';
 import '../onboarding/api_key_page.dart';
+import '../providers/providers_page.dart';
 import '../settings/settings_widgets.dart';
 import '../shell/page_frame.dart';
 import '../theme/app_icons.dart';
@@ -85,22 +87,196 @@ List<Widget> tavernSettingsGroups(BuildContext context, WidgetRef ref) {
       ),
     ],
   );
+  // 模型来源: the official DeepSeek endpoint, or one of the user's own channels
+  // (模型服务). A channel speaks OpenAI Chat Completions, the tavern's one
+  // transport, and lists a model; anything else stays out of the picker, as
+  // tavernModelSourceNote says.
+  final route = settings.providerRoute;
+  // The engine's channel list is read only once a channel is chosen: while the
+  // source is the official endpoint nothing here depends on the connection.
+  final snapshot = route == null ? null : ref.watch(customProvidersProvider).value;
+  CustomProvider? channelOf(String id) {
+    for (final provider in snapshot?.providers ?? const <CustomProvider>[]) {
+      if (provider.id == id) return provider;
+    }
+    return null;
+  }
+
+  final channel = route == null ? null : channelOf(route);
+  final channelModels = [for (final spec in channel?.models ?? const <ProviderModelSpec>[]) spec.id];
+  final channelModel =
+      settings.providerModel != null && channelModels.contains(settings.providerModel)
+      ? settings.providerModel!
+      : channelModels.isEmpty
+      ? null
+      : channelModels.first;
+  final channelKeyStored = route != null && (ref.watch(tavernProviderKeyStoredProvider(route)).value ?? false);
+
+  /// Which channel the calls go to: the ones 模型服务 declares, read now
+  /// because the list is the engine's and may still be arriving.
+  Future<void> pickChannel() => showAppSheet<void>(
+    context,
+    builder: (sheet) => Consumer(
+      builder: (inner, ref, _) {
+        final sheetL10n = inner.l10n;
+        final async = ref.watch(customProvidersProvider);
+        final channels = [
+          for (final provider in async.value?.providers ?? const <CustomProvider>[])
+            if (provider.api == ProviderApi.openaiCompletions && provider.models.isNotEmpty) provider,
+        ];
+        Widget tick(bool on) => on
+            ? Icon(AppIcons.selected, size: 18, color: Theme.of(inner).colorScheme.primary)
+            : const SizedBox.shrink();
+        return SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SheetTitleBar(sheetL10n.tavernProviderPick),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: SheetGroup(
+                    margin: const EdgeInsets.fromLTRB(SheetTitleBar.inset, 0, SheetTitleBar.inset, 12),
+                    children: [
+                      for (final provider in channels)
+                        SettingsTile(
+                          key: ValueKey('tavern-channel-${provider.id}'),
+                          icon: AppIcons.providers,
+                          tinted: false,
+                          title: provider.displayName,
+                          subtitle: provider.baseUrl,
+                          value: tick(provider.id == route),
+                          chevron: false,
+                          onTap: () {
+                            Navigator.of(sheet).pop();
+                            unawaited(controller.setProviderRoute(provider.id));
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              if (channels.isEmpty && !async.isLoading)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(SheetTitleBar.inset + 12, 0, SheetTitleBar.inset + 12, 16),
+                  child: Text(
+                    sheetL10n.tavernProviderNoChannels,
+                    style: Theme.of(inner).textTheme.bodySmall?.copyWith(
+                      color: DshColors.of(inner).textTertiary,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+
+  /// One of the chosen channel's models.
+  Future<void> pickChannelModel() => showAppSheet<void>(
+    context,
+    builder: (sheet) {
+      final sheetL10n = sheet.l10n;
+      Widget tick(bool on) => on
+          ? Icon(AppIcons.selected, size: 18, color: Theme.of(sheet).colorScheme.primary)
+          : const SizedBox.shrink();
+      return SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SheetTitleBar(sheetL10n.tavernProviderModelPick),
+            Flexible(
+              child: SingleChildScrollView(
+                child: SheetGroup(
+                  margin: const EdgeInsets.fromLTRB(SheetTitleBar.inset, 0, SheetTitleBar.inset, 12),
+                  children: [
+                    for (final id in channelModels)
+                      SettingsTile(
+                        key: ValueKey('tavern-channel-model-$id'),
+                        icon: AppIcons.modelItem,
+                        tinted: false,
+                        title: id,
+                        value: tick(id == channelModel),
+                        chevron: false,
+                        onTap: () {
+                          Navigator.of(sheet).pop();
+                          unawaited(controller.setProviderModel(id));
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+
   final model = SheetGroup(
     key: const ValueKey('tavern-connection'),
     title: l10n.tavernSettingsConnection,
     margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
     children: [
-      SettingsSegmentTile<String>(
-        key: const ValueKey('tavern-model'),
+      SettingsSegmentTile<bool>(
+        key: const ValueKey('tavern-model-source'),
         icon: AppIcons.model,
-        title: l10n.tavernSettingsModel,
+        title: l10n.tavernModelSource,
+        subtitle: l10n.tavernModelSourceSubtitle,
         segments: [
-          PillSegment(tavernModels[0], l10n.tavernModelFlash),
-          PillSegment(tavernModels[1], l10n.tavernModelPro),
+          PillSegment(true, l10n.tavernModelSourceOfficial),
+          PillSegment(false, l10n.tavernModelSourceCustom),
         ],
-        selected: settings.model,
-        onChanged: (model) => unawaited(controller.setModel(model)),
+        selected: route == null,
+        // 自定义渠道 opens the channels themselves: with none declared the
+        // sheet says where they come from, and the official endpoint stays.
+        onChanged: (official) => unawaited(
+          official ? controller.setProviderRoute(null) : pickChannel(),
+        ),
       ),
+      if (route != null) ...[
+        SettingsTile(
+          key: const ValueKey('tavern-provider-route'),
+          icon: AppIcons.providers,
+          title: l10n.tavernProviderRoute,
+          subtitle: channel?.baseUrl,
+          value: Text(channel?.displayName ?? l10n.tavernProviderRouteMissing),
+          onTap: () => unawaited(pickChannel()),
+        ),
+        SettingsTile(
+          key: const ValueKey('tavern-provider-model'),
+          icon: AppIcons.modelItem,
+          title: l10n.tavernProviderModel,
+          value: Text(channelModel ?? l10n.tavernProviderModelNone),
+          onTap: channelModels.isEmpty ? null : () => unawaited(pickChannelModel()),
+        ),
+        SettingsTile(
+          key: const ValueKey('tavern-provider-key'),
+          icon: channelKeyStored ? AppIcons.apiKey : AppIcons.noApiKey,
+          title: l10n.tavernProviderKey,
+          subtitle: l10n.tavernProviderKeySubtitle,
+          value: Text(channelKeyStored ? l10n.tavernApiKeySet : l10n.tavernProviderKeyMissing),
+          onTap: () =>
+              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ProvidersPage())),
+        ),
+      ] else ...[
+        SettingsSegmentTile<String>(
+          key: const ValueKey('tavern-model'),
+          icon: AppIcons.model,
+          title: l10n.tavernSettingsModel,
+          segments: [
+            PillSegment(tavernModels[0], l10n.tavernModelFlash),
+            PillSegment(tavernModels[1], l10n.tavernModelPro),
+          ],
+          selected: settings.model,
+          onChanged: (model) => unawaited(controller.setModel(model)),
+        ),
+      ],
       SettingsSwitchTile(
         key: const ValueKey('tavern-thinking'),
         icon: AppIcons.generating,
@@ -109,13 +285,21 @@ List<Widget> tavernSettingsGroups(BuildContext context, WidgetRef ref) {
         value: settings.thinking,
         onChanged: (on) => unawaited(controller.setThinking(on)),
       ),
-      SettingsTile(
-        key: const ValueKey('tavern-key'),
-        icon: hasKey ? AppIcons.apiKey : AppIcons.noApiKey,
-        title: l10n.tavernApiKey,
-        value: Text(hasKey ? l10n.tavernApiKeySet : l10n.tavernApiKeyMissing),
-        onTap: () =>
-            Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ApiKeyPage(onboarding: false))),
+      if (route == null)
+        SettingsTile(
+          key: const ValueKey('tavern-key'),
+          icon: hasKey ? AppIcons.apiKey : AppIcons.noApiKey,
+          title: l10n.tavernApiKey,
+          value: Text(hasKey ? l10n.tavernApiKeySet : l10n.tavernApiKeyMissing),
+          onTap: () =>
+              Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const ApiKeyPage(onboarding: false))),
+        ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 12),
+        child: Text(
+          l10n.tavernModelSourceNote,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: DshColors.of(context).textTertiary),
+        ),
       ),
     ],
   );

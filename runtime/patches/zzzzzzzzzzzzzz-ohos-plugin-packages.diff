@@ -1,16 +1,15 @@
 --- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
-@@ -22,6 +22,9 @@
- const OHOS_PLUGIN_INSTALL_MESSAGE = "[OHOS_PLUGIN_INSTALL_UNAVAILABLE] 鸿蒙本机不支持安装、更新或卸载插件包；可启停随包插件，或连接电脑管理插件。";
+@@ -1,5 +1,8 @@
  function requirePackageManager() {
  	if (process.platform === "openharmony") throw Object.assign(new Error(OHOS_PLUGIN_INSTALL_MESSAGE), { code: "ERR_OHOS_PLUGIN_INSTALL_UNAVAILABLE" });
-+}
+ }
 +function ohosPluginPackages() {
 +	return process.platform === "openharmony" ? globalThis[Symbol.for("dsh.go.ohos.plugins")] : void 0;
- }
++}
  //#region lib/types/bundle-detail.js
  /**
-@@ -715,6 +718,8 @@
+@@ -1,6 +1,8 @@
  * The diagnostic file is closed on return or rejection, including preparation and spawn failures.
  */
  async function runProfilePnpm(context, args, options) {
@@ -19,7 +18,7 @@
  	requirePackageManager();
  	const env_1 = {
  		stack: [],
-@@ -1055,6 +1060,8 @@
+@@ -1,6 +1,8 @@
  * @returns The registry URL as pnpm printed it, or null when pnpm did not answer with one.
  */
  async function readProfileRegistry(dir, options) {
@@ -28,7 +27,7 @@
  	requirePackageManager();
  	const result = await execa(options.command ?? "pnpm", [
  		...options.args ?? [],
-@@ -1095,6 +1102,8 @@
+@@ -1,6 +1,8 @@
  * @returns pnpm's exit, output, and how the lookup ended.
  */
  async function viewProfilePackage(dir, spec, options) {
@@ -37,7 +36,7 @@
  	requirePackageManager();
  	const result = await execa(options.command ?? "pnpm", [
  		...options.args ?? [],
-@@ -2460,7 +2469,7 @@
+@@ -1,7 +1,7 @@
  			return {
  				...this.configuredRegistries,
  				fallbackRegistries: [...this.configuredRegistries.fallbackRegistries],
@@ -46,7 +45,7 @@
  					...this.profile.packageManager ?? { command: this.pnpmCommand },
  					timeoutMs: this.inspectTimeoutMs
  				})
-@@ -2473,7 +2482,7 @@
+@@ -1,7 +1,7 @@
  		* @returns The package the spec names, or why it is refused.
  		*/
  		async inspect(spec, options, signal) {
@@ -55,7 +54,7 @@
  			let parsed;
  			try {
  				parsed = parseInstallSpec(spec);
-@@ -2482,6 +2491,7 @@
+@@ -1,6 +1,7 @@
  				if (!(error instanceof InvalidInstallSpecError)) throw error;
  				return refused("invalid-spec", error.reason);
  			}
@@ -63,16 +62,17 @@
  			const manifest = readProfileManifest("dsh", this.profile.dir);
  			const installation = JSON.parse(readFileSync(this.profile.installAnchor, "utf8"));
  			const known = new Set([
-@@ -2713,14 +2723,15 @@
+@@ -1,6 +1,7 @@
  				target,
  				error: managementError(error)
  			}));
 +			const inPlace = this.ownerContext.get("hmr") === void 0 || ohosPluginPackages() !== void 0;
  			const installTarget = (preserveSelection = false) => settled("install", spec, this.installBundle(spec, {
- 				saveExact: true,
- 				registry: checked.registry,
+ 				saveExact,
  				enabled,
- 				...preserveSelection ? { preserveSelection: true } : {},
+@@ -1,8 +1,8 @@
+ 				},
+ 				...registry === void 0 ? {} : { registry },
  				...requestId === void 0 ? {} : { requestId }
 -			}, this.ownerContext.get("hmr") === void 0 ? { name, version: from } : void 0));
 -			if (this.ownerContext.get("hmr") === void 0) {
@@ -81,7 +81,7 @@
  				announce("installing");
  				return {
  					from,
-@@ -2783,7 +2794,7 @@
+@@ -1,7 +1,7 @@
  		* @returns The parsed answer and the registry that gave it, or the last refusal, with every registry asked.
  		*/
  		async askRegistries(spec, fields, plan, parsed, signal) {
@@ -90,7 +90,7 @@
  				status: "refused", problem: "unknown", reason: OHOS_PLUGIN_INSTALL_MESSAGE, attempts: []
  			};
  			const attempts = [];
-@@ -2899,10 +2910,11 @@
+@@ -1,10 +1,11 @@
  		*/
  		// expectedInstalled is an internal update precondition, not a Remote option.
  		installBundle(spec, options, expectedInstalled) {
@@ -104,7 +104,7 @@
  			});
  			const requestId = options?.requestId;
  			const control = {
-@@ -2928,7 +2940,7 @@
+@@ -1,7 +1,7 @@
  					throw new Error(`Bundle ${expectedInstalled.name} changed while checking the update from ${expectedInstalled.version}. Check its current version before updating again.`);
  				}
  				const known = specPackageName(spec, before, this.profile.dir);
@@ -113,7 +113,7 @@
  				if (options?.approvedBuilds !== void 0) {
  					await approveBuilds(this.profile.dir, options.approvedBuilds);
  					result.approvedBuilds = options.approvedBuilds;
-@@ -3070,6 +3082,10 @@
+@@ -1,6 +1,10 @@
  						? bundleSelection(readProfileManifest("dsh", this.profile.dir)).includes(name)
  						: options?.enabled !== false;
  					if (activate) await this.selectBundle(name, true);
@@ -124,7 +124,7 @@
  					if (Object.hasOwn(before, name) && this.ownerContext.get("hmr") === void 0) return;
  					const selected = bundleSelection(readProfileManifest("dsh", this.profile.dir)).includes(name);
  					Object.assign(result, await this.publishAndReload(selected ? this.bundleRows(name).map((row) => row.id) : []));
-@@ -3119,7 +3135,7 @@
+@@ -1,7 +1,7 @@
  		*/
  		// selection is owned by this update only; capture it before HMR deselects.
  		removeBundle(name, selection) {
@@ -133,7 +133,7 @@
  				stage: "remove", target: name, changed: false, application: "failed",
  				error: { code: "operation-error", diagnostic: OHOS_PLUGIN_INSTALL_MESSAGE }
  			});
-@@ -3269,6 +3285,7 @@
+@@ -1,6 +1,7 @@
  		}
  		/** Put the profile files back; pnpm has exited by the time this runs. */
  		async restoreFiles(files) {
@@ -141,7 +141,7 @@
  			for (const [path, content] of files) if (content === void 0) await rm(path, { force: true });
  			else await writeFileAtomic(path, content, { mode: 384 });
  		}
-@@ -3387,7 +3404,9 @@
+@@ -1,7 +1,9 @@
  			try {
  				settled = await withFileLock(join(this.profile.dir, "package.json"), async () => {
  					this.abort.signal.throwIfAborted();
@@ -151,7 +151,7 @@
  					const result = {
  						...request,
  						changed: false,
-@@ -3403,12 +3422,23 @@
+@@ -1,6 +1,7 @@
  						if (isCancelled?.()) throw new InstallCancelledError();
  						this.abort.signal.throwIfAborted();
  						if (active !== void 0) throw new Error(active);
@@ -159,12 +159,10 @@
  						const outcome = await operation(result);
  						if (outcome !== void 0) result.application = outcome;
  						else if (result.application === "applied" && result.restartReason !== void 0) result.application = "restart-required";
- 					} catch (error) {
- 						if (error instanceof InstallCancelledError) result.application = "cancelled";
- 						else {
-+							result.application = "failed";
-+							result.error = managementError(error);
-+						}
+@@ -1,3 +1,13 @@
+ 							result.application = "failed";
+ 							result.error = managementError(error);
+ 						}
 +					}
 +					if (packageTransaction !== void 0) {
 +						try {
@@ -172,12 +170,12 @@
 +							packageTransaction.finish(committed);
 +							if (!committed && reason === "remove" && this.ownerContext.get("hmr") !== void 0) await this.configure(() => this.reload());
 +						} catch (error) {
- 							result.application = "failed";
- 							result.error = managementError(error);
- 						}
++							result.application = "failed";
++							result.error = managementError(error);
++						}
 --- a/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-app-boot/lib/index.js
-@@ -1793,6 +1793,7 @@
+@@ -1,6 +1,7 @@
  * @returns the successfully loaded bundle layers and optional user patch layer.
  */
  function loadProfileDirectory(binName, dir, installAnchor, options = {}) {
@@ -185,7 +183,7 @@
  	const manifest = readProfileManifest(binName, dir);
  	const bundles = options.readOnly === true ? (manifest.dsh?.profile?.bundles ?? []).filter((bundle) => !RETIRED_BUNDLES.has(bundle)) : dropRetiredBundles(dir, manifest).dsh?.profile?.bundles ?? [];
  	const layers = [];
-@@ -1846,6 +1847,7 @@
+@@ -1,6 +1,7 @@
  */
  function loadProfile(binName, name, installAnchor, home = resolveDshHome(), options = {}) {
  	const dir = resolveProfileDir(name, home);
@@ -193,9 +191,9 @@
  	if (!existsSync(join(dir, "package.json"))) {
  		const template = PROFILE_TEMPLATES[name];
  		if (template === void 0) throw new Error(`${binName}: profile ${JSON.stringify(name)} does not exist; create it with 'dsh plugin --profile ${name} add <package>'`);
---- a/node_modules/@deepseek-ai/dsh/lib/profile-boot-e2mS45fC.js
-+++ b/node_modules/@deepseek-ai/dsh/lib/profile-boot-e2mS45fC.js
-@@ -146,6 +146,7 @@
+--- a/node_modules/@deepseek-ai/dsh/lib/profile-boot-QhDEDXsF.js
++++ b/node_modules/@deepseek-ai/dsh/lib/profile-boot-QhDEDXsF.js
+@@ -1,6 +1,7 @@
  */
  function initializeProfileFromDefault(name, fromDefaultProfile, home = resolveDshHome()) {
  	const dir = resolveProfileDir(name, home);

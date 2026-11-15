@@ -196,7 +196,7 @@ class TavernModelClient {
     try {
       cancellation.check();
       final request = http.AbortableRequest('POST', uri, abortTrigger: cancellation.whenCancelled)
-        ..headers.addAll({'Content-Type': 'application/json', 'Authorization': 'Bearer $key'})
+        ..headers.addAll(requestHeaders(config, key))
         ..body = encodedBody;
       client = _clientFactory();
       cancellation.check();
@@ -319,6 +319,24 @@ class TavernModelClient {
     } finally {
       client?.close();
     }
+  }
+
+  /// The configured [TavernModelConfig.headers] first, then the two this client
+  /// owns: `Authorization` is the key read for this call and `Content-Type` is
+  /// the JSON body encoded above, so a configured header of either name (any
+  /// casing) cannot replace them. Everything else is passed through as typed.
+  /// An empty field name is skipped: it is not a header the transport can send.
+  static Map<String, String> requestHeaders(TavernModelConfig config, String key) {
+    const reserved = {'authorization', 'content-type'};
+    final headers = <String, String>{};
+    for (final MapEntry(key: name, value: value) in config.headers.entries) {
+      final field = name.trim();
+      if (field.isEmpty || reserved.contains(field.toLowerCase())) continue;
+      headers[field] = value;
+    }
+    headers['Content-Type'] = 'application/json';
+    headers['Authorization'] = 'Bearer $key';
+    return headers;
   }
 
   /// Generic services supply their own API prefix (for example /v1). A full

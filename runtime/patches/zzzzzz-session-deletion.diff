@@ -6,7 +6,7 @@
  import z from "@deepseek-ai/schemastery";
  import { SessionFormatUnsupportedMigrationError, createSessionFormatCatalogWithChildren, historicalSessionFormatCatalog, sessionFormatCatalog } from "@deepseek-ai/dsh-session-format-catalog";
  import { readdirSync } from "node:fs";
-@@ -2441,6 +2442,11 @@
+@@ -1,6 +1,11 @@
  			isUnsupportedMigrationError: (error) => error instanceof SessionFormatUnsupportedMigrationError
  		};
  		this.assertUsableRoot();
@@ -18,7 +18,7 @@
  	}
  	/**
  	* Refusal-diagnostics hook: the absolute target path, without touching the filesystem.
-@@ -2465,12 +2471,16 @@
+@@ -1,12 +1,16 @@
  	async create(header, options) {
  		options?.signal?.throwIfAborted();
  		const snapshot = materializeCreateHeader(header);
@@ -35,7 +35,7 @@
  		this.tracker.registerCreated(snapshot, inheritedEventCount);
  		return this.tracker.adopt(new JsonlSessionHandle(this, snapshot.id, snapshot, "write", {
  			cursor: 0,
-@@ -2486,6 +2496,7 @@
+@@ -1,6 +1,7 @@
  	* @returns the open handle.
  	*/
  	async open(id, access, options) {
@@ -43,7 +43,7 @@
  		options?.signal?.throwIfAborted();
  		await this.ensureRootEncoding();
  		options?.signal?.throwIfAborted();
-@@ -2568,6 +2579,7 @@
+@@ -1,6 +1,7 @@
  	*   `undefined` when the session does not exist.
  	*/
  	async stat(id, options) {
@@ -51,7 +51,7 @@
  		options?.signal?.throwIfAborted();
  		await this.ensureRootEncoding();
  		options?.signal?.throwIfAborted();
-@@ -2646,7 +2658,7 @@
+@@ -1,7 +1,7 @@
  			revision: entry.revision
  		});
  		signal?.throwIfAborted();
@@ -60,7 +60,7 @@
  	}
  	/** Resolve and read one stored log, refusing loudly when the artifact is absent. */
  	async requireStoredLog(id, signal) {
-@@ -2973,7 +2985,7 @@
+@@ -1,7 +1,7 @@
  	* @returns the held lock.
  	*/
  	acquireLease(id, cwd, dir = sessionDir(this.root, cwd, id)) {
@@ -69,7 +69,7 @@
  	}
  	/**
  	* Acquire the cross-process write lock for a materializing created session,
-@@ -2983,7 +2995,7 @@
+@@ -1,7 +1,7 @@
  	*/
  	async acquireWriteLease(header) {
  		await this.rejectOppositeArtifact(header.cwd, header.id);
@@ -78,7 +78,7 @@
  	}
  	/** Decode complete frames and retain complete JSONL records from a torn final frame. */
  	async readZstdPrefix(buffer, signal) {
-@@ -3132,7 +3144,7 @@
+@@ -1,7 +1,7 @@
  		for (const outcome of headers) {
  			if (outcome.status === "rejected") throw outcome.reason;
  			const { selected, metadata } = outcome.value;
@@ -87,7 +87,7 @@
  			if (ids.has(metadata.header.id)) throw new Error(`duplicate JSONL session id "${metadata.header.id}" appears in multiple project directories`);
  			ids.add(metadata.header.id);
  			artifacts.push({
-@@ -3201,6 +3213,9 @@
+@@ -1,6 +1,9 @@
  	}
  	/** Atomically write the header line + first batch (temp-write, fsync, publish). */
  	async materialize(meta, inheritedEventCount, events) {
@@ -97,7 +97,7 @@
  		const project = projectDir(this.root, meta.cwd);
  		const dir = sessionDir(this.root, meta.cwd, meta.id);
  		const finalPath = logPath(this.root, meta.cwd, meta.id, this.compression);
-@@ -3450,6 +3465,7 @@
+@@ -1,6 +1,7 @@
  	}
  	/** Find the unique authoritative generation for an id across project directories. */
  	async findLog(id, signal) {
@@ -107,7 +107,7 @@
  			signal?.throwIfAborted();
 --- a/node_modules/@deepseek-ai/dsh-session/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-session/lib/index.js
-@@ -1868,6 +1868,7 @@
+@@ -1,6 +1,7 @@
  	*/
  	enter(session) {
  		const id = session.id;
@@ -117,7 +117,7 @@
  		if (attachments.get(session) != null) throw new Error(`session "${id}" is already attached to a store`);
 --- a/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js
-@@ -562,6 +562,8 @@
+@@ -1,6 +1,8 @@
  		if (status !== previousStatus) this.dispatch.emit("agent/status", { status });
  	}
  	send(message, target, wakeup) {
@@ -126,8 +126,8 @@
  		const wakingAfterAbort = wakeup && this.phase.kind !== "idle" && this.phase.abort.signal.aborted;
  		const resolvedTarget = wakingAfterAbort ? "next-turn" : target;
  		this.inbox.splice(resolvedTarget, Infinity, 0, [message]);
-@@ -584,6 +586,8 @@
- 		if (this.phase.kind !== "idle") this.phase.abort.abort(cause);
+@@ -5,6 +5,8 @@
+ 		}
  	}
  	runMaintenance(job) {
 +		if (this.dshGoDeleting) throw new Error("session is being deleted");
@@ -135,17 +135,17 @@
  		if (this.phase.kind !== "idle") throw new Error(`agent "${this.id}" already has active work`);
  		const done = Promise.withResolvers();
  		const maintenance = {
-@@ -616,6 +620,8 @@
- 	*   the inbox insertion so a reentrant cancel cannot reclassify it.
+@@ -2,6 +2,8 @@
  	*/
  	wakeDriver(wakeAfterAbort = false) {
+ 		if (this.lifetimeSignal.aborted) return;
 +		if (this.dshGoDeleting) throw new Error("session is being deleted");
 +		this.loopCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(this.id);
  		if (this.phase.kind !== "idle") {
  			if (abortedCancelCause(this.phase.abort.signal)?.kind !== "disposed" && (this.phase.kind === "maintenance" || wakeAfterAbort)) this.phase.wakeRequested = true;
  			return;
-@@ -1452,6 +1458,18 @@
- 	* @param options - acquired Session/write handle, loop options, start source, parent Agent, setup, and cancellation.
+@@ -1,6 +1,18 @@
+ 	* @param options - acquired Session/write handle, loop options, start source, setup, and cancellation.
  	* @returns the initialized Agent and its shared disposer.
  	*/
 +	dshGoDeletionVersion = 2;
@@ -161,9 +161,9 @@
 +		await agent.dshGoDispose();
 +	}
  	async initializeAgent(ownerCtx, options) {
- 		const { session, agentOptions, source, stored, setup, signal: callerSignal, parentAgent } = options;
+ 		const { session, agentOptions, source, stored, setup, signal: callerSignal } = options;
  		const id = session.id;
-@@ -1518,6 +1536,8 @@
+@@ -1,6 +1,8 @@
  		};
  		const untrack = this.ownership.track(dispose);
  		try {
@@ -172,7 +172,7 @@
  			assertAgentOptions(agentOptions);
  			ownerCtx.fiber.assertActive();
  			/* v8 ignore next -- unreachable backstop for factory ownership */
-@@ -1561,6 +1581,7 @@
+@@ -1,6 +1,7 @@
  			/* v8 ignore next -- a synchronous effect exhausts the generator before returning */
  			if (machine === void 0) throw new Error(`agent "${id}" lifecycle did not construct its driver`);
  			const agent = machine;
@@ -182,7 +182,7 @@
  				publication = Promise.withResolvers();
 --- a/node_modules/@deepseek-ai/dsh-session-projection-cache/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-session-projection-cache/lib/index.js
-@@ -166,6 +166,7 @@
+@@ -1,6 +1,7 @@
  	* @returns the identity-matching record, or `undefined` (absent or unrelated).
  	*/
  	recordFor(id, expected) {
@@ -190,7 +190,11 @@
  		const record = this.requireTable().get(id);
  		if (record === void 0) return void 0;
  		return identityMatches(record.identity, expected) ? record : void 0;
-@@ -194,6 +195,7 @@
+@@ -1,10 +1,11 @@
+ 	*   this lifecycle at the current Session format.
+ 	*/
+ 	/** Refresh only the requested checkpoint; alternate backends retain their read contract. */
+ 	async refresh(id) {
  		await this.requireTable().refresh(id);
  	}
  	cachedSnapshot(meta, keys) {
@@ -198,7 +202,7 @@
  		const expected = lifecycleIdentityOf(meta);
  		const record = this.requireTable().get(meta.id);
  		if (record === void 0 || !currentLifecycleMatches(record.identity, expected)) return void 0;
-@@ -215,6 +217,7 @@
+@@ -1,6 +1,7 @@
  	*   incompatible with the title unit.
  	*/
  	cachedPredecessorTitle(meta) {
@@ -206,7 +210,7 @@
  		const expected = lifecycleIdentityOf(meta);
  		const record = this.requireTable().get(meta.id);
  		if (record === void 0 || !predecessorIdentityMatches(record.identity, expected)) return void 0;
-@@ -349,7 +352,20 @@
+@@ -1,7 +1,20 @@
  		}
  	}
  	/** Replace one session's stored record with its log identity and a detached snapshot of `rows`. */
@@ -229,7 +233,7 @@
  		await this.requireTable().put(id, {
 --- a/node_modules/@deepseek-ai/dsh-session-query/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-session-query/lib/index.js
-@@ -1061,6 +1061,10 @@
+@@ -1,6 +1,10 @@
  	* @param options - cancellation and projection selection for this read.
  	* @returns a caller-owned observation lease.
  	*/
@@ -242,7 +246,7 @@
  	}
 --- a/node_modules/@deepseek-ai/dsh-session-query-sqlite/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-session-query-sqlite/lib/index.js
-@@ -643,7 +643,24 @@
+@@ -1,7 +1,24 @@
  			release();
  		}
  	}
@@ -269,7 +273,7 @@
  		const persistedRows = db.prepare("SELECT id, revision, generation FROM persisted_sessions").all();
 --- a/node_modules/@deepseek-ai/dsh-schedule/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-schedule/lib/index.js
-@@ -11,6 +11,7 @@
+@@ -1,6 +1,7 @@
  import { Cron, MAX_FOUR_DIGIT_YEAR_MS, MIN_FOUR_DIGIT_YEAR_MS, RRule, canonicalizeTimeZone, formatFourDigitYearInstant, fourDigitYearEpoch, isFourDigitYearInstant, parseLocalCalendar, parseOffsetInstant, resolveLocalInstant } from "@deepseek-ai/dsh-util-time";
  import { z as z$1 } from "zod";
  import { MessageId } from "@deepseek-ai/dsh-llm/brand";
@@ -277,7 +281,7 @@
  import { defineDomain, domainTable } from "@deepseek-ai/dsh-storage-domain";
  //#region lib/types/domain.js
  /**
-@@ -2254,6 +2255,7 @@
+@@ -1,6 +1,7 @@
  						earlierRecordsPruned: false
  					}
  				});
@@ -285,7 +289,7 @@
  				await domain.table("tasks").put(id, task);
  				this.emitChanged();
  				this.runtime?.requestDrive();
-@@ -2432,6 +2434,7 @@
+@@ -1,6 +1,7 @@
  					signal?.throwIfAborted();
  				}
  				const task = revisedTask(current, request.patch, target, actorSessionId, Date.now());
@@ -293,7 +297,7 @@
  				await tasks.put(request.id, task);
  				this.emitChanged();
  				this.runtime?.requestDrive();
-@@ -2494,6 +2497,7 @@
+@@ -1,6 +1,7 @@
  		}
  		/** Check arming prerequisites without activating a Session; repeated inside the mutation FIFO. */
  		async validateTarget(target, signal) {
@@ -301,7 +305,7 @@
  			if (target.kind === "new") {
  				this.requireSessionCreation();
  				return;
-@@ -2618,9 +2622,29 @@
+@@ -1,9 +1,29 @@
  			if (rearm) this.runtime?.requestDrive();
  			return removed;
  		}
@@ -334,7 +338,7 @@
  		}
 --- a/node_modules/@deepseek-ai/dsh-workspace/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-workspace/lib/index.js
-@@ -372,6 +372,21 @@
+@@ -1,6 +1,21 @@
  			this.invalidSessionPaths.delete(id);
  		}
  	};
@@ -356,7 +360,7 @@
  	constructor(ctx) {
  		super(ctx, "workspaceRegistry");
  	}
-@@ -612,6 +627,7 @@
+@@ -1,6 +1,7 @@
  	* masquerade as an unknown session.
  	*/
  	async sessionKnown(id) {
@@ -366,7 +370,7 @@
  		await this.indexHeaders(await this.listStoredHeaders());
 --- a/node_modules/@deepseek-ai/dsh-storage-json/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-storage-json/lib/index.js
-@@ -277,6 +277,19 @@
+@@ -1,6 +1,19 @@
  		return records;
  	}
  	async publish() {
@@ -386,7 +390,7 @@
  		const write = writeAtomic(this.path, serialize(this.descriptor.name, this.state));
  		this.inFlight.add(write);
  		write.catch(() => {}).finally(() => this.inFlight.delete(write));
-@@ -668,6 +681,7 @@
+@@ -1,6 +1,7 @@
  			await unit.close();
  			throw new StorageError("closed", "json backend is closed");
  		}
@@ -394,7 +398,7 @@
  		this.open.set(descriptor.name, unit);
  		return unit;
  	}
-@@ -688,6 +702,7 @@
+@@ -1,6 +1,7 @@
  */
  function apply(ctx, config) {
  	const backend = new JsonStorageBackend(config.root);

@@ -12,7 +12,7 @@
 | Worker rebased v2 | 补丁 SHA256 `46b1b09b2b96ac774ada4d3b78b6e4accd450642b88287ea6a1bfe1424b44909`，原基底2c，干净应用到本基底 |
 | 懒加载 native host 增量 | 补丁 SHA256 `c1f470fed52fa393175a666a53dd64425f47183102c9cfb617430b7c9a198215`，在本基底干净应用；不会用旧完整 P2 包覆盖已合入代码 |
 | 本组成 v2 | 在上述实际组合最后应用；产品补丁本身从530基底导出，精确 SHA256 由交付清单给出 |
-| DSH | `0.2.2-rc.1`；锁文件 SHA256 `9809a7a64fd5d40df441a30fb4407c037802162d75e8a8e39dc0ef2569bec2ab` |
+| DSH | `0.2.2-rc.3`；锁文件 SHA256 `0bef59ef89cb9c4b121da1fc7b531bb1eb5501c946698f4c9919d5ba5750dc50`（v42 起；rc.1 的 `9809a7a6…` 已随锁目录 `runtime/locks/dsh-0.2.2-rc.1` 保留） |
 | process npm 闭包 | 锁文件 SHA256 `5a815fc00cafc62fca834fe3e2abf6792bd3263c1a386cb2948d6a4063ed8f30` |
 | 执行工具 | 官方 Linux Node `24.22.1`、npm `11.9.0`；构建解析器使用既有 esbuild `0.27.3`，不进入运行载荷 |
 | 私有 RE2 | 固定产物 SHA256 `80eaea2a9e50a2851e332fa4fccffeb01550584ad3c448a2eadd88b43373d5f1` |
@@ -76,8 +76,8 @@ ESM import/export 和字符串字面量 dynamic import 用 Node24 的真实逐 i
 | Bash Python、SQLite、js-exec/QuickJS loader | 固定命令注册关闭；对应命令返回127与明确替代路径，真实 Node 使用专用 Worker 后端 |
 | Bash flag-coverage 与仅服务旧 tar 的 chunk | 产品构造不提供 coverage；tar 原本就不在允许命令集合中，其 loader 不进入 |
 | Windows `koffi` 分支与 Win32 worker | 实际平台选择器先排除；不宣称任意私有文件直接调用可用 |
-| Office `libreoffice-kit` | OH 分支在动态加载前返回明确 unavailable |
-| fs-search 的外部 ripgrep | OH 分支先返回虚拟 rg token，完整 grep/glob执行走既有后端 |
+| Office `libreoffice-kit`（rc.3 起 `dsh-office-to-pdf` 已不在安装树，白名单条目随之删除；`dsh-office-kit` 由 OH 补丁提前抛 unavailable） | OH 分支在动态加载前返回明确 unavailable |
+| util-ripgrep 的外部 ripgrep（rc.3 起 rg 解析从 `dsh-tool-fs-search` 移到 `@deepseek-ai/dsh-util-ripgrep`） | OH 分支 `resolveRgPath` 在动态导入前返回虚拟 rg token，完整 grep/glob 执行走既有后端 |
 | 代理 Kerberos | 新 OH 分支在 import 前返回 `OHOS_PROXY_NEGOTIATE_UNAVAILABLE`，给出其他代理认证方式/电脑替代路径 |
 
 此前曾错误推断 tar 的 xz/zstd 路径可达，实际命令调用表明 tar 入口一直返回127。原失败探针和被撤回的草稿保留；本包没有增加 tar 或假称 xz/zstd 已适配。实际独立 gzip/gunzip 往返仍通过。

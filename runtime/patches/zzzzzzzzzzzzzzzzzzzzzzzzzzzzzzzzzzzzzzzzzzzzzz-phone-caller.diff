@@ -1,6 +1,6 @@
 --- a/node_modules/@deepseek-ai/dsh-tools/lib/types/batch.js
 +++ b/node_modules/@deepseek-ai/dsh-tools/lib/types/batch.js
-@@ -10,6 +10,7 @@
+@@ -1,6 +1,7 @@
   * records conservative recovery results before closing.
   * @module dsh-tools/batch
   */
@@ -8,7 +8,7 @@
  import { ToolBatchExecutionError } from "./executor.js";
  import { TOOL_ABORTED_BEFORE_DISPATCH } from "./contracts.js";
  import { createToolResultMessage } from '@deepseek-ai/dsh-llm';
-@@ -24,8 +25,16 @@
+@@ -1,8 +1,16 @@
   * @returns model-ordered outcomes after every started body has settled.
   * @throws RangeError when the explicit concurrency override is not a positive integer.
   */
@@ -25,7 +25,7 @@
      if (maxParallelToolCalls !== undefined && (!Number.isInteger(maxParallelToolCalls) || maxParallelToolCalls < 1)) {
          throw new RangeError('maxParallelToolCalls must be a positive integer');
      }
-@@ -39,6 +48,7 @@
+@@ -1,6 +1,7 @@
                  name: block.name,
                  arguments: parseArguments(block.arguments),
                  ...agent === undefined ? {} : { agent },
@@ -35,7 +35,7 @@
              },
 --- a/node_modules/@deepseek-ai/dsh-tools/lib/types/pipeline.js
 +++ b/node_modules/@deepseek-ai/dsh-tools/lib/types/pipeline.js
-@@ -63,6 +63,7 @@
+@@ -1,6 +1,7 @@
          const rootCallId = exec.rootCallId ?? callId;
          const name = exec.name;
          const agent = exec.agent;
@@ -43,7 +43,7 @@
          const parent = exec.parent;
          const signal = exec.signal;
          // Executor refusals precede extensible policy; unknown tools retain dispatch-stage handling.
-@@ -77,6 +78,7 @@
+@@ -1,6 +1,7 @@
              name,
              signal,
              ...agent !== undefined ? { agent } : {},
@@ -53,7 +53,7 @@
              ...exec.schema !== undefined ? { schema: exec.schema } : {},
 --- a/node_modules/@deepseek-ai/dsh-tools/lib/types/contracts.d.ts
 +++ b/node_modules/@deepseek-ai/dsh-tools/lib/types/contracts.d.ts
-@@ -174,6 +174,8 @@
+@@ -1,6 +1,8 @@
      readonly arguments: unknown;
      /** The agent on whose behalf the call runs (set by the agent loop). */
      readonly agent?: Agent;
@@ -64,7 +64,7 @@
      /**
 --- a/node_modules/@deepseek-ai/dsh-tool-executor-ptc/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-tool-executor-ptc/lib/index.js
-@@ -505,6 +505,7 @@
+@@ -1,6 +1,7 @@
  						schema,
  						arguments: normalized.dispatched,
  						...exec.agent ? { agent: exec.agent } : {},
@@ -74,29 +74,26 @@
  						signal: runController.signal
 --- a/node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js
-@@ -139,7 +139,10 @@
- 			taskRequired: tool.execution?.taskSupport === "required",
- 			call: (args, execution) => client.callTool({
- 				name: tool.name,
--				arguments: args
-+				arguments: args,
-+				...opts.dshGoPhoneCaller && execution.phoneCaller !== void 0
-+					&& client.getServerCapabilities()?.experimental?.["dsh-go/phone-caller"]?.v === 1
-+					? { _meta: { ["dsh-go/phone-caller"]: { v: 1, ...execution.phoneCaller, callId: execution.callId } } } : {}
- 			}, {
- 				signal: execution.signal,
- 				timeout: opts.toolCallTimeoutMs,
-@@ -484,7 +487,8 @@
- 	const opts = {
- 		registrationFailure: "contain",
- 		serverName: config.serverName,
--		toolCallTimeoutMs: config.toolCallTimeoutMs
-+		toolCallTimeoutMs: config.toolCallTimeoutMs,
-+		dshGoPhoneCaller: config.transport === "stdio" && config.dshGoPhoneCaller === true
- 	};
- 	const startupOpts = config.failOnStartupError ? {
- 		...opts,
-@@ -780,6 +784,7 @@
+@@ -3,7 +3,10 @@
+ 				try {
+ 					const result = await client.callTool({
+ 						name: tool.name,
+-						arguments: args
++						arguments: args,
++						...opts.dshGoPhoneCaller && execution.phoneCaller !== void 0
++							&& client.getServerCapabilities()?.experimental?.["dsh-go/phone-caller"]?.v === 1
++							? { _meta: { ["dsh-go/phone-caller"]: { v: 1, ...execution.phoneCaller, callId: execution.callId } } } : {}
+ 					}, {
+ 						signal: AbortSignal.any([execution.signal, opts.signal]),
+ 						timeout: opts.toolCallTimeoutMs,
+@@ -1,5 +1,6 @@
+ 				disposers = await syncTools(record.wire.client, ctx, {
+ 					serverName: config.serverName,
+ 					toolCallTimeoutMs: config.toolCallTimeoutMs,
++					dshGoPhoneCaller: config.transport === "stdio" && config.dshGoPhoneCaller === true,
+ 					signal,
+ 					...config.expandTemplates ? { redact: (text) => binding.redact(text) } : {}
+@@ -1,6 +1,7 @@
  });
  const Config = z.union([z.object({
  	transport: z.const("stdio"),
@@ -106,7 +103,7 @@
  	args: z.array(String).default([]),
 --- a/node_modules/@deepseek-ai/dsh-mcp-client/lib/types/index.d.ts
 +++ b/node_modules/@deepseek-ai/dsh-mcp-client/lib/types/index.d.ts
-@@ -26,6 +26,8 @@
+@@ -1,6 +1,8 @@
  export interface StdioConfig {
      /** Selects child-process stdio transport. */
      transport: 'stdio';
@@ -115,23 +112,14 @@
      /**
       * Stable local namespace for this server's model-facing tool names
       * (`mcp__<serverName>__<rawName>`). Must match `[A-Za-z0-9_-]{1,32}` and be
-@@ -74,7 +76,7 @@
- }
- /** Configuration for one stdio or Streamable HTTP MCP server. */
- export type Config = StdioConfig | StreamableHttpConfig;
--type StdioConfigInput = Omit<StdioConfig, 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'failOnStartupError'> & Partial<Pick<StdioConfig, 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'failOnStartupError'>>;
-+type StdioConfigInput = Omit<StdioConfig, 'dshGoPhoneCaller' | 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'failOnStartupError'> & Partial<Pick<StdioConfig, 'dshGoPhoneCaller' | 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'failOnStartupError'>>;
- type StreamableHttpConfigInput = Omit<StreamableHttpConfig, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError'> & Partial<Pick<StreamableHttpConfig, 'headers' | 'toolCallTimeoutMs' | 'failOnStartupError'>>;
- type ConfigInput = StdioConfigInput | StreamableHttpConfigInput;
- export declare const Config: z<ConfigInput, Config>;
+@@ -1 +1 @@
+-type StdioConfigInput = Omit<StdioConfig, 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'startupTimeoutMs' | 'failOnStartupError' | 'closeTimeoutMs' | 'expandTemplates'> & Partial<Pick<StdioConfig, 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'startupTimeoutMs' | 'failOnStartupError' | 'closeTimeoutMs' | 'expandTemplates'>>;
++type StdioConfigInput = Omit<StdioConfig, 'dshGoPhoneCaller' | 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'startupTimeoutMs' | 'failOnStartupError' | 'closeTimeoutMs' | 'expandTemplates'> & Partial<Pick<StdioConfig, 'dshGoPhoneCaller' | 'args' | 'env' | 'cwd' | 'toolCallTimeoutMs' | 'startupTimeoutMs' | 'failOnStartupError' | 'closeTimeoutMs' | 'expandTemplates'>>;
 --- a/node_modules/@deepseek-ai/dsh-mcp-client/lib/types/tools.d.ts
 +++ b/node_modules/@deepseek-ai/dsh-mcp-client/lib/types/tools.d.ts
-@@ -21,6 +21,8 @@
-     registrationFailure: 'contain' | 'throw';
+@@ -1,3 +1,5 @@
+ export interface ToolBridgeOptions {
      serverName: string;
      toolCallTimeoutMs: number;
 +    /** Explicitly enabled only for the managed local phone server. */
 +    dshGoPhoneCaller?: boolean;
- }
- /** State for one sync generation: the current set of disposers keyed by public name. */
- export type ToolDisposers = Map<string, () => void>;

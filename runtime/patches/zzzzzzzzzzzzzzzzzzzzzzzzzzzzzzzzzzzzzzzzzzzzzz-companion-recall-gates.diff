@@ -1,7 +1,7 @@
 # DSH 0.2.2-rc.1: exact-session recall admission, retirement and history quarantine.
 --- a/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-agent-loop/lib/index.js
-@@ -3,7 +3,7 @@
+@@ -1,7 +1,7 @@
  import z from "@deepseek-ai/schemastery";
  import { brandString } from "@deepseek-ai/dsh-brand";
  import { AgentModel, agentEvents, assembleContextFor, modelSelectionProjectionDefinition } from "@deepseek-ai/dsh-agent";
@@ -9,8 +9,8 @@
 +import { dshGoRecall, AssistantStreamAccumulator, BlockAssembler, LlmAttemptId, LlmError, createAssistantMessage, createDeveloperMessage, createSystemMessage, createUserMessage, errorChain, markAgentLoopRequest } from "@deepseek-ai/dsh-llm";
  import { SessionLogOffset, SessionPreparation, ToolCallRecovery, canonicalHeader, headerEquals, interruptedTurnClosers, isReplacementSurfaceEvent } from "@deepseek-ai/dsh-session";
  import { SessionPersistenceNotFoundError } from "@deepseek-ai/dsh-session-persistence";
- import { assertNever, deepFreeze } from "@deepseek-ai/dsh-util-values";
-@@ -576,6 +576,7 @@
+ import { assertNever, deepEqualJson, deepFreeze } from "@deepseek-ai/dsh-util-values";
+@@ -1,6 +1,7 @@
  		};
  		this.runtimeContext = new RuntimeContextProjection(this.ctx, session);
  		this.systemPrompt = new SystemPromptProjection(session);
@@ -18,7 +18,7 @@
  	}
  	get status() {
  		return this.phase.kind === "idle" || this.phase.kind === "maintenance" ? "idle" : "running";
-@@ -588,6 +589,7 @@
+@@ -1,6 +1,7 @@
  		if (status !== previousStatus) this.dispatch.emit("agent/status", { status });
  	}
  	send(message, target, wakeup) {
@@ -26,15 +26,15 @@
  		if (this.dshGoDeleting) throw new Error("session is being deleted");
  		this.loopCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(this.id);
  		// Restore older claims before accepting another wake.
-@@ -648,6 +650,7 @@
- 	*   the inbox insertion so a reentrant cancel cannot reclassify it.
+@@ -2,6 +2,7 @@
  	*/
  	wakeDriver(wakeAfterAbort = false) {
+ 		if (this.lifetimeSignal.aborted) return;
 +		dshGoRecall.guardSession(this.loopCtx, { sessionId: this.id, agent: this, operation: "wake" });
  		if (this.dshGoDeleting) throw new Error("session is being deleted");
  		this.loopCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(this.id);
  		if (this.phase.kind !== "idle") {
-@@ -716,6 +719,7 @@
+@@ -1,6 +1,7 @@
  		if (this.phase.kind !== "running") throw new Error(`agent "${this.id}": pre-step outside running phase`);
  		const signal = this.phase.abort.signal;
  		const claimed = this.inbox.claim(target, position.turn);
@@ -42,7 +42,7 @@
  		const selection = this.model.current();
  		if (selection === void 0) throw new Error(`agent "${this.id}" has no provider/model: set AgentOptions.provider and AgentOptions.model or record a model selection`);
  		const toolSet = await this.loopCtx.tools.resolve({
-@@ -724,11 +728,12 @@
+@@ -1,11 +1,12 @@
  			signal
  		});
  		try {
@@ -57,7 +57,7 @@
  			signal.throwIfAborted();
  			const decision = await this.dispatch.waterfall("agent/pre-step", {
  				messages: claimed,
-@@ -753,6 +758,7 @@
+@@ -1,6 +1,7 @@
  			}
  			return {
  				...decision,
@@ -65,7 +65,7 @@
  				assembly,
  				selection,
  				toolSet
-@@ -773,6 +779,7 @@
+@@ -1,6 +1,7 @@
  	}
  	/** Open one turn before claiming its first proposed step. */
  	async turn() {
@@ -73,7 +73,7 @@
  		if (this.phase.kind !== "running") this.throwError(/* @__PURE__ */ new Error(`agent "${this.id}": turn without driver reservation`));
  		const phase = this.phase;
  		const { signal } = phase.abort;
-@@ -902,7 +909,8 @@
+@@ -1,7 +1,8 @@
  		const renderedPrompt = renderPrompt(assembly);
  		let firstAttempt = true;
  		while (true) {
@@ -83,7 +83,7 @@
  			const sections = renderContextSections(this.loopCtx.systemPrompt.refreshContext(assembly, {
  				...assembleContextFor(this, signal),
  				modelSelection: decision.selection
-@@ -932,6 +940,7 @@
+@@ -1,6 +1,7 @@
  				turn,
  				step
  			}, startsRequestSeries, signal);
@@ -91,7 +91,7 @@
  			const live = new AssistantStreamAttempt(this.session.id, ++this.assistantAttemptCounter, () => ++this.assistantStreamRevision, turn, step, (frame) => {
  				this.dispatch.emit("agent/assistant-stream", { frame });
  			});
-@@ -1046,7 +1055,7 @@
+@@ -1,7 +1,7 @@
  		}
  	}
  	/** Resolve request config for the step's selection and bind its adapter before admitting model-visible input. */
@@ -100,7 +100,7 @@
  		const { session } = this;
  		const maxTokens = this.options.maxTokens;
  		const { provider: _provider, model: _model, reasoningEffort: _effort, ...controls } = this.requestHeaderLogged ? requestProposal(session.requestHeader()) : maxTokens === void 0 ? {} : { maxTokens };
-@@ -1065,7 +1074,7 @@
+@@ -1,7 +1,7 @@
  		let config;
  		let preparedCall;
  		try {
@@ -109,7 +109,7 @@
  			config = preparedCall.config;
  		} catch (error) {
  			if (!(error instanceof LlmError) || error.code !== "NO_ADAPTER") throw error;
-@@ -1359,6 +1368,7 @@
+@@ -1,6 +1,7 @@
  }
  /** Concrete agent factory and driver service. */
  var AgentLoop = class extends Service {
@@ -117,7 +117,7 @@
  	static inject = [
  		"agents",
  		"sessions",
-@@ -1593,6 +1603,7 @@
+@@ -1,6 +1,7 @@
  		};
  		const untrack = this.ownership.track(dispose);
  		try {
@@ -125,7 +125,7 @@
  			ownerCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(id);
  			if (parentAgent !== void 0) ownerCtx.get("sessionPersistence")?.dshGoDeletion?.assertAdmit(parentAgent.id);
  			assertAgentOptions(agentOptions);
-@@ -1721,6 +1732,7 @@
+@@ -1,6 +1,7 @@
  	* @returns the owned handle and stored cursor, or `undefined` without a backend.
  	*/
  	async createStoredSession(session, signal) {
@@ -133,7 +133,7 @@
  		const persistence = this.runtime.ctx.get("sessionPersistence");
  		if (persistence === void 0) return void 0;
  		return {
-@@ -1798,6 +1810,7 @@
+@@ -1,6 +1,7 @@
  	/** Resume through an explicit persistence handle used by the deferred config path. */
  	resumeWith(ownerCtx, persistence, options) {
  		const id = options.resumeSessionId;
@@ -141,7 +141,7 @@
  		const published = (async () => {
  			const ownerAbort = new AbortController();
  			const unfollowOwner = ownerCtx.effect(() => () => {
-@@ -1819,6 +1832,7 @@
+@@ -1,6 +1,7 @@
  					const coldRead = await handle.read(0, void 0, { signal: fused });
  					fused.throwIfAborted();
  					const persisted = coldRead.events;
@@ -157,7 +157,7 @@
  import z from "@deepseek-ai/schemastery";
  import { CompactionEngine, CompactionId, ManualCompactionError, compactCheckpointSource, toolPairingBalancedAfter, toolPairingBalancedBefore } from "@deepseek-ai/dsh-compaction";
  import { BlockAssembler, CONTEXT_WINDOW_EXCEEDED_CODE, LlmError, contentHasImage, createUserMessage, errorChain } from "@deepseek-ai/dsh-llm";
-@@ -290,6 +292,7 @@
+@@ -1,6 +1,7 @@
  * @returns safe text-only summary blocks and the exact call envelope and output.
  */
  async function summarizeWithLlm(ctx, config, input, agent, signal) {
@@ -167,16 +167,10 @@
  		provider: config.summarizationProvider,
 --- a/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-llm-deepseek/lib/index.js
-@@ -1,7 +1,7 @@
- import z from "@deepseek-ai/schemastery";
- import { isVolatile } from "@deepseek-ai/cosmokit";
- import { assertNever, deepEqualJson } from "@deepseek-ai/dsh-util-values";
--import { APP_IDENTITY, IMAGE_OFFLOAD_REQUIRED_CODE, LlmAdapter, LlmError, ProviderRequestId, ReasoningEffortId, RetryPolicySchema, ToolCallId, attributionHeaders, contentHasImage, errorChain, isContextWindowExceededError, isQuotaExceededError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, textOnlyImageText } from "@deepseek-ai/dsh-llm";
-+import { dshGoRecall, APP_IDENTITY, IMAGE_OFFLOAD_REQUIRED_CODE, LlmAdapter, LlmError, ProviderRequestId, ReasoningEffortId, RetryPolicySchema, ToolCallId, attributionHeaders, contentHasImage, errorChain, isContextWindowExceededError, isQuotaExceededError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, textOnlyImageText } from "@deepseek-ai/dsh-llm";
- import { MAX_TIMER_DELAY_MS, deadline, idleWatchdog, timeoutOf } from "@deepseek-ai/dsh-timeout";
- import { ImageVariantId, longEdgeDimensions, requestImageDimensions } from "@deepseek-ai/dsh-attachment";
- import { createHash } from "node:crypto";
-@@ -2094,6 +2094,7 @@
+@@ -1 +1 @@
+-import { APP_IDENTITY, IMAGE_OFFLOAD_REQUIRED_CODE, LlmAdapter, LlmError, ProviderRequestId, ReasoningEffortId, RetryPolicySchema, ToolCallId, assertUsableApiKey, attributionHeaders, contentHasImage, errorChain, isContextWindowExceededError, isQuotaExceededError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, textOnlyImageText } from "@deepseek-ai/dsh-llm";
++import { dshGoRecall, APP_IDENTITY, IMAGE_OFFLOAD_REQUIRED_CODE, LlmAdapter, LlmError, ProviderRequestId, ReasoningEffortId, RetryPolicySchema, ToolCallId, assertUsableApiKey, attributionHeaders, contentHasImage, errorChain, isContextWindowExceededError, isQuotaExceededError, offloadedImageText, projectOffloadedImages, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, textOnlyImageText } from "@deepseek-ai/dsh-llm";
+@@ -1,6 +1,7 @@
  });
  /** DeepSeek provider using Messages content and native thinking replay. */
  var DeepSeekAdapter = class extends LlmAdapter {
@@ -184,7 +178,7 @@
  	dependencies;
  	files;
  	imageAccess = (ref) => {
-@@ -2228,6 +2229,10 @@
+@@ -1,6 +1,10 @@
  				});
  				signal.throwIfAborted();
  				const betas = [...fileIds !== void 0 && fileIds.size > 0 ? [MESSAGES_FILES_BETA] : [], ...body.messages.some((message) => message.content.some((block) => block.type === "tool_addition" || block.type === "tool_removal")) ? [MESSAGES_TOOL_CHANGES_BETA] : []];
@@ -205,10 +199,10 @@
  import { createRequire } from "node:module";
  import { Remote, RemoteError, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
  import { assertNever, deepFreeze, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
-@@ -5,6 +9,215 @@
- import { brandString } from "@deepseek-ai/dsh-brand";
+@@ -2,6 +2,215 @@
  import z from "@deepseek-ai/schemastery";
  import { MAX_TIMER_DELAY_MS } from "@deepseek-ai/dsh-timeout";
+ import { HarnessError } from "@deepseek-ai/dsh-error";
 +//#region dsh-go companion recall admission
 +// Process-local identities never travel in model-visible request fields.
 +const RECALL_HISTORY_TYPE = "plugin:dsh-go/companion-recall";
@@ -421,7 +415,7 @@
  //#region lib/types/message.js
  /** Message value types, identity, and immutable construction helpers. */
  /**
-@@ -1814,6 +2027,7 @@
+@@ -1,6 +1,7 @@
  				value: _metadata
  			});
  		}
@@ -429,7 +423,7 @@
  		adapters = (__runInitializers(this, _instanceExtraInitializers), /* @__PURE__ */ new Map());
  		directory = /* @__PURE__ */ new Map();
  		discoveries = /* @__PURE__ */ new Map();
-@@ -2227,7 +2441,8 @@
+@@ -1,7 +1,8 @@
  		* @param configure - pure control selection, called once before defaults and validation.
  		* @returns a prepared config and its registration-bound stream entry point.
  		*/
@@ -439,7 +433,7 @@
  			signal?.throwIfAborted();
  			const { provider, model, ...controls } = config;
  			const registration = this.registration(provider);
-@@ -2321,6 +2536,7 @@
+@@ -1,6 +1,7 @@
  			try {
  				const registration = prepared?.registration ?? this.registration(options.provider);
  				const adapter = registration.adapter;
@@ -447,7 +441,7 @@
  				let modelInfo;
  				let resolvedConfig;
  				let dispatch;
-@@ -2356,7 +2572,7 @@
+@@ -1,7 +1,7 @@
  					};
  					if (Object.isFrozen(resolvedOptions)) deepFreeze(projectedOptions);
  				}
@@ -456,7 +450,7 @@
  			} catch (error) {
  				yield adapterFailureChunk(error, options.signal);
  				return;
-@@ -2404,6 +2620,7 @@
+@@ -1,6 +1,7 @@
  			return this.streamWithRegistration(options);
  		}
  		streamWithRegistration(options, prepared) {
@@ -464,12 +458,12 @@
  			return this.ctx.waterfall(this, "llm/stream", options, () => this.adapterStream(options, prepared));
  		}
  	};
-@@ -2436,4 +2653,4 @@
+@@ -1,4 +1,4 @@
  	};
  }
  //#endregion
--export { ACCOUNT_QUOTA_EXCEEDED_CODE, APP_IDENTITY, AssistantStreamAccumulator, BlockAssembler, CONTEXT_SUMMARY_MAX_CHARS, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, HarnessError, IMAGE_OFFLOAD_REQUIRED_CODE, INVALID_CREDENTIAL_CODE, LlmAdapter, LlmAttemptId, LlmError, LlmRuntime, LlmRuntime as default, MessageId, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId, RetryPolicySchema, ToolCallId, assembleAssistantStream, assertUsableApiKey, assistantStreamChunks, assistantStreamFirstTokenTime, assistantStreamHasVisibleContent, assistantStreamHasVisibleText, attributionHeaders, boundContextSummary, callConfigEquals, chunkHasVisibleText, contentHasFile, contentHasImage, createAssistantMessage, createDeveloperMessage, createMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, expandAssistantStream, fileHandleText, freezeMessage, isAgentLoopRequest, isContextWindowExceededError, isHarnessError, isQuotaExceededError, isTokenDelta, isVisibleChunk, joinAssistantStreamText, lastAssistantStreamChunk, markAgentLoopRequest, normalizeApiKey, offloadedImageText, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, runFirstTokenTime, runFirstVisibleTime, textOnlyImageText, userAgent };
-+export { dshGoRecall, ACCOUNT_QUOTA_EXCEEDED_CODE, APP_IDENTITY, AssistantStreamAccumulator, BlockAssembler, CONTEXT_SUMMARY_MAX_CHARS, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, HarnessError, IMAGE_OFFLOAD_REQUIRED_CODE, INVALID_CREDENTIAL_CODE, LlmAdapter, LlmAttemptId, LlmError, LlmRuntime, LlmRuntime as default, MessageId, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId, RetryPolicySchema, ToolCallId, assembleAssistantStream, assertUsableApiKey, assistantStreamChunks, assistantStreamFirstTokenTime, assistantStreamHasVisibleContent, assistantStreamHasVisibleText, attributionHeaders, boundContextSummary, callConfigEquals, chunkHasVisibleText, contentHasFile, contentHasImage, createAssistantMessage, createDeveloperMessage, createMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, expandAssistantStream, fileHandleText, freezeMessage, isAgentLoopRequest, isContextWindowExceededError, isHarnessError, isQuotaExceededError, isTokenDelta, isVisibleChunk, joinAssistantStreamText, lastAssistantStreamChunk, markAgentLoopRequest, normalizeApiKey, offloadedImageText, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, runFirstTokenTime, runFirstVisibleTime, textOnlyImageText, userAgent };
+-export { ACCOUNT_QUOTA_EXCEEDED_CODE, APP_IDENTITY, AssistantStreamAccumulator, BlockAssembler, CONTEXT_SUMMARY_MAX_CHARS, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, HarnessError, IMAGE_OFFLOAD_REQUIRED_CODE, INVALID_CREDENTIAL_CODE, LLM_FAILURE_CODES, LlmAdapter, LlmAttemptId, LlmError, LlmRuntime, LlmRuntime as default, MessageId, ProviderRequestId, QUOTA_EXCEEDED_CODE, RETRY_CODE_CHOICES, ReasoningEffortId, RetryPolicySchema, ToolCallId, assembleAssistantStream, assertUsableApiKey, assistantStreamChunks, assistantStreamFirstTokenTime, assistantStreamHasVisibleContent, assistantStreamHasVisibleText, attributionHeaders, boundContextSummary, callConfigEquals, chunkHasVisibleText, contentHasFile, contentHasImage, createAssistantMessage, createDeveloperMessage, createMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, expandAssistantStream, fileHandleText, freezeMessage, isAgentLoopRequest, isContextWindowExceededError, isHarnessError, isQuotaExceededError, isTokenDelta, isVisibleChunk, joinAssistantStreamText, lastAssistantStreamChunk, markAgentLoopRequest, normalizeApiKey, offloadedImageText, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, runFirstTokenTime, runFirstVisibleTime, textOnlyImageText, userAgent };
++export { dshGoRecall, ACCOUNT_QUOTA_EXCEEDED_CODE, APP_IDENTITY, AssistantStreamAccumulator, BlockAssembler, CONTEXT_SUMMARY_MAX_CHARS, CONTEXT_WINDOW_EXCEEDED_CODE, EMPTY_RESPONSE_CODE, HarnessError, IMAGE_OFFLOAD_REQUIRED_CODE, INVALID_CREDENTIAL_CODE, LLM_FAILURE_CODES, LlmAdapter, LlmAttemptId, LlmError, LlmRuntime, LlmRuntime as default, MessageId, ProviderRequestId, QUOTA_EXCEEDED_CODE, RETRY_CODE_CHOICES, ReasoningEffortId, RetryPolicySchema, ToolCallId, assembleAssistantStream, assertUsableApiKey, assistantStreamChunks, assistantStreamFirstTokenTime, assistantStreamHasVisibleContent, assistantStreamHasVisibleText, attributionHeaders, boundContextSummary, callConfigEquals, chunkHasVisibleText, contentHasFile, contentHasImage, createAssistantMessage, createDeveloperMessage, createMessage, createSystemMessage, createToolResultMessage, createUserMessage, errorChain, expandAssistantStream, fileHandleText, freezeMessage, isAgentLoopRequest, isContextWindowExceededError, isHarnessError, isQuotaExceededError, isTokenDelta, isVisibleChunk, joinAssistantStreamText, lastAssistantStreamChunk, markAgentLoopRequest, normalizeApiKey, offloadedImageText, projectFilesToText, projectImagesForTextModel, projectOffloadedImages, projectToolUpdates, requestImageHandleText, requiredImageOffload, resolveImageAttachmentAccess, resolveRetryPolicy, runFirstTokenTime, runFirstVisibleTime, textOnlyImageText, userAgent };
 --- a/node_modules/@deepseek-ai/dsh-session-title-llm/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-session-title-llm/lib/index.js
 @@ -1,3 +1,5 @@
@@ -478,7 +472,7 @@
  import z from "@deepseek-ai/schemastery";
  import { BlockAssembler, createUserMessage } from "@deepseek-ai/dsh-llm";
  import { MAX_TIMER_DELAY_MS, deadline } from "@deepseek-ai/dsh-timeout";
-@@ -158,6 +160,7 @@
+@@ -1,6 +1,7 @@
  * @throws {Error} when input bounds, route preparation, the deadline, cancellation, or an operational finish failure occurs.
  */
  async function executeSessionTitleLlm(ctx, config, request, titleProvider, prepared) {
@@ -488,7 +482,7 @@
  		error: void 0,
 --- a/node_modules/@deepseek-ai/dsh-session/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-session/lib/index.js
-@@ -3,7 +3,7 @@
+@@ -1,7 +1,7 @@
  import { brandNumber, brandString } from "@deepseek-ai/dsh-brand";
  import { assertNever, deepFreeze, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
  import { scopeOf, scopeTarget } from "@deepseek-ai/dsh-scope";
@@ -497,7 +491,7 @@
  //#region lib/types/types.js
  /**
  * Brand a string as a {@link SessionId}.
-@@ -960,6 +960,7 @@
+@@ -1,6 +1,7 @@
  *   closers outside the inherited prefix counted by `inheritedEventCount`.
  */
  function buildForkSeed(events, boundary) {
@@ -505,7 +499,7 @@
  	const prefix = events.slice(0, boundary + 1);
  	prefix.push({
  		type: "session/end-seed",
-@@ -1359,6 +1360,9 @@
+@@ -1,6 +1,9 @@
  * @typert object
  */
  var Session = class Session {
@@ -513,9 +507,9 @@
 +	get dshGoRecallHistory() { return this.#dshGoRecallHistory; }
 +	get dshGoRecallVersion() { return 1; }
  	log = [];
+ 	batchPublication;
  	/** Single incremental owner of surface acceptance and projection state. */
- 	surfaceManager;
-@@ -1447,6 +1451,7 @@
+@@ -1,6 +1,7 @@
  				throw new Error(`invalid seed event at index ${index}: ${error instanceof Error ? error.message : "invalid surface metadata"}`);
  			}
  			this.log.push(mode === "snapshot" ? deepFreeze(snapshot) : snapshot);
@@ -523,7 +517,7 @@
  		}
  		this.firstLiveSeq = SessionLogOffset(this.log.length);
  		this.header = restoredHeader ?? snapshotSessionHeader(id, header);
-@@ -1635,6 +1640,7 @@
+@@ -1,6 +1,7 @@
  				...callbackArgs
  			]);
  			this.log.push(event);
@@ -531,7 +525,7 @@
  			this.eventsSnapshot = void 0;
  			if (entry !== void 0 && callbacks !== void 0) invokeContainedSessionObservers(entry.emitCtx, "session/event", entry.id, callbackArgs, callbacks);
  		} finally {
-@@ -1730,7 +1736,7 @@
+@@ -1,7 +1,7 @@
  			if (msg) this.derived.push(msg);
  		}
  		this.derivedNodes = nodes.length;
@@ -540,7 +534,7 @@
  	}
  	/**
  	* Project one event with all committed message projections applied.
-@@ -1818,6 +1824,7 @@
+@@ -1,6 +1,7 @@
  	*/
  	create(id, options) {
  		const session = this.prepare(id, options);
@@ -548,7 +542,7 @@
  		this.ctx.effect(function* () {
  			yield this.enter(session);
  			this.announce(session);
-@@ -2064,6 +2071,7 @@
+@@ -1,6 +1,7 @@
  	fork(source, boundary, childSessionId) {
  		if (childSessionId !== void 0 && this.get(childSessionId) !== void 0) throw new SessionForkError(`session "${childSessionId}" already exists`, "SESSION_ALREADY_EXISTS");
  		const liveSource = this._resolveForkSource(source);
@@ -564,7 +558,7 @@
  import z from "@deepseek-ai/schemastery";
  //#region lib/types/index.js
  /**
-@@ -20,6 +22,7 @@
+@@ -1,6 +1,7 @@
  * @returns the seed events, contiguous from seq 0; empty when no turn has completed.
  */
  function completedTurnPrefix(parent) {
@@ -579,7 +573,7 @@
  import { Service } from "@deepseek-ai/cordis";
  import z from "@deepseek-ai/schemastery";
  import { AnonymousEntries, NamedEntries, ScopedLayers, scopeTarget } from "@deepseek-ai/dsh-scope";
-@@ -227,6 +228,7 @@
+@@ -1,6 +1,7 @@
  };
  /** Registry service for the prompt inputs assembled before each model step. */
  var SystemPrompt = class extends Service {
@@ -587,7 +581,7 @@
  	static Config = z.object({
  		includeHarnessIdentity: z.boolean().default(true),
  		includeRuntimeContext: z.boolean().default(true),
-@@ -377,6 +379,11 @@
+@@ -1,6 +1,11 @@
  		for (const [name, provider] of this.layers.global.variables.entries()) variables[name] = provider(context);
  		for (const layer of scopeLayers) for (const [name, provider] of layer.variables.entries()) variables[name] = provider(context);
  		const sectionByName = this.layers.merge(scope, (layer) => layer.sections);
@@ -601,7 +595,7 @@
  		const collected = [];
 --- a/node_modules/@deepseek-ai/dsh-tool-executor-native/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-tool-executor-native/lib/index.js
-@@ -3,6 +3,7 @@
+@@ -1,6 +1,7 @@
  //#region lib/types/index.js
  /** Executes visible capabilities directly and owns their complete batch settlement. */
  var NativeToolExecutor = class {
@@ -611,15 +605,10 @@
  	constructor(ctx, maxParallel = () => 10) {
 --- a/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js
 +++ b/node_modules/@deepseek-ai/dsh-tools/lib/pipeline.js
-@@ -1,6 +1,6 @@
- import { a as ToolNotFoundError, m as ToolBatchExecutionError, n as TOOL_ABORTED, o as ToolOutputError, p as validateJsonSchemaValue, r as TOOL_ABORTED_BEFORE_DISPATCH } from "./shared-DTdn5dXO.js";
- import { scopeTarget } from "@deepseek-ai/dsh-scope";
+@@ -1 +1 @@
 -import { HarnessError, createToolResultMessage } from "@deepseek-ai/dsh-llm";
 +import { dshGoRecall, HarnessError, createToolResultMessage } from "@deepseek-ai/dsh-llm";
- import { assertNever, deepFreeze, snapshotJsonValue } from "@deepseek-ai/dsh-util-values";
- import { randomUUID } from "node:crypto";
- import { emitAgentEvent } from "@deepseek-ai/dsh-agent";
-@@ -273,6 +273,7 @@
+@@ -1,6 +1,7 @@
  * for complete calls, including a single-call batch.
  */
  var ToolExecutionPipeline = class {
@@ -627,7 +616,7 @@
  	ctx;
  	source;
  	tools;
-@@ -282,6 +283,8 @@
+@@ -1,6 +1,8 @@
  		this.tools = ctx.tools;
  	}
  	get(name, scope, toolSet) {
@@ -636,7 +625,7 @@
  		return this.source.get === void 0 ? this.tools.executable(name, scope, toolSet) : this.source.get(name, scope, toolSet);
  	}
  	resolveExecution(name, scope, nested, toolSet) {
-@@ -356,6 +359,7 @@
+@@ -1,6 +1,7 @@
  				...base,
  				arguments: deepFreeze(detached)
  			};
@@ -644,7 +633,7 @@
  			this.deferredContexts.set(execution, deferredContexts);
  			this.contentFinalizers.set(execution, finalizerFor());
  			if (!rejected) this.contentProjectors.set(execution, capturedProjector);
-@@ -491,8 +495,12 @@
+@@ -1,8 +1,12 @@
  		}
  		exec.signal = signal;
  		try {
@@ -657,7 +646,7 @@
  			state.bodyInvoked = true;
  			const returned = await tool.execute(exec.arguments, exec);
  			const result = this.createSuccessResult(exec, tool, returned);
-@@ -711,6 +719,7 @@
+@@ -1,6 +1,7 @@
  		const additionalContexts = [...result.additionalContexts ?? [], ...decisionContexts];
  		if (Object.hasOwn(decision, "value")) {
  			if (result.isError) throw new TypeError("tools/post-execute cannot replace the value of a failed result");
@@ -665,7 +654,7 @@
  			const tool = this.resolveExecution(exec.name, exec.agent, exec.parent !== void 0, exec.toolSet);
  			if (tool === void 0) throw new ToolNotFoundError(exec.name);
  			const replaced = this.createSuccessResult(exec, tool, decision.value);
-@@ -774,6 +783,7 @@
+@@ -1,6 +1,7 @@
  			...result.meta !== void 0 ? { meta: result.meta } : {},
  			...result.additionalContexts !== void 0 ? { additionalContexts: result.additionalContexts } : {}
  		});

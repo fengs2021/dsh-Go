@@ -58,7 +58,9 @@ extension SessionActivationApi on DshClient {
     final evidence = state;
     Future<bool> run() async {
       try {
-        final supported = await (evidence.release ??= _readActivationRelease(generation!));
+        final supported = await (evidence.release ??= _readActivationRelease(
+          generation!,
+        ));
         if (!current() || !allowed() || !current()) return false;
         onActivationChecked?.call(supported);
         // User callbacks can revoke the route or reconnect synchronously.
@@ -71,7 +73,8 @@ extension SessionActivationApi on DshClient {
           evidence.requests[key] = opening;
           unawaited(
             opening.whenComplete(() {
-              if (identical(evidence.requests[key], opening)) evidence.requests.remove(key);
+              if (identical(evidence.requests[key], opening))
+                evidence.requests.remove(key);
             }),
           );
         }
@@ -101,26 +104,35 @@ extension SessionActivationApi on DshClient {
           autoUncompress: true,
           timeout: const Duration(seconds: 1),
         );
-        version = response.statusCode == 200 ? parseWebBootGraph(response.text)?.release?.version : null;
+        version = response.statusCode == 200
+            ? parseWebBootGraph(response.text)?.release?.version
+            : null;
       } else {
         version = transport.hostVersion;
       }
       return identical(mux.generation, generation) &&
           mux.state == DshConnectionState.connected &&
-          (version == '0.2.2-alpha.2' || version == '0.2.2-rc.1');
+          (version == '0.2.2-alpha.2' ||
+              version == '0.2.2-rc.1' ||
+              version == '0.2.2-rc.3');
     } on Object {
       // Negative and unknown results are cached only for this generation.
       return false;
     }
   }
 
-  Future<bool> _openActivation(Map<String, Object?> address, MuxGeneration generation) async {
+  Future<bool> _openActivation(
+    Map<String, Object?> address,
+    MuxGeneration generation,
+  ) async {
     MuxStream? stream;
     try {
       stream = mux.open('session/follow', {
         'request': {'address': address, 'activate': true, 'maxMessages': 1},
       });
-      final first = await stream.items.first.timeout(const Duration(seconds: 2));
+      final first = await stream.items.first.timeout(
+        const Duration(seconds: 2),
+      );
       return identical(mux.generation, generation) &&
           mux.state == DshConnectionState.connected &&
           first is Map &&

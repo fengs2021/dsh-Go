@@ -87,13 +87,26 @@ def main():
     supplied = {name for name in python_pair if (args.native / name).is_file()}
     optional = {name for name in ('libdsh_linux.so', 'libdsh_workspace_grants.so')
                 if (args.native / name).is_file()}
-    expected_libs = LIBS | (python_pair if supplied else set()) | optional
+    # The Dart code loads native assets by name, and the AOT build lists them.
+    native_assets = set()
+    native_manifest = next((name for name in entries
+                            if name.endswith('flutter_assets/NativeAssetsManifest.json')), None)
+    if native_manifest is None:
+        problems.append('The HAP has no flutter_assets/NativeAssetsManifest.json')
+    else:
+        for mapping in (json.loads(read(native_manifest)).get('native-assets') or {}).values():
+            for spec in mapping.values():
+                native_assets.add(spec[-1] if isinstance(spec, list) else spec)
+    expected_libs = LIBS | native_assets | (python_pair if supplied else set()) | optional
     if supplied and supplied != python_pair:
         problems.append('Incomplete native Python input pair')
     # Every library, as packaged, against what went in.
     libs = {name[len(LIB_DIR):] for name in entries if name.startswith(LIB_DIR)}
     if libs != expected_libs:
         problems.append(f'libs: missing {sorted(expected_libs - libs)}, extra {sorted(libs - expected_libs)}')
+    if native_assets - libs:
+        problems.append('native assets the AOT lists but the HAP does not carry: '
+                        + ', '.join(sorted(native_assets - libs)))
     inputs = {name: args.native / name for name in ('libnode.so', 'libdsh_flock.so', 'libdsh_require_builtin.so')}
     inputs.update({name: args.native / name for name in supplied | optional})
     inputs['libapp.so'] = args.aot / 'arm64-v8a/app.so'

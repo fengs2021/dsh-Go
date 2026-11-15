@@ -694,7 +694,7 @@ def main():
         selected = all_pins['targetSets']['ohos']
         commands = []
         for name in reversed(selected[selected.index(patch):]):
-            pin = all_pins['patches'][name].get('0.2.2-rc.1', {}).get(relative)
+            pin = all_pins['patches'][name].get('0.2.2-rc.3', {}).get(relative)
             if pin is None: continue
             if sha(target) != pin['after']: raise ValueError('Unexpected reverse-patch input: ' + name)
             for flag in ('--check', None):
@@ -704,7 +704,7 @@ def main():
                 commands.append({'argv': argv, 'exitCode': proc.returncode, 'stdout': proc.stdout, 'stderr': proc.stderr})
                 proc.check_returncode()
             if sha(target) != pin['before']: raise ValueError('Unexpected reverse-patch output: ' + name)
-        pin = pins['0.2.2-rc.1'][relative]
+        pin = pins['0.2.2-rc.3'][relative]
         (o / 'grep-description-before/node_modules/@deepseek-ai/dsh-tool-fs-search/package.json').write_text('{"type":"module"}\n')
         # Both source images resolve the real provider's sibling dependencies.
         (o / 'grep-description-before/node_modules/@deepseek-ai/dsh-tool-fs-search/node_modules').symlink_to(prefix() / 'node_modules', target_is_directory=True)

@@ -355,13 +355,13 @@ def check_patches(repo: Path, prefix: Path, target_report: Path):
     spec.loader.exec_module(module)
     pins = json.loads((repo / 'runtime/patches/pins.json').read_text())
     names, _ = module.select_dsh_patches(pins, str(repo / 'runtime/patches'), 'ohos')
-    _, identity = module.dsh_patch_inputs(pins, str(repo / 'runtime/patches'), names, 'ohos', '0.2.2-rc.1')
+    _, identity = module.dsh_patch_inputs(pins, str(repo / 'runtime/patches'), names, 'ohos', '0.2.2-rc.3')
     report = json.loads(target_report.read_text())
-    if report.get('target') != 'ohos' or report.get('dshVersion') != '0.2.2-rc.1' or report.get('inputSha256') != identity:
+    if report.get('target') != 'ohos' or report.get('dshVersion') != '0.2.2-rc.3' or report.get('inputSha256') != identity:
         raise ValueError('Requires the current actual --target ohos patch report')
     final = {}
     for name in names:
-        final.update(pins['patches'][name]['0.2.2-rc.1'])
+        final.update(pins['patches'][name]['0.2.2-rc.3'])
     for relative, pin in final.items():
         if digest((prefix / relative).read_bytes()) != pin['after']:
             raise ValueError(f'Patched input is not the final selected OHOS state: {relative}')

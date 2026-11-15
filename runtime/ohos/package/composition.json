@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "target": "ohos",
-  "dshVersion": "0.2.2-rc.1",
+  "dshVersion": "0.2.2-rc.3",
   "nodeVersion": "24.22.1",
   "installation": {
     "npmVersion": "11.9.0",
@@ -18,7 +18,7 @@
     "dshClone": "none: fresh locked npm install in a new directory",
     "hardlinks": "reject shared regular files in both prepared prefixes"
   },
-  "dshLockSha256": "9809a7a64fd5d40df441a30fb4407c037802162d75e8a8e39dc0ef2569bec2ab",
+  "dshLockSha256": "0bef59ef89cb9c4b121da1fc7b531bb1eb5501c946698f4c9919d5ba5750dc50",
   "processLockSha256": "5a815fc00cafc62fca834fe3e2abf6792bd3263c1a386cb2948d6a4063ed8f30",
   "regexSha256": "80eaea2a9e50a2851e332fa4fccffeb01550584ad3c448a2eadd88b43373d5f1",
   "dshRemovePackages": {

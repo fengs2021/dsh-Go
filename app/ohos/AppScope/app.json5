@@ -1,6 +1,6 @@
 {
   "app": {
-    "bundleName": "ccchimneyyy.dsh.go",
+    "bundleName": "io.github.ccch1mneyyy.dsh_app",
     "vendor": "ccch1mneyyy",
     "versionCode": 1000000,
     "versionName": "1.0.0",

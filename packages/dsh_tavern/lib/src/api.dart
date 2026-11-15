@@ -365,6 +365,7 @@ class TavernModelConfig {
     this.model = 'deepseek-flash',
     this.deepseek = true,
     this.thinking = false,
+    this.headers = const {},
   });
 
   final Future<String?> Function() apiKey;
@@ -376,6 +377,14 @@ class TavernModelConfig {
   /// endpoint.
   final bool deepseek;
   final bool thinking;
+
+  /// Extra request headers the user's own channel asks for (an attribution or
+  /// gateway header, say). They are sent with every request, but never at the
+  /// cost of the two this client owns: `Authorization` carries the key read for
+  /// this call and `Content-Type` describes the JSON body it encodes, so a
+  /// configured header of either name (any casing) is dropped. Names are
+  /// otherwise passed through unchanged.
+  final Map<String, String> headers;
 }
 
 /// The tavern. One per app; [open] it on the app's support directory.

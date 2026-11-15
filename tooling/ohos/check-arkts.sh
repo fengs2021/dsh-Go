@@ -360,7 +360,26 @@ if [ "$FULL" = 1 ]; then
   mkdir -p "$RAWFILE" "$LIBS"
   cp -a "$AOT/flutter_assets" "$RAWFILE/flutter_assets"
   cp "$AOT/arm64-v8a/app.so" "$LIBS/libapp.so"
+  # Native assets are loaded by name at runtime, so a missing file is a broken app,
+  # not a warning: the AOT build lists each one in NativeAssetsManifest.json.
   if [ -d "$AOT/native_assets/libs/arm64-v8a" ]; then cp "$AOT/native_assets/libs/arm64-v8a/"*.so "$LIBS/"; fi
+  python3 -I - "$AOT/flutter_assets/NativeAssetsManifest.json" "$LIBS" <<'PY_NATIVE_ASSETS'
+import json, pathlib, sys
+manifest, libs = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
+if not manifest.is_file():
+    sys.exit("check-arkts: the AOT output has no NativeAssetsManifest.json")
+assets = json.loads(manifest.read_text())
+missing = []
+for _, entries in (assets.get("native-assets") or {}).items():
+    for _, spec in entries.items():
+        name = spec[-1] if isinstance(spec, list) else spec
+        if not (libs / name).is_file():
+            missing.append(name)
+if missing:
+    sys.exit("check-arkts: the AOT lists native assets that were not packaged: "
+             + ", ".join(sorted(set(missing)))
+             + " (build them for OpenHarmony, then pass the AOT directory that carries native_assets/)")
+PY_NATIVE_ASSETS
   # FlutterLoader reads these from rawfile; copyConfigsFile moves them there.
   for config in buildinfo.json5 framesconfig.json; do
     if [ -f "$ENTRY/src/main/resources/base/profile/$config" ]; then

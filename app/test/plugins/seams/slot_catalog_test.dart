@@ -5,9 +5,11 @@ import 'package:dsh_app/plugins/seams/seams.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('every slot of 0.2.2-rc.1 plus the app surface, keyed by their own key', () {
-    expect(slotCatalogRelease, '0.2.2-rc.1');
-    expect(slotCatalog.length, 110);
+  test('every slot of 0.2.2-rc.3 (116) plus the app surface, keyed by their own key', () {
+    expect(slotCatalogRelease, '0.2.2-rc.3');
+    // 116 slots of the release plus the app's own dsh-go.panel.
+    expect(slotCatalog.length, 117);
+    expect(slotCatalog.values.where((s) => !s.synthetic).length, 116);
     expect(slotCatalog.values.where((s) => s.synthetic).map((s) => s.key), [Slots.dshGoPanel]);
     for (final MapEntry(:key, :value) in slotCatalog.entries) {
       expect(value.key, key);
@@ -19,7 +21,7 @@ void main() {
     // key / kind / scope / replaceRisk only. A DSH bump brings a new extract.
     final file = File('test/plugins/seams/fixtures/slot-catalog-$slotCatalogRelease.json');
     final rows = (jsonDecode(file.readAsStringSync()) as List).cast<Map<String, Object?>>();
-    expect(rows.length, 109);
+    expect(rows.length, 116);
     for (final row in rows) {
       final info = slotInfo(row['key']! as String)!;
       expect(info.kind.name, row['kind']);
@@ -28,7 +30,60 @@ void main() {
         'session-maybe' => SlotScope.sessionMaybe,
         _ => SlotScope.root,
       });
+      // `wraps-owner-content` (rc.3's hoc slots) is not a replacement of
+      // shipped UI: only `shadows-shipped-ui` is.
       expect(info.replacesShippedUi, row['replaceRisk'] == 'shadows-shipped-ui', reason: info.key);
+      expect(
+        info.replaceRisk,
+        switch (row['replaceRisk']) {
+          'shadows-shipped-ui' => SlotReplaceRisk.shadowsShippedUi,
+          'wraps-owner-content' => SlotReplaceRisk.wrapsOwnerContent,
+          _ => SlotReplaceRisk.none,
+        },
+        reason: info.key,
+      );
+    }
+  });
+
+  test('rc.3: hoc wraps the owner content, and only a hoc does', () {
+    // The release's three hoc slots (chat.markdown.fence, hero.frame,
+    // sidebar.session.action) are its only `wraps-owner-content` rows, and its
+    // only rows that are not a shipped-UI replacement either way.
+    for (final info in slotCatalog.values) {
+      expect(info.kind == SlotKind.hoc, info.wrapsOwnerContent, reason: info.key);
+      if (info.kind == SlotKind.hoc) {
+        expect(info.replacesShippedUi, isFalse, reason: info.key);
+        expect(info.replaceRisk, SlotReplaceRisk.wrapsOwnerContent, reason: info.key);
+      }
+    }
+    expect(
+      slotCatalog.values.where((i) => i.kind == SlotKind.hoc).map((i) => i.key).toList()..sort(),
+      ['conversation.chat.markdown.fence', 'conversation.hero.frame', 'sidebar.session.action'],
+    );
+  });
+
+  test('rc.3 additions sit in the band §3 gives their region', () {
+    SeatPriority of(String key) => seatPolicyOf(key).priority;
+    // Message level: one platform view per message (§3, 「不做岛」).
+    for (final key in ['conversation.chat.commandview', 'conversation.chat.markdown.fence']) {
+      expect(of(key), SeatPriority.message, reason: key);
+      expect(seatPolicyOf(key).islands, isEmpty, reason: key);
+    }
+    // The 「插件」 panel's band: the session header action lists (P1).
+    expect(of('conversation.session.header.actions.subagent.footer'), SeatPriority.p1);
+    expect(seatPolicyOf('conversation.session.header.actions.subagent.footer').islands, {IslandForm.panel});
+    // The app's own surfaces (§3, 「不做」): hero, model menu, settings launcher,
+    // sidebar session row, workspace directory picker.
+    for (final key in [
+      'conversation.hero.frame',
+      'conversation.input.model.options',
+      'settings.launcher.notifications',
+      'sidebar.session.action',
+      'workspace.picker.directoryFlow',
+    ]) {
+      expect(slotInfo(key)!.seatable, isFalse, reason: key);
+      expect(seatPolicyOf(key).priority, SeatPriority.never, reason: key);
+      expect(seatPolicyOf(key).islands, isEmpty, reason: key);
     }
   });
 

@@ -96,7 +96,7 @@
 
 ## 3. slot 清单与优先级
 
-位置写的是原生 App 里的对应处。完整 100 项见附录 A。
+位置写的是原生 App 里的对应处。完整 116 项（0.2.2-rc.3）见附录 A 与 `app/test/plugins/seams/fixtures/slot-catalog-0.2.2-rc.3.json`。
 
 | 优先级 | slot（基数 · 作用域） | 原生位置 | 形态 |
 |---|---|---|---|
@@ -466,6 +466,23 @@ class FromUiJsonBadge extends StatelessWidget { … }     // 「来自 ui.json�
 
 ## 附录 A：slot 目录与抽样数据的来源
 
-- **slot 全表（100 项）**：对 `dsh-cordis-client-runner/lib/client.js` 做文本解析（不执行），按 `key: "…", kind: "…", scope: "…", summary: "…"` 逐项提取 `declaredBy`、`occupants`、`replaceRisk`。结果存为 `slot-catalog-<DSH 版本>.json`；当前版本的 `key` / `kind` / `scope` / `replaceRisk` 四列提交在 `app/test/plugins/seams/fixtures/`，`slot_catalog_test.dart` 拿它核对 `slotCatalog`。DSH 升级后照此重新生成，与本文 §3 对比增删。
+- **slot 全表（116 项，0.2.2-rc.3）**：对 `dsh-cordis-client-runner/lib/client.js` 做文本解析（不执行），按 `key: "…", kind: "…", scope: "…", summary: "…"` 逐项提取 `declaredBy`、`occupants`、`replaceRisk`。结果存为 `slot-catalog-<DSH 版本>.json`；当前版本的 `key` / `kind` / `scope` / `replaceRisk` 四列提交在 `app/test/plugins/seams/fixtures/`，`slot_catalog_test.dart` 拿它核对 `slotCatalog`。DSH 升级后照此重新生成，与本文 §3 对比增删。
 - **slot 树**：`deepseek-harness/docs/subsystems/slots.zh.md`「当前层级」（0.2.0-rc.2 源码）。
 - **插件抽样**：16 个包（15 个带浏览器半侧 + 1 个只有宿主侧的 dsh-whale-widget）的 tarball 从 npm 下载后解包阅读（解包内容不入库）。逐包的 slot、inject、是否挂 body、是否改官方 DOM、宿主路由已汇总进本文 §1.3。
+
+### rc.3 增删（引擎 0.2.2-rc.1 → 0.2.2-rc.3）
+
+抽取：`python3 /root/revet/slots/extract_slots.py`（同一份 `client.js` 文本解析，`entries 116` / `missing replaceRisk 0`）。rc.1 的 109 项 → rc.3 的 116 项：新增 7 项、变更 1 项，无删除。
+
+| slot | 基数 · 作用域 | replaceRisk | §3 档 | 为什么是这一档 |
+|---|---|---|---|---|
+| conversation.chat.commandview | keyed · session | none → **shadows-shipped-ui** | message | 会话内逐条消息级挂点（§3「不做岛」行）；同 rc.1 的 chat.node 一样，替换风险不改变它只给「在网页版查看」的性质 |
+| conversation.chat.markdown.fence | **hoc** · session | wraps-owner-content | message | 每条消息里包住围栏代码块内容，仍是逐条消息级 |
+| conversation.hero.frame | **hoc** · root | wraps-owner-content | never | 新建会话页是 App 自己的界面（§3「不做」），同 hero.agentPreset / hero.workspace；hoc 包的正是宿主首页内容，原生无法承载 |
+| conversation.input.model.options | list · session | none | never | 模型菜单由 App 原生画（conversation.input.model / .label 已为 never），菜单内的选项目前无原生出口 |
+| conversation.session.header.actions.subagent.footer | list · session | none | P1（面板岛） | 与 §3 P1 行的 session.header.actions / utilities 同一处（会话头部），同一「插件」面板顶部露出 |
+| settings.launcher.notifications | single · root | shadows-shipped-ui | never | settings.launcher 在 §3「不做」行里，App 自己画设置入口与通知项 |
+| sidebar.session.action | **hoc** · root | wraps-owner-content | never | §3「不做」的 sidebar\* 替换点：App 自己的侧栏会话行；hoc 包的是该行宿主内容 |
+| workspace.picker.directoryFlow | single · root | shadows-shipped-ui | never | 同 hero.workspace.directoryFlow / sidebar.workspaces.directoryFlow，目录选择由 App 原生画 |
+
+**rc.3 首次出现的两件事**：`kind: 'hoc'`（官方 SlotKind 第五种：注册项拿到 children，是包住宿主内容的一层）与 `replaceRisk: 'wraps-owner-content'`（包层，**不是**替换宿主 UI；`replacesShippedUi` 仍只认 `shadows-shipped-ui`，包层另由 `SlotInfo.wrapsOwnerContent` / `SlotReplaceRisk` 记）。rc.3 里 hoc 与 wraps-owner-content 一一对应。

@@ -19,11 +19,11 @@ case_root="$(cd -- "$case_root" && pwd)"
 prefix="${DSH_OHOS_PREFIX:-$case_root/prefix}"
 if [[ -z "${DSH_OHOS_PREFIX:-}" ]]; then
   mkdir -- "$prefix"
-  cp -- "$repo_root/runtime/locks/dsh-0.2.2-rc.1/package.json" "$prefix/package.json"
-  cp -- "$repo_root/runtime/locks/dsh-0.2.2-rc.1/package-lock.json" "$prefix/package-lock.json"
+  cp -- "$repo_root/runtime/locks/dsh-0.2.2-rc.3/package.json" "$prefix/package.json"
+  cp -- "$repo_root/runtime/locks/dsh-0.2.2-rc.3/package-lock.json" "$prefix/package-lock.json"
   node_path="$(command -v -- "$node_bin")"
   PATH="$(dirname -- "$node_path"):$PATH" npm ci --prefix "$prefix" --ignore-scripts --no-audit --no-fund
-  python3 "$repo_root/runtime/lib/rtbuild.py" patch-dsh --prefix "$prefix" --dsh-version 0.2.2-rc.1 --target ohos --out "$case_root/patches.json" --target-report "$case_root/patch-target.json"
+  python3 "$repo_root/runtime/lib/rtbuild.py" patch-dsh --prefix "$prefix" --dsh-version 0.2.2-rc.3 --target ohos --out "$case_root/patches.json" --target-report "$case_root/patch-target.json"
 fi
 result=0
 for mode in jit jitless sim; do

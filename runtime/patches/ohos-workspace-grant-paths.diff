@@ -33,7 +33,7 @@
  			const canonical = await realpathNormalize(path);
  			if ((await this.listStoredHeaders()).length > 0 || sessions.list().length > 0) return void 0;
  			return this.createCanonical(canonical, defaultWorkspaceTitle(path), true);
-@@ -910,7 +915,9 @@
+@@ -916,7 +921,9 @@
  			this.sessionPaths.set(header.id, path);
  			this.invalidSessionPaths.delete(header.id);
  		} catch (error) {
@@ -46,15 +46,14 @@
  	}
 --- a/node_modules/@deepseek-ai/dsh-working-directory/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-working-directory/lib/index.js
-@@ -3,6 +3,7 @@
+@@ -3,5 +3,6 @@
  import z from "@deepseek-ai/schemastery";
  import { z as z$1 } from "zod";
  import { createUserMessage } from "@deepseek-ai/dsh-llm";
+ import { HarnessError } from "@deepseek-ai/dsh-error";
 +const ohosWorkspacePaths = process.platform === "openharmony" ? globalThis[Symbol.for("dsh.go.ohos.workspace-paths")] : void 0;
- //#region lib/types/index.js
- /**
- * Session working directories, durable changes, and model context.
-@@ -79,6 +80,7 @@
+ //#region lib/types/error.js
+@@ -97,6 +98,7 @@
  	*/
  	get(session) {
  		const directory = this.workingDirectoryProjectionHandle.stateOf(session) ?? this.defaultDirectory;
@@ -62,9 +61,7 @@
  		return globalThis[Symbol.for("dsh.go.direct")]?.toHost(directory) ?? directory;
  	}
  	/**
-@@ -92,6 +94,21 @@
- 	ensure(agent, signal) {
- 		return this.serialize(agent, signal, async (control) => {
+@@ -117,4 +119,19 @@
  			const current = this.get(agent.session);
 +			if (ohosWorkspacePaths?.handles(current)) {
 +				let directory;
@@ -84,10 +81,10 @@
  			const target = await this.ctx.fs.resolve(current, { signal: control });
  			const info = await this.ctx.fs.stat(target, control);
  			control.throwIfAborted();
-@@ -127,6 +144,7 @@
+@@ -156,6 +173,7 @@
  		return `Current working directory: ${JSON.stringify(this.get(session))}.`;
  	}
- 	async directory(path, cwd, signal) {
+ 	async directory(path, cwd, signal, missing = () => new WorkingDirectoryError(`working-directory: directory does not exist: ${JSON.stringify(path)}`, "WORKING_DIRECTORY_NOT_FOUND")) {
 +		if (ohosWorkspacePaths?.handles(path) || ohosWorkspacePaths?.handles(cwd)) return await ohosWorkspacePaths.directory(path, cwd, signal);
  		const target = await this.ctx.fs.resolve(path, {
  			cwd,
@@ -102,9 +99,10 @@
  //#region lib/types/win32.js
  /**
  * Windows security-descriptor helpers for atomic local-file replacement. Koffi loads lazily so
-@@ -493,6 +494,69 @@
+@@ -479,7 +480,70 @@
  		if (isAbortError(error)) throw new FsError("read aborted", "FS_ABORTED");
- 		throw error;
+ 		/* v8 ignore next -- needs a permission fault after a successful stat; Windows chmod cannot deny reads, POSIX covers it. */
+ 		throw fsErrorFromErrno("read", target.displayPath, error);
  	}
 +}
 +// Metadata and directory listing keep their own error vocabulary; the existing
@@ -172,7 +170,7 @@
  }
  async function removeStagingDirOrThrow(stagingDir, originalError, removeStagingDir) {
  	try {
-@@ -864,6 +928,14 @@
+@@ -851,6 +915,14 @@
  	}
  	async resolve(path, opts) {
  		if (opts?.signal?.aborted) throw new FsError("resolve aborted", "FS_ABORTED");
@@ -187,7 +185,7 @@
  		const local = await resolveLocalTarget(opts?.cwd ?? this.config.cwd, expandHomePrefix(path));
  		if (opts?.signal?.aborted) throw new FsError("resolve aborted", "FS_ABORTED");
  		return {
-@@ -886,6 +958,12 @@
+@@ -873,6 +945,12 @@
  	}
  	async stat(target, signal) {
  		if (signal?.aborted) throw new FsError("stat aborted", "FS_ABORTED");
@@ -200,7 +198,7 @@
  		const info = await probe(target.targetKey);
  		if (signal?.aborted) throw new FsError("stat aborted", "FS_ABORTED");
  		if (!info) return void 0;
-@@ -898,6 +976,15 @@
+@@ -885,6 +963,15 @@
  	async lstat(path, opts, signal) {
  		if (signal?.aborted) throw new FsError("lstat aborted", "FS_ABORTED");
  		if (path.trim().length === 0) throw new FsError("file_path must be a non-empty string", "FS_NOT_FOUND");
@@ -216,7 +214,7 @@
  		const info = await probeNoFollow(localDisplayPath(opts?.cwd ?? this.config.cwd, expandHomePrefix(path)));
  		if (signal?.aborted) throw new FsError("lstat aborted", "FS_ABORTED");
  		if (!info) return void 0;
-@@ -908,12 +995,22 @@
+@@ -895,12 +982,22 @@
  		};
  	}
  	async readText(target, signal) {
@@ -239,7 +237,7 @@
  		return Promise.resolve(streamWholeText({
  			displayPath: target.displayPath,
  			targetKey: target.targetKey
-@@ -926,12 +1023,27 @@
+@@ -913,12 +1010,27 @@
  		}, signal, maxBytes, this.internals);
  	}
  	async readByteRange(target, range, signal) {

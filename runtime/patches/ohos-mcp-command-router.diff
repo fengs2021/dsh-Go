@@ -1,8 +1,7 @@
 --- a/node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js
-@@ -35,13 +35,14 @@
- * @param config - Resolved plugin config discriminated on `transport`.
- * @returns A connected-ready MCP Transport (stdio or Streamable HTTP).
+@@ -1,9 +1,10 @@
+ * @returns an unstarted MCP transport (stdio or Streamable HTTP).
  */
 -function createTransport(config) {
 +function createTransport(config, ctx) {
@@ -14,28 +13,25 @@
 -			cwd: config.cwd
 +			cwd: config.cwd,
 +			spawn: process.platform === "openharmony" ? ctx.subprocess.pluginProcess.spawn : void 0
- 		});
- 		case "streamable-http": return new StreamableHTTPClientTransport(new URL(config.url), { requestInit: { headers: config.headers } });
- 	}
-@@ -640,7 +641,7 @@
- 		}
- 		let instructions;
- 		try {
--			transport = createTransport(config);
-+			transport = createTransport(config, ctx);
- 			await generation.connect(transport);
- 			if (hasClosed()) {
- 				attemptSettled = true;
-@@ -761,7 +762,7 @@
- /** Cordis plugin name used by loader diagnostics. */
- const name = "mcp-client";
+@@ -1,3 +1,3 @@
+-	connect(config, timeoutMs) {
++	connect(config, timeoutMs, ctx) {
+ 		this.lifetime.signal.throwIfAborted();
+-		const transport = this.transport = createTransport(config);
++		const transport = this.transport = createTransport(config, ctx);
+@@ -1,2 +1,2 @@
+ 			bindingValue = { config: resolved };
+-			await record.wire.connect(resolved, remaining());
++			await record.wire.connect(resolved, remaining(), ctx);
+@@ -1,2 +1,2 @@
+ 		const resolved = await generation.run((signal) => binding.resolve(signal), remaining());
+-		await generation.connect(resolved, remaining());
++		await generation.connect(resolved, remaining(), ctx);
+@@ -1,2 +1,2 @@
  /** Services required by this plugin. */
 -const inject = ["tools"];
 +const inject = process.platform === "openharmony" ? ["tools", "subprocess"] : ["tools"];
- /** Default timeout for individual MCP tool calls and resource requests (ms). */
- const DEFAULT_TOOL_CALL_TIMEOUT_MS = 6e4;
- /** Valid `serverName`, kept below the public tool-name budget. */
-@@ -808,8 +809,8 @@
+@@ -1,8 +1,8 @@
  * @returns startup readiness after connection and initial tool discovery settle.
  */
  async function apply(ctx, config) {
@@ -48,7 +44,7 @@
  	}
 --- a/node_modules/@modelcontextprotocol/client/dist/stdio.mjs
 +++ b/node_modules/@modelcontextprotocol/client/dist/stdio.mjs
-@@ -57,6 +57,7 @@
+@@ -1,6 +1,7 @@
  	_readBuffer;
  	_serverParams;
  	_stderrStream = null;
@@ -56,7 +52,7 @@
  	onclose;
  	onerror;
  	onmessage;
-@@ -71,7 +72,7 @@
+@@ -1,7 +1,7 @@
  	async start() {
  		if (this._process) throw new Error("StdioClientTransport already started! If using Client class, note that connect() calls start() automatically.");
  		return new Promise((resolve, reject) => {
@@ -65,7 +61,7 @@
  				env: {
  					...getDefaultEnvironment(),
  					...this._serverParams.env
-@@ -94,6 +95,7 @@
+@@ -1,6 +1,7 @@
  			});
  			this._process.on("close", (_code) => {
  				this._process = void 0;
@@ -73,7 +69,7 @@
  				this.onclose?.();
  			});
  			this._process.stdin?.on("error", (error) => {
-@@ -151,6 +153,7 @@
+@@ -1,6 +1,7 @@
  	* @internal
  	*/
  	async _dispose() {
@@ -81,7 +77,7 @@
  		const proc = this._process;
  		this._process = void 0;
  		if (proc && proc.exitCode === null && proc.signalCode === null) {
-@@ -179,6 +182,7 @@
+@@ -1,6 +1,7 @@
  		this._readBuffer.clear();
  	}
  	async close() {
@@ -89,7 +85,7 @@
  		if (this._process) {
  			const processToClose = this._process;
  			this._process = void 0;
-@@ -203,12 +207,38 @@
+@@ -1,12 +1,38 @@
  		}
  		this._readBuffer.clear();
  	}
@@ -135,7 +131,7 @@
  };
 --- a/node_modules/@modelcontextprotocol/client/dist/stdio.cjs
 +++ b/node_modules/@modelcontextprotocol/client/dist/stdio.cjs
-@@ -60,6 +60,7 @@
+@@ -1,6 +1,7 @@
  	_readBuffer;
  	_serverParams;
  	_stderrStream = null;
@@ -143,7 +139,7 @@
  	onclose;
  	onerror;
  	onmessage;
-@@ -74,7 +75,7 @@
+@@ -1,7 +1,7 @@
  	async start() {
  		if (this._process) throw new Error("StdioClientTransport already started! If using Client class, note that connect() calls start() automatically.");
  		return new Promise((resolve, reject) => {
@@ -152,7 +148,7 @@
  				env: {
  					...getDefaultEnvironment(),
  					...this._serverParams.env
-@@ -97,6 +98,7 @@
+@@ -1,6 +1,7 @@
  			});
  			this._process.on("close", (_code) => {
  				this._process = void 0;
@@ -160,7 +156,7 @@
  				this.onclose?.();
  			});
  			this._process.stdin?.on("error", (error) => {
-@@ -154,6 +156,7 @@
+@@ -1,6 +1,7 @@
  	* @internal
  	*/
  	async _dispose() {
@@ -168,7 +164,7 @@
  		const proc = this._process;
  		this._process = void 0;
  		if (proc && proc.exitCode === null && proc.signalCode === null) {
-@@ -182,6 +185,7 @@
+@@ -1,6 +1,7 @@
  		this._readBuffer.clear();
  	}
  	async close() {
@@ -176,7 +172,7 @@
  		if (this._process) {
  			const processToClose = this._process;
  			this._process = void 0;
-@@ -206,12 +210,38 @@
+@@ -1,12 +1,38 @@
  		}
  		this._readBuffer.clear();
  	}

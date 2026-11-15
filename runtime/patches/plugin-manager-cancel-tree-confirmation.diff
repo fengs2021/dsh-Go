@@ -1,6 +1,6 @@
 --- a/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-plugin-manager/lib/index.js
-@@ -270,8 +270,9 @@
+@@ -1,8 +1,9 @@
  	});
  	try {
  		return alive(targetOf(pid, tree.grouped, platform));
@@ -12,11 +12,10 @@
  	}
  }
  /**
-@@ -287,6 +288,92 @@
- 		if (Date.now() >= deadline) return;
+@@ -2,5 +2,91 @@
  		await new Promise((resolve) => setTimeout(resolve, TREE_POLL_MS));
  	}
-+}
+ }
 +/** Private service guard. A settled parent does not establish that its group stopped. */
 +function ownedRunGuard(dir, tree, signal, internals = {}) {
 +	if (tree.grouped !== true || (internals.platform ?? process.platform) === "win32" || tree.pid !== void 0 && (!Number.isSafeInteger(tree.pid) || tree.pid <= 0)) throw new Error("Invalid owned package process group");
@@ -102,10 +101,10 @@
 +	const results = await Promise.allSettled(runs.map((run) => run.stop()));
 +	const failure = ownedStopFailure(runs) ?? results.find((result) => result.status === "rejected")?.reason;
 +	if (failure !== void 0) throw failure;
- }
++}
  //#endregion
  //#region lib/types/failure.js
-@@ -707,6 +794,18 @@
+@@ -1,6 +1,18 @@
  		if (preflight.length > 0) return await rejected(preflight, "nothing was installed");
  		const cancellation = new AbortController();
  		const grouped = leadsOwnGroup(options.execution);
@@ -124,7 +123,7 @@
  		const child = execa(options.command ?? "pnpm", [...options.args ?? [], ...args.map((arg) => anchorPathSpec(arg, context.cwd))], {
  			cwd: dir,
  			env: environment,
-@@ -717,9 +816,11 @@
+@@ -1,9 +1,11 @@
  			killDescendants: options.execution === "service",
  			buffer: false,
  			stdin: options.execution === "cli" ? "inherit" : "ignore",
@@ -137,7 +136,7 @@
  		let writes = Promise.resolve();
  		/** `settled` records that the process outcome is known; `stalled` that the silence bound stopped the run. */
  		const control = {
-@@ -737,6 +838,7 @@
+@@ -1,6 +1,7 @@
  			clearTimeout(idleTimer);
  			idleTimer = setTimeout(() => {
  				control.stalled = true;
@@ -145,7 +144,7 @@
  				child.kill();
  			}, options.idleTimeoutMs);
  		};
-@@ -764,16 +866,19 @@
+@@ -1,16 +1,19 @@
  		for (const collector of collectors) collector.catch(() => {});
  		if (collectors.length > 0) armIdle();
  		let exitCode;
@@ -169,7 +168,7 @@
  				pid: child.pid,
  				grouped
  			});
-@@ -789,7 +894,8 @@
+@@ -1,7 +1,8 @@
  				options.onOutput?.(notice, "stderr");
  				append(Buffer.from(notice));
  			}
@@ -179,9 +178,7 @@
  			if (completion.status === "rejected") throw completion.reason;
  			const result = completion.value;
  			exitCode = result.exitCode ?? (result.code === "ENOENT" ? 127 : 1);
-@@ -839,7 +945,10 @@
- 					}
- 				}
+@@ -1,5 +1,8 @@
  				if (warnings.length > 0) {
 +					// Compatibility recovery writes the same files as outer rollback.
 +					await stopOwnedRuns(ownedRuns);
@@ -190,7 +187,7 @@
  					const repair = ["install", savedFiles.some((file) => file.path.endsWith("pnpm-lock.yaml") && file.text !== void 0) ? "--frozen-lockfile" : "--config.lockfile=false"];
  					const repairing = execa(options.command ?? "pnpm", [...options.args ?? [], ...repair], {
  						cwd: dir,
-@@ -847,13 +956,22 @@
+@@ -1,13 +1,22 @@
  						extendEnv: false,
  						reject: false,
  						stdin: "ignore",
@@ -218,7 +215,7 @@
  					exitCode = 1;
  					const restoration = repaired.exitCode === 0 ? "restored package.json, pnpm-lock.yaml, and node_modules" : "restored package.json and pnpm-lock.yaml, but node_modules could not be reinstalled; run 'dsh plugin install'";
  					const diagnostic = `\ndsh: installation rejected: ${warnings.join("\n")}\ndsh: ${restoration}.\n`;
-@@ -871,11 +989,38 @@
+@@ -1,11 +1,38 @@
  					}
  				}
  			}
@@ -259,7 +256,7 @@
  		}
  		return {
  			exitCode,
-@@ -2714,6 +2859,8 @@
+@@ -1,6 +1,8 @@
  			const control = {
  				abort: new AbortController(),
  				phase: "installing",
@@ -268,7 +265,7 @@
  				result: Promise.resolve(null)
  			};
  			const stopped = () => control.abort.signal.aborted || this.abort.signal.aborted;
-@@ -2789,7 +2936,10 @@
+@@ -1,7 +1,10 @@
  					let run;
  					let used = null;
  					for (const [index, registry] of plan.entries()) {
@@ -280,16 +277,16 @@
  						if (stopped()) throw new InstallCancelledError();
  						result.registries.push(registry);
  						used = registry;
-@@ -2803,7 +2953,7 @@
+@@ -1,7 +1,7 @@
  							installSpec,
  							...options?.saveExact === true ? ["--save-exact"] : [],
  							...registryArguments(registry)
--						], control.abort.signal, requestId);
-+						], control.abort.signal, requestId, control.runs);
+-						], control.abort.signal, requestId, options?.expected);
++						], control.abort.signal, requestId, options?.expected, control.runs);
  						result.packageResult = run;
  						if (stopped()) throw new InstallCancelledError();
  						if (run.incompatible !== void 0) throw new ManagementFailure("incompatible-version", run.incompatible);
-@@ -2845,12 +2995,23 @@
+@@ -1,12 +1,23 @@
  					for (const file of bundlePatchPaths(dir, manifest.dsh.bundle)) loadOverlayPatches("dsh", file);
  					version = manifest.version;
  					this.installedFrom.set(name, used);
@@ -314,7 +311,7 @@
  				result.bundle = name;
  				if (version !== void 0) result.version = version;
  				result.target = name;
-@@ -2895,6 +3056,9 @@
+@@ -1,6 +1,9 @@
  			control.abort.abort();
  			/* v8 ignore next -- change() folds every failure into its result; only a lock or disposal error rejects */
  			await control.result.then(() => void 0, () => void 0);
@@ -324,19 +321,19 @@
  			return { status: "cancelled" };
  		}
  		/** Unload and remove a profile-owned bundle dependency through dsh plugin's pnpm path; a selected name no
-@@ -2969,7 +3133,7 @@
+@@ -1,7 +1,7 @@
  			};
  		}
- 		/** Run one pnpm command in the profile, streaming its output as install-log chunks. */
--		async runPnpm(args, signal, requestId) {
-+		async runPnpm(args, signal, requestId, ownedRuns) {
+ 		/** Run one pnpm command in the profile, streaming its output as install-log chunks; `expected` is the package an `add` must install. */
+-		async runPnpm(args, signal, requestId, expected) {
++		async runPnpm(args, signal, requestId, expected, ownedRuns) {
  			const jobId = randomUUID();
  			// Log arguments are separate from execution arguments. Restrict userinfo
  			// matching to URL authority; support aliases and --registry=URL too.
-@@ -2987,6 +3151,7 @@
- 				activateNewBundles: false,
+@@ -2,6 +2,7 @@
  				idleTimeoutMs: this.idleTimeoutMs,
  				lookupTimeoutMs: this.inspectTimeoutMs,
+ 				...expected === void 0 ? {} : { expected },
 +				...ownedRuns === void 0 ? {} : { onRunGuard: (guard) => ownedRuns.push(guard) },
  				onOutput: (text, stream) => {
  					this.ownerContext.emit("plugin-manager/install-log", {

@@ -1,6 +1,6 @@
 --- a/node_modules/@deepseek-ai/dsh-terminal-bash/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-terminal-bash/lib/index.js
-@@ -2,6 +2,7 @@
+@@ -1,6 +1,7 @@
  import { ENCODING_PREAMBLE, resolvePwshPath } from "@deepseek-ai/dsh-pwsh-local";
  import z from "@deepseek-ai/schemastery";
  import { Buffer } from "node:buffer";
@@ -8,7 +8,7 @@
  import { createLazyRequire } from "@deepseek-ai/dsh-lazy-require";
  //#region lib/types/config.js
  /** Validated configuration for the local PTY backend. */
-@@ -451,7 +452,7 @@
+@@ -1,7 +1,7 @@
  	promptTail = "";
  	shellPgid;
  	initializing = false;
@@ -17,16 +17,16 @@
  	closing = false;
  	closePromise;
  	transportFailure;
-@@ -521,7 +522,7 @@
- 		if (this.statusValue.kind === "exited") throw new Error("PTY session has exited");
- 		if (this.active !== void 0) throw new TerminalError(`PTY session already has an active send${this.activeWrite !== void 0 ? " or draining provider write" : this.interrupting !== void 0 ? " or draining foreground interrupt" : ""}`, "SEND_ACTIVE");
- 		if (request.signal?.aborted === true) throw new Error("PTY send aborted before write");
+@@ -6,7 +6,7 @@
+ 			aborted.name = "AbortError";
+ 			throw aborted;
+ 		}
 -		const operation = new LocalSendOperation(this.config.maxReadBytes, Date.now(), () => {
 +		const operation = new LocalSendOperation(this.config.maxReadBytes, performance.now(), () => {
  			this.interrupt(operation);
  		});
  		this.active = operation;
-@@ -581,7 +582,7 @@
+@@ -1,7 +1,7 @@
  		}
  	}
  	resetReadinessEvidence() {
@@ -35,7 +35,7 @@
  		this.promptSeen = false;
  		this.promptTextSeen = false;
  		this.promptTail = "";
-@@ -657,7 +658,7 @@
+@@ -1,7 +1,7 @@
  		if (sanitized.prompt) {
  			this.promptSeen = true;
  			this.promptTail = "";
@@ -44,7 +44,7 @@
  		}
  		if (this.promptSeen && sanitized.promptTail !== void 0) {
  			const remaining = Math.max(0, 6 - this.promptTail.length);
-@@ -690,7 +691,7 @@
+@@ -1,7 +1,7 @@
  	}
  	appendOutput(text) {
  		if (text.length === 0) return;
@@ -53,7 +53,7 @@
  		this.scrollback.append(text);
  		this.active?.append(text);
  	}
-@@ -716,13 +717,13 @@
+@@ -1,13 +1,13 @@
  			let foreground = await this.terminal.inspectForeground();
  			if (this.protocolStateChanged(emulatorWrites, responseWrites)) foreground = await this.inspectForegroundAfterProtocol();
  			if (this.active !== operation || this.closing || this.interrupting === operation) return;

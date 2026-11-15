@@ -71,7 +71,6 @@ zzzzzzzzz-subprocess-zzzero-tail.diff
 zzzzzzzzz-terminal-tail.diff
 zzzzzzzzz-tool-history-lookup.diff
 zzzzzzzzz-workspace-domain-close.diff
-zzzzzzzzzz-agent-team-input-recovery.diff
 zzzzzzzzzz-plugin-manager-log-write-all.diff
 zzzzzzzzzz-plugin-update-selection.diff
 zzzzzzzzzz-session-export-descendant-refs.diff
@@ -104,7 +103,6 @@ zzzzzzzzzzzzzzzzzzzzzzzzzzzzz-attachment-staging-error.diff
 zzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-reference-retention-size.diff
 zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-search-snippet-window.diff
 zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-workspace-capture-recovery.diff
-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-fs-parent-kind.diff
 zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-fs-line-style.diff
 fs-create-link-denial.diff
 fs-publication-short-names.diff

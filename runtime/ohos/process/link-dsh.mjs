@@ -7,7 +7,7 @@ if (!prefix) throw new Error('用法：node link-dsh.mjs <已安装且版本锁�
 const source = await realpath(join(resolve(prefix), 'node_modules/@deepseek-ai'));
 for (const name of ['dsh-subprocess', 'dsh-subprocess-local', 'dsh-sandbox']) {
   const pkg = JSON.parse(await readFile(join(source, name, 'package.json'), 'utf8'));
-  if (pkg.version !== '0.2.2-rc.1') throw new Error(`${name} 版本不符：${pkg.version}`);
+  if (pkg.version !== '0.2.2-rc.3') throw new Error(`${name} 版本不符：${pkg.version}`);
 }
 const target = join(dirname(fileURLToPath(import.meta.url)), 'node_modules/@deepseek-ai');
 const existing = await lstat(target).catch(error => {

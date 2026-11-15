@@ -22,7 +22,7 @@ export function bootstrapDshNetwork(entry) {
     require = createRequire(binary);
     const packagePath = require.resolve('@deepseek-ai/dsh/package.json');
     const dsh = readManifest(packagePath);
-    if (dsh.name !== '@deepseek-ai/dsh' || dsh.version !== '0.2.2-rc.1'
+    if (dsh.name !== '@deepseek-ai/dsh' || dsh.version !== '0.2.2-rc.3'
       || typeof dsh.bin?.dsh !== 'string' || realpathSync(join(dirname(packagePath), dsh.bin.dsh)) !== binary) {
       throw new Error('unexpected DSH entry');
     }
@@ -32,7 +32,7 @@ export function bootstrapDshNetwork(entry) {
     if (undici.name !== 'undici' || undici.version !== '8.11.2') throw new Error('unexpected Undici version');
     undiciRoot = dirname(manifestPath);
   } catch {
-    throw failure('ERR_OHOS_NET_DSH_ENTRY', 'OHOS network bootstrap requires the locked DSH 0.2.2-rc.1 entry with Undici 8.11.2');
+    throw failure('ERR_OHOS_NET_DSH_ENTRY', 'OHOS network bootstrap requires the locked DSH 0.2.2-rc.3 entry with Undici 8.11.2');
   }
 
   const existing = globalThis[Symbol.for('dsh.go.ohos.net')];

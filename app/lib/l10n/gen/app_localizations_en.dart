@@ -20362,6 +20362,54 @@ class L10nEn extends L10n {
       'The system doesn\'t let background apps do these. After the AI opens another app, it can\'t go on until you\'re back in DSH Go.';
 
   @override
+  String get systemActionsScreenTitle => 'Screen control (debug channel)';
+
+  @override
+  String get systemActionsScreenAuthorized => 'Authorized';
+
+  @override
+  String get systemActionsScreenAuthorizedHint =>
+      'The AI can read the screen, tap, type, swipe, press keys, take screenshots, and start or stop apps';
+
+  @override
+  String get systemActionsScreenUnauthorized => 'Not authorized yet';
+
+  @override
+  String get systemActionsScreenUnauthorizedHint =>
+      'Debugging is on, but this phone hasn\'t trusted this device\'s key';
+
+  @override
+  String get systemActionsScreenNoPort => 'No debugging port';
+
+  @override
+  String get systemActionsScreenNoPortHint => 'Wireless debugging is off, or on without a listening port';
+
+  @override
+  String get systemActionsScreenUnknown => 'Not checked yet';
+
+  @override
+  String get systemActionsScreenUnknownHint => 'The local engine checks once when it starts';
+
+  @override
+  String get systemActionsScreenError => 'Check failed';
+
+  @override
+  String get systemActionsScreenErrorHint => 'The channel is down: see the local engine\'s live log';
+
+  @override
+  String get systemActionsScreenChecking => 'Checking…';
+
+  @override
+  String get systemActionsScreenNeverChecked => 'Never checked';
+
+  @override
+  String get systemActionsScreenStepsTitle => 'First time: authorize';
+
+  @override
+  String get systemActionsScreenSteps =>
+      '1. Settings › About phone, tap Build number repeatedly to turn on developer mode\n2. Settings › System › Developer options, turn on Wireless debugging and leave it on\n3. Come back here and tap check again, then choose Always allow in the system dialog\n4. No dialog? Revoke debugging authorizations in Settings, then try again';
+
+  @override
   String get systemActionsCanTitle => 'What it can do';
 
   @override
@@ -20399,51 +20447,6 @@ class L10nEn extends L10n {
 
   @override
   String get systemActionsCanHandoffHint => 'You do steps like sign-in or codes, then press Continue';
-
-  @override
-  String get systemActionsScreenTitle => 'Screen control (debug channel)';
-
-  @override
-  String get systemActionsScreenAuthorized => 'Authorized';
-
-  @override
-  String get systemActionsScreenAuthorizedHint => 'The AI can read the screen, tap, type, swipe, press keys, take screenshots, and start or stop apps';
-
-  @override
-  String get systemActionsScreenUnauthorized => 'Not authorized yet';
-
-  @override
-  String get systemActionsScreenUnauthorizedHint => 'Debugging is on, but this phone hasn\'t trusted this device\'s key';
-
-  @override
-  String get systemActionsScreenNoPort => 'No debugging port';
-
-  @override
-  String get systemActionsScreenNoPortHint => 'Wireless debugging is off, or on without a listening port';
-
-  @override
-  String get systemActionsScreenUnknown => 'Not checked yet';
-
-  @override
-  String get systemActionsScreenUnknownHint => 'The local engine checks once when it starts';
-
-  @override
-  String get systemActionsScreenError => 'Check failed';
-
-  @override
-  String get systemActionsScreenErrorHint => 'The channel is down: see the local engine\'s live log';
-
-  @override
-  String get systemActionsScreenChecking => 'Checking…';
-
-  @override
-  String get systemActionsScreenNeverChecked => 'Never checked';
-
-  @override
-  String get systemActionsScreenStepsTitle => 'First time: authorize';
-
-  @override
-  String get systemActionsScreenSteps => '1. Settings › About phone, tap Build number repeatedly to turn on developer mode\n2. Settings › System › Developer options, turn on Wireless debugging and leave it on\n3. Come back here and tap check again, then choose Always allow in the system dialog\n4. No dialog? Revoke debugging authorizations in Settings, then try again';
 
   @override
   String get systemActionsCannotTitle => 'What it can\'t do';
@@ -20766,6 +20769,55 @@ class L10nEn extends L10n {
 
   @override
   String get tavernApiKeyMissing => 'Not set';
+
+  @override
+  String get tavernModelSource => 'Model source';
+
+  @override
+  String get tavernModelSourceSubtitle =>
+      'DeepSeek\'s own endpoint, or a custom channel from Settings · Model services';
+
+  @override
+  String get tavernModelSourceOfficial => 'DeepSeek';
+
+  @override
+  String get tavernModelSourceCustom => 'Custom channel';
+
+  @override
+  String get tavernProviderRoute => 'Channel';
+
+  @override
+  String get tavernProviderRouteMissing => 'Channel unavailable';
+
+  @override
+  String get tavernProviderModel => 'Channel model';
+
+  @override
+  String get tavernProviderModelNone => 'No model listed';
+
+  @override
+  String get tavernProviderKey => 'Channel key';
+
+  @override
+  String get tavernProviderKeySubtitle =>
+      'Typed in Settings · Model services for this channel; only the copy kept on this phone for the local engine is read';
+
+  @override
+  String get tavernProviderKeyMissing => 'Not set — add it in Model services';
+
+  @override
+  String get tavernProviderPick => 'Choose a channel';
+
+  @override
+  String get tavernProviderModelPick => 'Choose a model';
+
+  @override
+  String get tavernProviderNoChannels =>
+      'No channel to pick yet: only an OpenAI-compatible (Chat Completions) channel that lists at least one model can drive the tavern. Add one in Settings · Model services.';
+
+  @override
+  String get tavernModelSourceNote =>
+      'The tavern speaks OpenAI Chat Completions only, so a channel on another protocol cannot be picked here; a channel\'s key is readable only when this app typed it in Settings · Model services for the local engine; cost and usage estimates use DeepSeek\'s list prices, so a custom channel\'s are indicative only.';
 
   @override
   String get tavernDeleteChat => 'Delete chat';

@@ -1,6 +1,6 @@
 --- a/node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-mcp-client/lib/index.js
-@@ -808,6 +808,11 @@
+@@ -1,7 +1,12 @@
  * @returns startup readiness after connection and initial tool discovery settle.
  */
  async function apply(ctx, config) {
@@ -10,5 +10,6 @@
 +		});
 +	}
  	const reconnect = resolveReconnectPolicy(config.reconnect, `mcp-client(${config.serverName}): reconnect`);
+ 	let status;
  	ctx.effect(() => {
  		const owner = scopeOf(ctx) ?? ctx.root;

@@ -2,7 +2,7 @@
 """Generate the rc1 deletion patch/pins from read-only vetted npm code.
 
 Run by the Lead; never writes the input prefix. Earlier patch chains are applied
-in memory first; the input must be the untouched 0.2.2-rc.1 npm prefix.
+in memory first; the input must be the untouched 0.2.2-rc.3 npm prefix.
 """
 import argparse
 import difflib
@@ -218,8 +218,8 @@ def build(prefix):
         raw = (prefix / rel).read_text()
         # Input is the untouched rc1 npm prefix; replay the Android build's explicit order.
         package = prefix / Path(rel).parent.parent / 'package.json'
-        if json.loads(package.read_text())['version'] != '0.2.2-rc.1':
-            raise ValueError('expected unpatched 0.2.2-rc.1 input: ' + rel)
+        if json.loads(package.read_text())['version'] != '0.2.2-rc.3':
+            raise ValueError('expected unpatched 0.2.2-rc.3 input: ' + rel)
         for name in preceding:
             patch = RUNTIME / 'patches' / name
             hunks = dict(rt.parse_unified_diff(patch.read_text())).get(rel)
@@ -245,7 +245,7 @@ def main():
     (RUNTIME / 'patches' / PATCH_NAME).write_text(patch)
     path = RUNTIME / 'patches/pins.json'
     pins = json.loads(path.read_text())
-    pins['patches'][PATCH_NAME] = {'0.2.2-rc.1': new_pins}
+    pins['patches'][PATCH_NAME] = {'0.2.2-rc.3': new_pins}
     path.write_text(json.dumps(pins, indent=2) + '\n')
     print('Generated', PATCH_NAME, 'with', len(changes), 'vetted files; input prefix untouched.')
 

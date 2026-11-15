@@ -1,7 +1,6 @@
 --- a/node_modules/@deepseek-ai/dsh-http-proxy/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-http-proxy/lib/index.js
-@@ -385,7 +385,39 @@
- * @param policy - the policy to route by; it must proxy at least one scheme.
+@@ -1,4 +1,36 @@
  * @returns the dispatcher to install, owning every per-origin agent its factory created.
  */
 +function ohosNetwork() {
@@ -10,7 +9,7 @@
 +	if (!network) throw Object.assign(new Error("OHOS network preload is required"), { code: "ERR_OHOS_NET_PRELOAD_MISSING" });
 +	return network;
 +}
- async function createPolicyDispatcher(policy) {
+ async function createPolicyDispatcher(policy, options = {}) {
 +	const network = ohosNetwork();
 +	if (network) {
 +		const dispatchers = new Map();
@@ -38,12 +37,10 @@
 +		};
 +	}
  	const { Agent, Pool, ProxyAgent } = await import("undici");
- 	return new Agent({ factory(origin, options) {
- 		const passed = options;
-@@ -413,6 +445,31 @@
+@@ -1,5 +1,30 @@
  * @returns a disposer restoring the previous dispatcher, policy, and environment, then closing the agent.
  */
- async function installGlobalProxy(policy) {
+ async function installGlobalProxy(policy, options = {}) {
 +	const network = ohosNetwork();
 +	if (network) {
 +		if (!network.globalDispatcherApi) throw Object.assign(new Error("OHOS DSH network bootstrap is required before proxy installation"), { code: "ERR_OHOS_NET_BOOTSTRAP_REQUIRED" });
@@ -55,7 +52,7 @@
 +		const restoreEnv = policy.source === "none"
 +			? inheritedProxyEnv === void 0 ? void 0 : writeProxyEnv(inheritedProxyEnv)
 +			: applyPolicyEnv(policy);
-+		const agent = await createPolicyDispatcher(policy);
++		const agent = await createPolicyDispatcher(policy, options);
 +		setGlobalDispatcher(agent);
 +		network.dispatcher = agent;
 +		active = policy;
@@ -71,10 +68,9 @@
 +	}
  	const previousPolicy = active;
  	if (policy.source === "none") {
- 		if (previousPolicy === void 0) {
 --- a/node_modules/@deepseek-ai/dsh-web-fetch-http/lib/index.js
 +++ b/node_modules/@deepseek-ai/dsh-web-fetch-http/lib/index.js
-@@ -172,6 +172,12 @@
+@@ -1,6 +1,12 @@
  	var e = new Error(message);
  	return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
  });
@@ -87,7 +83,7 @@
  /** Stable id this provider registers under. */
  const LOCAL_FETCH_PROVIDER_ID = "http";
  /** The anonymous HTTP(S) fetch provider. */
-@@ -243,7 +249,7 @@
+@@ -1,7 +1,7 @@
  			"accept": "text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8"
  		};
  		try {

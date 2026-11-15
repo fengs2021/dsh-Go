@@ -35342,84 +35342,6 @@ abstract class L10n {
   /// **'系统不让后台应用做这些。AI 打开别的应用后，要等你回到 DSH Go 才能接着做。'**
   String get systemActionsOnScreenBody;
 
-  /// No description provided for @systemActionsCanTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'能做的'**
-  String get systemActionsCanTitle;
-
-  /// No description provided for @systemActionsCanOpen.
-  ///
-  /// In zh, this message translates to:
-  /// **'打开应用或链接'**
-  String get systemActionsCanOpen;
-
-  /// No description provided for @systemActionsCanOpenHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'应用要写包名，不能按名字找'**
-  String get systemActionsCanOpenHint;
-
-  /// No description provided for @systemActionsCanPages.
-  ///
-  /// In zh, this message translates to:
-  /// **'日历、拨号、分享、导航'**
-  String get systemActionsCanPages;
-
-  /// No description provided for @systemActionsCanPagesHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'打开系统界面，最后一步由你确认'**
-  String get systemActionsCanPagesHint;
-
-  /// No description provided for @systemActionsCanSettings.
-  ///
-  /// In zh, this message translates to:
-  /// **'部分系统设置页'**
-  String get systemActionsCanSettings;
-
-  /// No description provided for @systemActionsCanSettingsHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'移动网络、显示、声音、NFC 和本应用的通知'**
-  String get systemActionsCanSettingsHint;
-
-  /// No description provided for @systemActionsCanNotify.
-  ///
-  /// In zh, this message translates to:
-  /// **'发通知'**
-  String get systemActionsCanNotify;
-
-  /// No description provided for @systemActionsCanNotifyHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'发出去不代表你已经看到'**
-  String get systemActionsCanNotifyHint;
-
-  /// No description provided for @systemActionsCanClipboard.
-  ///
-  /// In zh, this message translates to:
-  /// **'写剪贴板'**
-  String get systemActionsCanClipboard;
-
-  /// No description provided for @systemActionsCanClipboardHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'只写不读'**
-  String get systemActionsCanClipboardHint;
-
-  /// No description provided for @systemActionsCanHandoff.
-  ///
-  /// In zh, this message translates to:
-  /// **'交还给你'**
-  String get systemActionsCanHandoff;
-
-  /// No description provided for @systemActionsCanHandoffHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'登录、验证码这类步骤你来做，做完点继续'**
-  String get systemActionsCanHandoffHint;
-
   /// No description provided for @systemActionsScreenTitle.
   ///
   /// In zh, this message translates to:
@@ -35507,11 +35429,86 @@ abstract class L10n {
   /// No description provided for @systemActionsScreenSteps.
   ///
   /// In zh, this message translates to:
-  /// **'① 设置 → 关于本机，连点「版本号」进开发者模式
-② 设置 → 系统 → 开发者选项，打开「无线调试」并保持开启
-③ 回到这里点重新检测，手机弹窗选「始终允许」
-④ 没弹窗就去设置里撤销调试授权，再回来重试'**
+  /// **'① 设置 → 关于本机，连点「版本号」进开发者模式\n② 设置 → 系统 → 开发者选项，打开「无线调试」并保持开启\n③ 回到这里点重新检测，手机弹窗选「始终允许」\n④ 没弹窗就去设置里撤销调试授权，再回来重试'**
   String get systemActionsScreenSteps;
+
+  /// No description provided for @systemActionsCanTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'能做的'**
+  String get systemActionsCanTitle;
+
+  /// No description provided for @systemActionsCanOpen.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开应用或链接'**
+  String get systemActionsCanOpen;
+
+  /// No description provided for @systemActionsCanOpenHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'应用要写包名，不能按名字找'**
+  String get systemActionsCanOpenHint;
+
+  /// No description provided for @systemActionsCanPages.
+  ///
+  /// In zh, this message translates to:
+  /// **'日历、拨号、分享、导航'**
+  String get systemActionsCanPages;
+
+  /// No description provided for @systemActionsCanPagesHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'打开系统界面，最后一步由你确认'**
+  String get systemActionsCanPagesHint;
+
+  /// No description provided for @systemActionsCanSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'部分系统设置页'**
+  String get systemActionsCanSettings;
+
+  /// No description provided for @systemActionsCanSettingsHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'移动网络、显示、声音、NFC 和本应用的通知'**
+  String get systemActionsCanSettingsHint;
+
+  /// No description provided for @systemActionsCanNotify.
+  ///
+  /// In zh, this message translates to:
+  /// **'发通知'**
+  String get systemActionsCanNotify;
+
+  /// No description provided for @systemActionsCanNotifyHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'发出去不代表你已经看到'**
+  String get systemActionsCanNotifyHint;
+
+  /// No description provided for @systemActionsCanClipboard.
+  ///
+  /// In zh, this message translates to:
+  /// **'写剪贴板'**
+  String get systemActionsCanClipboard;
+
+  /// No description provided for @systemActionsCanClipboardHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'只写不读'**
+  String get systemActionsCanClipboardHint;
+
+  /// No description provided for @systemActionsCanHandoff.
+  ///
+  /// In zh, this message translates to:
+  /// **'交还给你'**
+  String get systemActionsCanHandoff;
+
+  /// No description provided for @systemActionsCanHandoffHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录、验证码这类步骤你来做，做完点继续'**
+  String get systemActionsCanHandoffHint;
 
   /// No description provided for @systemActionsCannotTitle.
   ///
@@ -36100,6 +36097,96 @@ abstract class L10n {
   /// In zh, this message translates to:
   /// **'未填'**
   String get tavernApiKeyMissing;
+
+  /// No description provided for @tavernModelSource.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型来源'**
+  String get tavernModelSource;
+
+  /// No description provided for @tavernModelSourceSubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'官方 DeepSeek，或「模型服务」里的自定义渠道'**
+  String get tavernModelSourceSubtitle;
+
+  /// No description provided for @tavernModelSourceOfficial.
+  ///
+  /// In zh, this message translates to:
+  /// **'官方 DeepSeek'**
+  String get tavernModelSourceOfficial;
+
+  /// No description provided for @tavernModelSourceCustom.
+  ///
+  /// In zh, this message translates to:
+  /// **'自定义渠道'**
+  String get tavernModelSourceCustom;
+
+  /// No description provided for @tavernProviderRoute.
+  ///
+  /// In zh, this message translates to:
+  /// **'渠道'**
+  String get tavernProviderRoute;
+
+  /// No description provided for @tavernProviderRouteMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'渠道已不可用'**
+  String get tavernProviderRouteMissing;
+
+  /// No description provided for @tavernProviderModel.
+  ///
+  /// In zh, this message translates to:
+  /// **'渠道模型'**
+  String get tavernProviderModel;
+
+  /// No description provided for @tavernProviderModelNone.
+  ///
+  /// In zh, this message translates to:
+  /// **'该渠道未列模型'**
+  String get tavernProviderModelNone;
+
+  /// No description provided for @tavernProviderKey.
+  ///
+  /// In zh, this message translates to:
+  /// **'渠道密钥'**
+  String get tavernProviderKey;
+
+  /// No description provided for @tavernProviderKeySubtitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'在「设置 · 模型服务」里为这个渠道填写；只读本机引擎、经 App 表单录入的那一份'**
+  String get tavernProviderKeySubtitle;
+
+  /// No description provided for @tavernProviderKeyMissing.
+  ///
+  /// In zh, this message translates to:
+  /// **'未填，去「模型服务」填'**
+  String get tavernProviderKeyMissing;
+
+  /// No description provided for @tavernProviderPick.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择渠道'**
+  String get tavernProviderPick;
+
+  /// No description provided for @tavernProviderModelPick.
+  ///
+  /// In zh, this message translates to:
+  /// **'选择模型'**
+  String get tavernProviderModelPick;
+
+  /// No description provided for @tavernProviderNoChannels.
+  ///
+  /// In zh, this message translates to:
+  /// **'「设置 · 模型服务」里还没有可选的渠道：只有 OpenAI 兼容（Chat Completions）且至少列了一个模型的渠道能在这里选。'**
+  String get tavernProviderNoChannels;
+
+  /// No description provided for @tavernModelSourceNote.
+  ///
+  /// In zh, this message translates to:
+  /// **'酒馆只走 OpenAI 兼容（Chat Completions）协议，其它协议的渠道在这里不可选；渠道密钥只有在本 App 的「设置 · 模型服务」里录入、且走本机引擎时才读得到；费用与用量提示按 DeepSeek 官方价估算，自定义渠道的仅供参考。'**
+  String get tavernModelSourceNote;
 
   /// No description provided for @tavernDeleteChat.
   ///

@@ -1,11 +1,16 @@
-// 酒馆设置: which DeepSeek model plays the characters and whether it thinks
-// first (docs/design/roleplay.md §7). The key is the app's own DeepSeek key
-// (settings_state.dart); nothing here stores it.
+// 酒馆设置: which model plays the characters and whether it thinks first
+// (docs/design/roleplay.md §7). The model comes either from the app's own
+// DeepSeek key (settings_state.dart) or from one of the user's custom channels
+// (自定义渠道, 模型服务) — see [TavernSettings.providerRoute]. No key is stored
+// here: the DeepSeek one lives in the app's settings, a channel's in the
+// provider key vault (provider_keys.dart) and the engine's credential store.
 
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../state/provider_keys.dart';
 
 /// The models the tavern offers, cheapest first.
 const tavernModels = ['deepseek-flash', 'deepseek-v4-pro'];
@@ -47,6 +52,8 @@ const tavernCostAlerts = [0.0, 0.01, 0.05, 0.1, 0.5];
 class TavernSettings {
   const TavernSettings({
     this.model = 'deepseek-flash',
+    this.providerRoute,
+    this.providerModel,
     this.thinking = false,
     this.layout = TavernLayout.bubble,
     this.textSize = 15,
@@ -64,7 +71,20 @@ class TavernSettings {
     this.loaded = false,
   });
 
+  /// The official DeepSeek model [model] names (deepseek-flash,
+  /// deepseek-v4-pro).
   final String model;
+
+  /// The custom channel (模型服务's llm-pi-ai route id) the calls go to; null is
+  /// the official DeepSeek endpoint and key. Only a route speaking OpenAI Chat
+  /// Completions can be chosen: that is the one transport llm/model_client.dart
+  /// speaks.
+  final String? providerRoute;
+
+  /// The model of [providerRoute]; null (or one the route no longer lists)
+  /// means the route's first model.
+  final String? providerModel;
+
   final bool thinking;
   final TavernLayout layout;
 
@@ -106,6 +126,10 @@ class TavernSettings {
 
   TavernSettings copyWith({
     String? model,
+    String? providerRoute,
+    String? providerModel,
+    bool clearProviderSource = false,
+    bool clearProviderModel = false,
     bool? thinking,
     TavernLayout? layout,
     double? textSize,
@@ -122,6 +146,9 @@ class TavernSettings {
     double? costAlert,
   }) => TavernSettings(
     model: model ?? this.model,
+    // A null argument above cannot clear a field, hence the flags.
+    providerRoute: clearProviderSource ? null : providerRoute ?? this.providerRoute,
+    providerModel: clearProviderSource || clearProviderModel ? null : providerModel ?? this.providerModel,
     thinking: thinking ?? this.thinking,
     layout: layout ?? this.layout,
     textSize: textSize ?? this.textSize,
@@ -142,6 +169,8 @@ class TavernSettings {
 
 class TavernSettingsController extends Notifier<TavernSettings> {
   static const modelKey = 'tavern.model';
+  static const providerRouteKey = 'tavern.providerRoute';
+  static const providerModelKey = 'tavern.providerModel';
   static const thinkingKey = 'tavern.thinking';
   static const layoutKey = 'tavern.layout';
   static const textSizeKey = 'tavern.textSize';
@@ -170,6 +199,8 @@ class TavernSettingsController extends Notifier<TavernSettings> {
       final model = prefs.getString(modelKey);
       loaded = TavernSettings(
         model: tavernModels.contains(model) ? model! : tavernModels.first,
+        providerRoute: _nonEmpty(prefs.getString(providerRouteKey)),
+        providerModel: _nonEmpty(prefs.getString(providerModelKey)),
         thinking: prefs.getBool(thinkingKey) ?? false,
         layout: TavernLayout.values.asNameMap()[prefs.getString(layoutKey)] ?? TavernLayout.bubble,
         textSize: _oneOf(prefs.getDouble(textSizeKey), tavernTextSizes, 15),
@@ -195,6 +226,35 @@ class TavernSettingsController extends Notifier<TavernSettings> {
   Future<void> setModel(String model) async {
     state = state.copyWith(model: model);
     await _save((prefs) => prefs.setString(modelKey, model));
+  }
+
+  /// 模型来源: a custom channel's route id, or null for the official DeepSeek
+  /// endpoint. The channel's model starts from the route's first.
+  Future<void> setProviderRoute(String? route) async {
+    state = state.copyWith(providerRoute: route, clearProviderSource: route == null, clearProviderModel: true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(providerModelKey);
+      if (route == null) {
+        await prefs.remove(providerRouteKey);
+      } else {
+        await prefs.setString(providerRouteKey, route);
+      }
+    } catch (_) {}
+  }
+
+  /// One model of the channel [TavernSettings.providerRoute] names; null goes
+  /// back to that route's first.
+  Future<void> setProviderModel(String? model) async {
+    state = state.copyWith(providerModel: model, clearProviderModel: model == null);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (model == null) {
+        await prefs.remove(providerModelKey);
+      } else {
+        await prefs.setString(providerModelKey, model);
+      }
+    } catch (_) {}
   }
 
   Future<void> setThinking(bool thinking) async {
@@ -267,6 +327,12 @@ class TavernSettingsController extends Notifier<TavernSettings> {
     await _save((prefs) => prefs.setDouble(costAlertKey, usd));
   }
 
+  /// [value] trimmed, or null when it is empty (an unset preference).
+  static String? _nonEmpty(String? value) {
+    final trimmed = value?.trim() ?? '';
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
   /// [stored] when it is one of [choices]; else [fallback].
   static double _oneOf(double? stored, List<double> choices, double fallback) =>
       stored != null && choices.contains(stored) ? stored : fallback;
@@ -279,6 +345,23 @@ class TavernSettingsController extends Notifier<TavernSettings> {
 }
 
 final tavernSettingsProvider = NotifierProvider<TavernSettingsController, TavernSettings>(TavernSettingsController.new);
+
+/// Whether this phone's copy of a channel's key (provider_keys.dart) is there.
+///
+/// Only a key typed in the app for the **local** engine has one: a key typed
+/// while a remote host was active lives on that host only. The tavern calls from
+/// here, so that is the copy it can read; a channel with no key in this vault
+/// reads as missing, and the settings page says where to type it
+/// (设置 · 模型服务).
+final tavernProviderKeyStoredProvider = FutureProvider.autoDispose.family<bool, String>((ref, route) async {
+  try {
+    final keys = await ref.watch(providerKeyVaultProvider).readAll();
+    return (keys[route] ?? '').trim().isNotEmpty;
+  } catch (_) {
+    // No secure storage (a test, a platform without it): nothing stored here.
+    return false;
+  }
+});
 
 /// One chat's own layout, over 酒馆设置's; null follows the setting.
 class TavernChatLayoutController extends Notifier<TavernLayout?> {

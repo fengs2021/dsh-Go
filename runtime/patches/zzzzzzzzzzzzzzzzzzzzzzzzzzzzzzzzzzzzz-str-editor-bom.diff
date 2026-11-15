@@ -10,7 +10,7 @@
 +	return bytes.length === 3 && bytes[0] === 239 && bytes[1] === 187 && bytes[2] === 191 ? "\uFEFF" : "";
 +}
  async function replaceInFile(ctx, policy, path, oldStr, newStr, exec) {
- 	if (newStr === null) throw new Error("Parameter `new_str` must be omitted or contain a string for command: str_replace");
+ 	if (newStr === null) throw new ToolArgsError(["Parameter `new_str` must be omitted or contain a string for command: str_replace"]);
 @@ -175,5 +181,6 @@
  	let outcome;
  	try {
@@ -25,7 +25,7 @@
 -	const lines = (await ctx.fs.readText(target, exec.signal)).split("\n");
 +	const before = await ctx.fs.readText(target, exec.signal);
 +	const lines = before.split("\n");
- 	if (!Number.isInteger(insertLine) || insertLine < 0 || insertLine > lines.length) throw new Error(`Invalid \`insert_line\` parameter: ${insertLine}. It should be within the range of lines of the file: [0, ${lines.length}]`);
+ 	if (!Number.isInteger(insertLine) || insertLine < 0 || insertLine > lines.length) throw new ToolArgsError([`Invalid \`insert_line\` parameter: ${insertLine}. It should be within the range of lines of the file: [0, ${lines.length}]`]);
  	const after = [
 @@ -215,5 +223,6 @@
  	let outcome;

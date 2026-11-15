@@ -37,7 +37,7 @@ CI现有 Python tooling 之后运行入口合同自测；runtime路径过滤含 
 | `fetch_node` | 单独的、已按项目固定Undici方案构建的Node24.22.1，用于原`net/test.sh`的builtin fetch契约。其它组仍使用`node_root`；stock Node不能冒充此工具。 |
 | `cxx` / `cc` | 本机C++20/C编译器；还需Python3、Git、openssl、zlib开发库、pdfinfo、pdftoppm。 |
 | `prepared` | 用下列原准备器执行两锁全新npm-ci及显式OH目标补丁，含`dsh/process/prepared-inputs.json/target-report.json/patch-results.json`。 |
-| `android_pristine` | `runtime/locks/dsh-0.2.2-rc.1`完整未补丁npm-ci前缀，保留Linux optional loader与固定rg15；不能用OH omit-optional组成输入代替。 |
+| `android_pristine` | `runtime/locks/dsh-0.2.2-rc.3`完整未补丁npm-ci前缀，保留Linux optional loader与固定rg15；不能用OH omit-optional组成输入代替。 |
 | `android_baseline` | 本轮权威基底源码。实际Android补丁选择、完整安装树、真实版本配方和两ABI输入流均与其对照，不写死历史文件数或hash。 |
 | `pnpm_prefix` | 按 `runtime/build-runtime.sh` 的 PNPM_VERSION/PNPM_INTEGRITY，从对应 `runtime/locks/pnpm-<version>` 完整复制两锁到独立目录，执行 main CI 原 `npm ci --prefix <prefix> --ignore-scripts --no-audit --no-fund`。保留实际安装收据及 `node_modules/.package-lock.json`。门禁核原锁、安装版本/integrity、可执行 bin，并用无排除的文件/链接清单记录整个安装身份；不自行下载。两个完整 shared-suite 仅使用该输入的显式 PNPM_BIN，不继承父进程同名变量。 |
 | `typescript_prefix` | 安装可执行原ETS夹具的TypeScript；这只是Linux转译适配器，非严格ArkTS编译证明。 |

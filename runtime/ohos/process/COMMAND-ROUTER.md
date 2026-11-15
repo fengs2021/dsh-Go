@@ -25,12 +25,12 @@ Python provider 提供 live、started 与 dispose：started 来自实际 owner W
 
 ## 固定依赖与构建
 
-DSH 锁为 0.2.2-rc.1，MCP SDK @modelcontextprotocol/client 2.2.0（MIT），均来自已有锁，不增加依赖。新增 ohos-mcp-command-router.diff 只登记在 pins 的 ohos 集；Android 集、原有 diff、构建版本串不变。
+DSH 锁为 0.2.2-rc.3，MCP SDK @modelcontextprotocol/client 2.2.0（MIT），均来自已有锁，不增加依赖。新增 ohos-mcp-command-router.diff 只登记在 pins 的 ohos 集；Android 集、原有 diff、构建版本串不变。
 
 先按既有 process 构建步骤产生 just-bash 与 re2js，再对独立锁定 npm 前缀执行：
 
 ```sh
-python runtime/lib/rtbuild.py patch-dsh --prefix /absolute/locked-prefix --dsh-version 0.2.2-rc.1 --target ohos
+python runtime/lib/rtbuild.py patch-dsh --prefix /absolute/locked-prefix --dsh-version 0.2.2-rc.3 --target ohos
 DSH_PREFIX=/absolute/locked-prefix node --import /absolute/repo/runtime/ohos/process/node-worker-preload.mjs --test runtime/tests/ohos/node-streaming-stdin.test.mjs runtime/tests/ohos/plugin-process.test.mjs runtime/tests/ohos/mcp-command-router.test.mjs
 ```
 

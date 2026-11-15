@@ -174,14 +174,3 @@
  					const setupCommit = await raceAbort(setup?.(agent.ctx, agent), abort.signal, id);
  					assertLive();
  					setupCommit?.commit();
---- a/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
-+++ b/node_modules/@deepseek-ai/dsh-api-session-controller/lib/index.js
-@@ -1014,7 +1014,7 @@
- 		const source = message.source;
- 		return source.kind === "user" && "rpcId" in source && source.rpcId === requestId;
- 	};
--	if (agent.inbox.nextTurn.some(matches) || agent.inbox.nextStep.some(matches)) return true;
-+	if (agent.inbox.nextTurn.some(matches) || agent.inbox.nextStep.some(matches) || agent.inbox.claimed?.some(matches)) return true;
- 	return agent.session.snapshotEvents().some((event) => {
- 		if (event.type !== "user/message") return false;
- 		const source = event.data.source;

@@ -1,4 +1,4 @@
-// The official web client's slots (DSH 0.2.2-rc.1) and what the app does
+// The official web client's slots (DSH 0.2.2-rc.3) and what the app does
 // with each (docs/design/plugin-seams.md §3). Regenerate the table after a
 // DSH upgrade as the spec's appendix A describes; a slot the table does not
 // know is planned as [SeatPolicy.other].
@@ -6,14 +6,21 @@
 import 'package:flutter/foundation.dart';
 
 /// DSH release the table was extracted from.
-const slotCatalogRelease = '0.2.2-rc.1';
+const slotCatalogRelease = '0.2.2-rc.3';
 
-/// How many occupants a slot holds (`slots.zh.md`, Cardinality).
-enum SlotKind { single, list, keyed, chain }
+/// How many occupants a slot holds (`slots.zh.md`, Cardinality). `hoc` is
+/// rc.3's wrapper: its occupants get the host's own content as children, so
+/// one wraps what DSH Web renders there instead of replacing it.
+enum SlotKind { single, list, keyed, chain, hoc }
 
 /// What a slot's components receive (`root`: global; `session`: always a
 /// conversation; `sessionMaybe`: a conversation when one is open).
 enum SlotScope { root, session, sessionMaybe }
+
+/// The catalog's `replaceRisk` column: whether an occupant of the slot shadows
+/// UI DSH Web ships, wraps the host's own content without replacing it (rc.3's
+/// `hoc` slots), or neither.
+enum SlotReplaceRisk { none, shadowsShippedUi, wrapsOwnerContent }
 
 /// The three shapes a web island takes (§6.2), plus the hidden probe that
 /// refreshes the bridge's occupancy table (§5.2).
@@ -133,6 +140,7 @@ class SlotInfo {
     this.kind,
     this.scope, {
     this.replacesShippedUi = false,
+    this.wrapsOwnerContent = false,
     this.policy = SeatPolicy.other,
     this.synthetic = false,
   });
@@ -141,8 +149,22 @@ class SlotInfo {
   final SlotKind kind;
   final SlotScope scope;
 
-  /// `replaceRisk: shadows-shipped-ui` in the catalog.
+  /// `replaceRisk: shadows-shipped-ui` in the catalog: an occupant stands in
+  /// place of UI DSH Web ships. A `hoc` wrapping the host's content is not
+  /// this: see [wrapsOwnerContent].
   final bool replacesShippedUi;
+
+  /// `replaceRisk: wraps-owner-content` in the catalog (rc.3, the `hoc`
+  /// slots): an occupant wraps the content its owner renders instead of
+  /// replacing it. Not a replacement of shipped UI.
+  final bool wrapsOwnerContent;
+
+  /// The catalog's `replaceRisk` column for this slot.
+  SlotReplaceRisk get replaceRisk => wrapsOwnerContent
+      ? SlotReplaceRisk.wrapsOwnerContent
+      : replacesShippedUi
+      ? SlotReplaceRisk.shadowsShippedUi
+      : SlotReplaceRisk.none;
   final SeatPolicy policy;
 
   /// A surface of the app's own (not a DSH slot).
@@ -250,13 +272,26 @@ const Map<String, SlotInfo> slotCatalog = {
     SlotScope.session,
     policy: SeatPolicy.message,
   ),
-  'conversation.chat.commandview': SlotInfo('conversation.chat.commandview', SlotKind.keyed, SlotScope.session),
+  'conversation.chat.commandview': SlotInfo(
+    'conversation.chat.commandview',
+    SlotKind.keyed,
+    SlotScope.session,
+    replacesShippedUi: true,
+    policy: SeatPolicy.message,
+  ),
   'conversation.chat.flow': SlotInfo(
     'conversation.chat.flow',
     SlotKind.single,
     SlotScope.session,
     replacesShippedUi: true,
     policy: SeatPolicy.never,
+  ),
+  'conversation.chat.markdown.fence': SlotInfo(
+    'conversation.chat.markdown.fence',
+    SlotKind.hoc,
+    SlotScope.session,
+    wrapsOwnerContent: true,
+    policy: SeatPolicy.message,
   ),
   'conversation.chat.message.images': SlotInfo(
     'conversation.chat.message.images',
@@ -329,6 +364,13 @@ const Map<String, SlotInfo> slotCatalog = {
     policy: SeatPolicy.never,
   ),
   'conversation.hero.brand.mark': SlotInfo('conversation.hero.brand.mark', SlotKind.single, SlotScope.root),
+  'conversation.hero.frame': SlotInfo(
+    'conversation.hero.frame',
+    SlotKind.hoc,
+    SlotScope.root,
+    wrapsOwnerContent: true,
+    policy: SeatPolicy.never,
+  ),
   'conversation.hero.options': SlotInfo('conversation.hero.options', SlotKind.list, SlotScope.session),
   'conversation.hero.workspace': SlotInfo(
     'conversation.hero.workspace',
@@ -383,6 +425,12 @@ const Map<String, SlotInfo> slotCatalog = {
     SlotScope.session,
     policy: SeatPolicy.never,
   ),
+  'conversation.input.model.options': SlotInfo(
+    'conversation.input.model.options',
+    SlotKind.list,
+    SlotScope.session,
+    policy: SeatPolicy.never,
+  ),
   'conversation.input.overlay': SlotInfo(
     'conversation.input.overlay',
     SlotKind.list,
@@ -426,6 +474,12 @@ const Map<String, SlotInfo> slotCatalog = {
   ),
   'conversation.session.header.actions': SlotInfo(
     'conversation.session.header.actions',
+    SlotKind.list,
+    SlotScope.session,
+    policy: SeatPolicy.p1Panel,
+  ),
+  'conversation.session.header.actions.subagent.footer': SlotInfo(
+    'conversation.session.header.actions.subagent.footer',
     SlotKind.list,
     SlotScope.session,
     policy: SeatPolicy.p1Panel,
@@ -543,6 +597,13 @@ const Map<String, SlotInfo> slotCatalog = {
     replacesShippedUi: true,
     policy: SeatPolicy.never,
   ),
+  'settings.launcher.notifications': SlotInfo(
+    'settings.launcher.notifications',
+    SlotKind.single,
+    SlotScope.root,
+    replacesShippedUi: true,
+    policy: SeatPolicy.never,
+  ),
   'settings.models.footer': SlotInfo('settings.models.footer', SlotKind.list, SlotScope.root),
   'settings.models.provider-card': SlotInfo('settings.models.provider-card', SlotKind.keyed, SlotScope.root),
   'settings.models.sign-in': SlotInfo(
@@ -648,6 +709,13 @@ const Map<String, SlotInfo> slotCatalog = {
   'sidebar.right.tab.guide.actions': SlotInfo('sidebar.right.tab.guide.actions', SlotKind.list, SlotScope.root),
   'sidebar.right.tab.guide.entry': SlotInfo('sidebar.right.tab.guide.entry', SlotKind.keyed, SlotScope.session),
   'sidebar.right.tab.menu.item': SlotInfo('sidebar.right.tab.menu.item', SlotKind.list, SlotScope.session),
+  'sidebar.session.action': SlotInfo(
+    'sidebar.session.action',
+    SlotKind.hoc,
+    SlotScope.root,
+    wrapsOwnerContent: true,
+    policy: SeatPolicy.never,
+  ),
   'sidebar.session.row.hover': SlotInfo('sidebar.session.row.hover', SlotKind.list, SlotScope.root),
   'sidebar.session.row.leading': SlotInfo('sidebar.session.row.leading', SlotKind.list, SlotScope.root),
   'sidebar.session.row.trailing': SlotInfo('sidebar.session.row.trailing', SlotKind.list, SlotScope.root),
@@ -704,6 +772,13 @@ const Map<String, SlotInfo> slotCatalog = {
     policy: SeatPolicy.message,
   ),
   'tool.view.cordis': SlotInfo('tool.view.cordis', SlotKind.keyed, SlotScope.session, policy: SeatPolicy.p0Page),
+  'workspace.picker.directoryFlow': SlotInfo(
+    'workspace.picker.directoryFlow',
+    SlotKind.single,
+    SlotScope.root,
+    replacesShippedUi: true,
+    policy: SeatPolicy.never,
+  ),
   'workspace.toast': SlotInfo(
     'workspace.toast',
     SlotKind.keyed,

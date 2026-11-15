@@ -19285,45 +19285,6 @@ class L10nZh extends L10n {
   String get systemActionsOnScreenBody => '系统不让后台应用做这些。AI 打开别的应用后，要等你回到 DSH Go 才能接着做。';
 
   @override
-  String get systemActionsCanTitle => '能做的';
-
-  @override
-  String get systemActionsCanOpen => '打开应用或链接';
-
-  @override
-  String get systemActionsCanOpenHint => '应用要写包名，不能按名字找';
-
-  @override
-  String get systemActionsCanPages => '日历、拨号、分享、导航';
-
-  @override
-  String get systemActionsCanPagesHint => '打开系统界面，最后一步由你确认';
-
-  @override
-  String get systemActionsCanSettings => '部分系统设置页';
-
-  @override
-  String get systemActionsCanSettingsHint => '移动网络、显示、声音、NFC 和本应用的通知';
-
-  @override
-  String get systemActionsCanNotify => '发通知';
-
-  @override
-  String get systemActionsCanNotifyHint => '发出去不代表你已经看到';
-
-  @override
-  String get systemActionsCanClipboard => '写剪贴板';
-
-  @override
-  String get systemActionsCanClipboardHint => '只写不读';
-
-  @override
-  String get systemActionsCanHandoff => '交还给你';
-
-  @override
-  String get systemActionsCanHandoffHint => '登录、验证码这类步骤你来做，做完点继续';
-
-  @override
   String get systemActionsScreenTitle => '界面操作（调试通道）';
 
   @override
@@ -19366,7 +19327,47 @@ class L10nZh extends L10n {
   String get systemActionsScreenStepsTitle => '第一次要授权';
 
   @override
-  String get systemActionsScreenSteps => '① 设置 → 关于本机，连点「版本号」进开发者模式\n② 设置 → 系统 → 开发者选项，打开「无线调试」并保持开启\n③ 回到这里点重新检测，手机弹窗选「始终允许」\n④ 没弹窗就去设置里撤销调试授权，再回来重试';
+  String get systemActionsScreenSteps =>
+      '① 设置 → 关于本机，连点「版本号」进开发者模式\n② 设置 → 系统 → 开发者选项，打开「无线调试」并保持开启\n③ 回到这里点重新检测，手机弹窗选「始终允许」\n④ 没弹窗就去设置里撤销调试授权，再回来重试';
+
+  @override
+  String get systemActionsCanTitle => '能做的';
+
+  @override
+  String get systemActionsCanOpen => '打开应用或链接';
+
+  @override
+  String get systemActionsCanOpenHint => '应用要写包名，不能按名字找';
+
+  @override
+  String get systemActionsCanPages => '日历、拨号、分享、导航';
+
+  @override
+  String get systemActionsCanPagesHint => '打开系统界面，最后一步由你确认';
+
+  @override
+  String get systemActionsCanSettings => '部分系统设置页';
+
+  @override
+  String get systemActionsCanSettingsHint => '移动网络、显示、声音、NFC 和本应用的通知';
+
+  @override
+  String get systemActionsCanNotify => '发通知';
+
+  @override
+  String get systemActionsCanNotifyHint => '发出去不代表你已经看到';
+
+  @override
+  String get systemActionsCanClipboard => '写剪贴板';
+
+  @override
+  String get systemActionsCanClipboardHint => '只写不读';
+
+  @override
+  String get systemActionsCanHandoff => '交还给你';
+
+  @override
+  String get systemActionsCanHandoffHint => '登录、验证码这类步骤你来做，做完点继续';
 
   @override
   String get systemActionsCannotTitle => '做不到的';
@@ -19675,6 +19676,52 @@ class L10nZh extends L10n {
 
   @override
   String get tavernApiKeyMissing => '未填';
+
+  @override
+  String get tavernModelSource => '模型来源';
+
+  @override
+  String get tavernModelSourceSubtitle => '官方 DeepSeek，或「模型服务」里的自定义渠道';
+
+  @override
+  String get tavernModelSourceOfficial => '官方 DeepSeek';
+
+  @override
+  String get tavernModelSourceCustom => '自定义渠道';
+
+  @override
+  String get tavernProviderRoute => '渠道';
+
+  @override
+  String get tavernProviderRouteMissing => '渠道已不可用';
+
+  @override
+  String get tavernProviderModel => '渠道模型';
+
+  @override
+  String get tavernProviderModelNone => '该渠道未列模型';
+
+  @override
+  String get tavernProviderKey => '渠道密钥';
+
+  @override
+  String get tavernProviderKeySubtitle => '在「设置 · 模型服务」里为这个渠道填写；只读本机引擎、经 App 表单录入的那一份';
+
+  @override
+  String get tavernProviderKeyMissing => '未填，去「模型服务」填';
+
+  @override
+  String get tavernProviderPick => '选择渠道';
+
+  @override
+  String get tavernProviderModelPick => '选择模型';
+
+  @override
+  String get tavernProviderNoChannels => '「设置 · 模型服务」里还没有可选的渠道：只有 OpenAI 兼容（Chat Completions）且至少列了一个模型的渠道能在这里选。';
+
+  @override
+  String get tavernModelSourceNote =>
+      '酒馆只走 OpenAI 兼容（Chat Completions）协议，其它协议的渠道在这里不可选；渠道密钥只有在本 App 的「设置 · 模型服务」里录入、且走本机引擎时才读得到；费用与用量提示按 DeepSeek 官方价估算，自定义渠道的仅供参考。';
 
   @override
   String get tavernDeleteChat => '删除对话';
