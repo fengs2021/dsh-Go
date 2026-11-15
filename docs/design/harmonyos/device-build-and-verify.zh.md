@@ -7,13 +7,16 @@
 
 | 项 | 值 |
 | --- | --- |
-| 仓库 | `/mnt/d/tools/dshgo`（partial clone，blob:none），工作树 `/root/port40`（分支 `port/v40`） |
+| 仓库 | `/mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/dshgo`（partial clone，blob:none），工作树 `/mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/port40`（分支 `port/v40`） |
 | hdc | `/mnt/d/tools/hdc-oh/hdc.exe`（**Windows 二进制**） |
 | 设备 | `192.168.2.102:45957`（`hdc tconn` 连接；无线调试端口是设备侧 hdc 服务端口） |
 | 包名 | `io.github.ccch1mneyyy.dsh_app` |
 | 构建用 node | `/root/node-host/bin/node`（24.22.1）、`/root/npm1190/bin/npm`（11.9.0） |
 | OHOS SDK | `/root/sdk`（native 在 `/root/sdk/native`，hvigor 6.26.9 / SDK 26.0.0.38） |
 | 签名 | HoKit（Windows 应用）+ CDP 远程执行，证书 `hokit_debug` |
+| 工作文件夹 | `/mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace`（Windows `D:\Users\liqih\Documents\deepseek-harness\default-workspace`）：仓库 `dshgo`、工作树 `port40`、HAP 产物 `hap-build`、脚本 `scripts`、工具 `tools`、构建中间产物 `build` 全在这里（2026-11-15 从 `/mnt/d/tools/dshgo`、`/root/port40`、`/root/*` 迁入） |
+| 构建脚本 | 统一在 `<工作文件夹>/scripts`（`prep43.sh`／`compose43.sh`／`fullhap42.sh`／`probe43.sh`／`v40install.sh` 等，路径已改成新位置）；工具链（`/root/sdk`、`/root/node-host`、`/root/npm1190`、`/root/node-src`、flutter）仍在 `/root` |
+| 构建中间产物 | `<工作文件夹>/build/`（`prepared43` 因 drvfs 小文件写入慢仍留在 `/root/prepared43`） |
 | 产物目录 | **工作文件夹**下的 `hap-build`：WSL `/mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/hap-build`，Windows `D:\\Users\\liqih\\Documents\\deepseek-harness\\default-workspace\\hap-build`（2026-11-15 从 `D:\\hap-build` 整体迁入，旧路径已不存在；用户要求以后一律在工作文件夹操作） |
 | 代理 | `https_proxy=http://127.0.0.1:7890`；git 需 `-c http.version=HTTP/1.1 -c http.postBuffer=524288000` |
 
@@ -37,12 +40,12 @@ python3 runtime/ohos/package/compose-runtime.py --target ohos \
   --dsh-prefix /root/prepared40/dsh --process-prefix /root/prepared40/process \
   --target-report /root/prepared40/target-report.json \
   --prepared-inputs /root/prepared40/prepared-inputs.json \
-  --regex-artifact /root/regex40/build/re2js-unicode.mjs \
-  --esbuild-prefix /root/port40/runtime/ohos/node/build-tools \
+  --regex-artifact /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/regex40/build/re2js-unicode.mjs \
+  --esbuild-prefix /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/port40/runtime/ohos/node/build-tools \
   --imports-report /root/compose40/composition-imports.json \
   --out /root/compose40/composed \
   --node /root/node-host/bin/node \
-  --runtime-core /root/port40/app/ohos/entry/src/main/ets/runtime/RuntimeCore.ets \
+  --runtime-core /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/port40/app/ohos/entry/src/main/ets/runtime/RuntimeCore.ets \
   --keep-expanded
 ```
 
@@ -50,8 +53,8 @@ python3 runtime/ohos/package/compose-runtime.py --target ohos \
 
 ```sh
 # 同上，追加：
-  --linux-assets /root/linux-images/assets \
-  --out /root/compose41/composed
+  --linux-assets /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/linux-images/assets \
+  --out /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/compose41/composed
 ```
 
 **关键**：只有传了 `--linux-assets`，compose 才会把 `linux: libdsh_linux.so` 写进
@@ -64,11 +67,11 @@ python3 runtime/ohos/package/compose-runtime.py --target ohos \
 
 ```sh
 sed -i "s/^version: .*/version: 1.0.31+31/" app/pubspec.yaml
-bash tooling/ohos/check-arkts.sh --sdk /root/sdk --work /root/arkts-hap41 \
+bash tooling/ohos/check-arkts.sh --sdk /root/sdk --work /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/arkts-hap41 \
   --hms-stubs --full \
-  --aot /root/aot40/plain \
-  --native /root/hap-libs-linux/arm64-v8a \
-  --runtime /root/compose41/composed/dsh-runtime-rawfile.zip \
+  --aot /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/aot40/plain \
+  --native /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/hap-libs-linux/arm64-v8a \
+  --runtime /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/compose41/composed/dsh-runtime-rawfile.zip \
   --node-headers /root/node-src/src
 ```
 
@@ -91,7 +94,7 @@ cmake -S runtime/ohos/linux/native -B /root/linux-oh -G Ninja \
   -DCMAKE_TOOLCHAIN_FILE=/root/sdk/native/build/cmake/ohos.toolchain.cmake -DOHOS_ARCH=arm64-v8a \
   -DDSH_TINYEMU_ARCHIVE=/root/tinyemu-dl/tinyemu-2019-12-21.tar.gz \
   -DDSH_NODE_HEADERS=/root/node-src/src \
-  -DDSH_NODE_LIBRARY=/root/hap-libs2/arm64-v8a/libnode.so \
+  -DDSH_NODE_LIBRARY=/mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/hap-libs2/arm64-v8a/libnode.so \
   -DDSH_NODE_RENAME_HEADER=runtime/ohos/node/napi-rename.h \
   -DDSH_OH_SDK_NATIVE=/root/sdk/native
 cmake --build /root/linux-oh
@@ -115,7 +118,7 @@ tooling/ohos/build-linux-assets.py \
   --alpine /root/linux-inputs/alpine-minirootfs-3.24.4-riscv64.tar.gz \
   --tools-root /root/linux-tools/root \
   --agent runtime/ohos/linux/guest-agent.py \
-  --output /root/linux-images
+  --output /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/linux-images
 ```
 
 固定输入 SHA（脚本会自校验）：
@@ -123,7 +126,7 @@ tooling/ohos/build-linux-assets.py \
 - `alpine-minirootfs-3.24.4-riscv64.tar.gz` = `010683db6c73b3ad1c334fc8f93f64ae748ef67ae6d69e964929aeaf8517bff3`（3,451,625 B）
 - 需要本机 `mke2fs`（`/usr/sbin/mke2fs`）；产出 2×512 MiB ext4 + gzip，约 43 MB。
 
-产物 `/root/linux-images/assets` 必须**恰好六个文件**（`owner.mjs` 用 `O_NOFOLLOW` 只认这五个 + manifest）：
+产物 `/mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/linux-images/assets` 必须**恰好六个文件**（`owner.mjs` 用 `O_NOFOLLOW` 只认这五个 + manifest）：
 `bbl64.bin`、`kernel-riscv64.bin`、`tools.block`、`bootstrap.ext4.gz`、`empty.ext4.gz`、`install-manifest.json`。
 多一个少一个都会被 `loadLinuxInstallationManifest` 拒绝。
 
@@ -223,8 +226,8 @@ $HDC -t $T shell "bm dump -n io.github.ccch1mneyyy.dsh_app | grep version"   # �
 ### 9.2 权威 AOT 组装目录（v42 起）
 
 ```sh
-cp -a /root/aot42/ohos-aot-<sha> /root/aot42/plain-new
-cp /root/aot42/libsqlite3-ohos.so /root/aot42/plain-new/native_assets/libs/arm64-v8a/libsqlite3.so
+cp -a /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/aot42/ohos-aot-<sha> /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/aot42/plain-new
+cp /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/aot42/libsqlite3-ohos.so /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/aot42/plain-new/native_assets/libs/arm64-v8a/libsqlite3.so
 ```
 
 - **必须整个 artifact 拷**，不能只挑 flutter_assets + arm64-v8a：v41 就是这么漏掉 native_assets/ 的，
@@ -276,7 +279,7 @@ ohos-arm64-release-artifacts.zip（15,485,641，md5 ef9d1896730d4824175157ff0fda
 | runtime | ohos-4304faae5cb3ac4a61e366c8，files 55,553，bytes 589,627,270，archive 205,333,124 |
 | runtime archive sha256 | 6aec90b2a4c69323b06ff6e2a8ea7450bf31aeb9a2c4765caec411d2910273c4 |
 | HAP 内 libsqlite3.so | 1,437,800 B，md5 0ea0b5537d71f07326bb31c3705dc5c7（OHOS 版，NEEDED libc.so） |
-| audit | audit-hap: OK，证据 /root/arkts-hap42/check-e6sRSGrK/hap-audit.json |
+| audit | audit-hap: OK，证据 /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/build/arkts-hap42/check-e6sRSGrK/hap-audit.json |
 
 ### 9.7 设备侧注意
 

@@ -2,7 +2,7 @@
 
 底座：`origin/claude/harmonyos-ohos` = `1948e7b7`（2026-11-13，含 upstream main 到 1.0.16）。
 旧底：`origin/ohos/v8` = `4a4555bf`（2026-11-06，已停更），我们的 v16–v39 共 28 个提交建在它上面。
-工作分支：`port/v40`（worktree `/root/port40`）。
+工作分支：`port/v40`（worktree `/mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/port40`）。
 
 ## 为什么不 merge
 
