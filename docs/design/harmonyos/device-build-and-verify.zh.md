@@ -432,3 +432,32 @@ v46 与 v47 的 `libs/arm64-v8a/libapp.so` md5 完全相同（`226421fb…`）�
 | v46 | 1.0.36+36 | `f0254fbd87355d09765ac5f0bd941cc2` | `a3c056e7b823c874bef1f4c39ff39230` | `226421fb5dd4399445b767007706c9ed` | runtime 加 script 能力；Dart 仍是 v42 的 |
 | v47 | 1.0.37+37 | `8acf64c4901434303b3f1b2bfac8e038` | `5491cfd5c485e77e28501590c62b82a8` | 同上（**作废**） | 舞台渠道代码没进包 |
 | v48 | 1.0.38+38 | `91b2016fdd8fee80c05a3c8f54fb26c9` | `19338ca433984b914b15446021b9e166` | `5d36a41aa393b3100de33560ab42f890` | AOT from run 43715353136 (f9e60bfd)，含舞台渠道 |
+
+## 13. v48 真机验证（2026-11-15 22:09，versionCode 38）
+
+装包：`cd <WS>/hap-build && <WS>/tools/hdc-oh/hdc.exe -t 192.168.2.102:45957 install -r dsh-ohos-v48-signed.hap` → `install bundle successfully`（覆盖 v46/v47，数据目录保留）。
+
+证据（`uitest dumpLayout` 读屏原文）：
+
+| 检查点 | 读屏结果 |
+| --- | --- |
+| 舞台 · 本局 · 正在用 · 模型 | `Text "模型\nWB Proxy · hy4-preview" [212,803,1266,978]`（v47 之前只有 Flash / V4 Pro 两颗胶囊） |
+| 点开模型行 | 弹层 `Header "模型"` → `Header "官方 DeepSeek"`：`Flash`、`V4 Pro`；`Header "WB Proxy"`：`hy4-preview`（带 ✓）、`hy3`、`deepseek-v4.1-flash` |
+| 未填密钥提示 | 行下 `未填，去「模型服务」填`（`tavernProviderKeyMissing` 分支生效） |
+| 设置 · 能力 · Linux 环境 | `Text "Linux 环境"` + `Text "已开启"` |
+| 系统操作 | `系统操作 已开启` |
+
+引擎日志（`/data/app/el2/100/base/io.github.ccch1mneyyy.dsh_app/files/dsh-runtime/engine.log`，可读）证明隔离自愈在真机生效：
+
+```
+[linux] install start instance=26f5a81b-… attempt=448694e2-…
+[linux] retained Linux instance quarantined code=ERR_OHOS_LINUX_RECOVERY_REQUIRED moved=.quarantine-20261115-124…-installation-IpgdjF
+[linux] install failed instance=2ddc1c92-… ownerState=stopped-quarantined ERR_OHOS_LINUX_INSTALL_TIMEOUT: Guest did not confirm opening before install deadline
+[linux] install start instance=26f5a81b-… attempt=448694e2-…
+[linux] install ok backend=opened instance=26f5a81b-…
+```
+即：残留实例被改名隔离 → 新实例首次尝试在 180 s 内没等到 guest 确认（`ERR_OHOS_LINUX_INSTALL_TIMEOUT`，首次装镜像的正常现象）→ 再开一次即 `install ok backend=opened`。同一次启动里还有 `[phone-hdc] probe ok 1874ms`、`[phone-probe] dump ok 1154ms screen=1320x2848`。
+
+踩点记录（读屏操作两个坑）：
+- `uitest uiInput click` 返回 `No Error` 但界面没变时，先截图核对；再连点会点到刚弹出的弹层遮罩把它关掉（我因此误判"点了没反应"）。
+- 舞台面板里的「模型」行必须在面板滑出后再点（`y≈899`），坐标是设备像素（1320×2848），与 `uitest dumpLayout` 的 bounds 同一坐标系。
