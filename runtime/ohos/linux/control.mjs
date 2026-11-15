@@ -3,6 +3,7 @@ import { STATUS_CODES } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { isMainThread } from 'node:worker_threads';
+import { noteLinux } from './diagnostics.mjs';
 import { linuxHostPaths } from './host-paths.mjs';
 import { deriveLinuxJobDiagnostic } from './job-diagnostics.mjs';
 import { LinuxProxyPolicy, withoutInheritedProxy } from './proxy.mjs';
@@ -90,7 +91,7 @@ export class LinuxControl {
       ownerRetained: !!this.#owner, workspaceLease: false,
       restartRequired: this.#failed || this.#closing || unknown, shutdownComplete: this.#shutdownComplete,
       nextRequestId: this.#nextRequestId, ownerState: this.#owner?.state ?? null, backendState,
-      progress: this.#progress && { ...this.#progress }, lastErrorCode: unknown ? 'ERR_OHOS_LINUX_UNKNOWN' : this.#lastError,
+      progress: this.#progress && { ...this.#progress }, lastErrorCode: this.#lastError ?? (unknown ? 'ERR_OHOS_LINUX_UNKNOWN' : null),
       job: job ? { id: job.id, proxyRevision: job.proxyRevision, state: unknown && job.state !== 'settled' ? 'unknown' : job.state,
         started: job.started, cancelRequested: job.cancelRequested, outcome: job.outcome && { ...job.outcome },
         errorCode: job.errorCode, diagnostic: job.diagnostic && { ...job.diagnostic },
@@ -152,6 +153,7 @@ export class LinuxControl {
   }
   async #install() {
     const signal = this.#installAbort.signal;
+    noteLinux('install start instance=' + this.#instanceId + ' attempt=' + this.#attemptId);
     try {
       const module = await this.#loadModule(); signal.throwIfAborted();
       let manifest;
@@ -164,8 +166,10 @@ export class LinuxControl {
       this.#backend = result.backend; signal.throwIfAborted();
       if (this.#backend.state !== 'opened' || this.#backend.closed) throw fail('ERR_OHOS_LINUX_UNKNOWN', 'Guest opening did not remain valid');
       if (!this.#closing && this.#enabled) this.#phase = 'enabled';
+      noteLinux('install ok backend=' + this.#backend.state + ' instance=' + this.#instanceId);
     } catch (cause) {
       this.#failed = true; this.#lastError = codeOf(cause);
+      noteLinux('install failed instance=' + this.#instanceId + ' ownerState=' + (this.#owner?.state ?? 'none'), cause);
       if (this.#owner) this.#retirement = retirement(await this.#owner.dispose());
       if (cause.code === 'ERR_OHOS_LINUX_UNKNOWN' || this.#owner?.state === 'quarantined') this.#recordUnknown(cause);
       if (!this.#closing && !signal.aborted) this.#phase = cause.code === 'ERR_OHOS_LINUX_ASSETS_UNAVAILABLE' ? 'unavailable' : 'failed';
@@ -225,7 +229,7 @@ export class LinuxControl {
     handle.done.catch(() => {}).finally(() => { if (this.#routed === job) this.#routed = null; });
     return handle;
   }
-  #recordUnknown(cause) { this.#unknown = true; this.#lastError = codeOf(cause); }
+  #recordUnknown(cause) { this.#unknown = true; this.#lastError = codeOf(cause); noteLinux('quarantined', cause); }
   async #drainJob() {
     const routedJob = this.#routed?.handle;
     if (routedJob) {

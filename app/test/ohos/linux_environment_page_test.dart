@@ -161,6 +161,15 @@ void main() {
     expect(runtime.calls, ['getStatus']);
   });
 
+  testWidgets('a refused boot shows the engine code under the restart hint', (tester) async {
+    final runtime = _Runtime(
+      _snapshot({'state': 'stopped', 'restartRequired': true, 'lastErrorCode': 'ERR_OHOS_LINUX_PROTOCOL'}),
+    );
+    await _pump(tester, runtime, _Secrets());
+    expect(find.textContaining('重新打开 App'), findsOneWidget);
+    expect(find.textContaining('ERR_OHOS_LINUX_PROTOCOL'), findsOneWidget);
+  });
+
   testWidgets('a manual proxy is stored in secure storage and sent to the engine', (tester) async {
     final runtime = _Runtime(_snapshot());
     final secrets = _Secrets();

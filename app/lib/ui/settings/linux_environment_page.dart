@@ -125,10 +125,13 @@ class _LinuxEnvironmentPageState extends ConsumerState<LinuxEnvironmentPage> {
     final proxy = view.proxy;
 
     final code = snapshot?.lastErrorCode;
+    // The restart hint stays the headline, but the code underneath it is what makes
+    // a refused boot diagnosable: the runtime quarantines itself and the sandbox is
+    // unreadable from hdc, so the page is the only place a code can reach the reader.
     final String? problem = view.error != null
         ? (snapshot == null ? l10n.linuxEngineOffline : l10n.linuxRequestFailed)
         : restart
-        ? l10n.linuxRestartRequired
+        ? (code == null ? l10n.linuxRestartRequired : '${l10n.linuxRestartRequired}\n${l10n.linuxErrorWithCode(code)}')
         : code != null
         ? l10n.linuxErrorWithCode(code)
         : null;
