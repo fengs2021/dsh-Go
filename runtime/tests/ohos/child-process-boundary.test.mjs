@@ -86,6 +86,18 @@ test('OHOS: a previously captured asynchronous spawn still reaches the prototype
   assert.deepEqual(result, { denied: true });
 });
 
+test('OHOS: reports the virtual Node runtime path launcher plugins probe and spawn', () => {
+  const result = run(`
+    Object.defineProperty(process, 'platform', { value: 'openharmony' });
+    await import(guard);
+    assert.equal(process.execPath, '/dsh-go/ohos/bin/node');
+    assert.equal(process.argv[0], '/dsh-go/ohos/bin/node');
+    assert.throws(() => cjs.spawn(process.execPath, []), { code: 'ERR_OHOS_NO_SPAWN' });
+    console.log(JSON.stringify({ execPath: process.execPath, argv0: process.argv[0] }));
+  `);
+  assert.deepEqual(result, { execPath: '/dsh-go/ohos/bin/node', argv0: '/dsh-go/ohos/bin/node' });
+});
+
 test('OHOS: credential-provider promisify wrappers retain the explicit error code', () => {
   const result = run(`
     const { promisify } = await import('node:util');

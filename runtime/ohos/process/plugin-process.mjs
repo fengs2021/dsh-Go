@@ -1,10 +1,20 @@
 import { EventEmitter } from 'node:events';
+import { createWriteStream, readlinkSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { spawnPluginCommand } from './command-router.mjs';
 
 const failure = (code, message) => Object.assign(new Error(message), { code });
 const unsupported = detail => { throw failure('ERR_OHOS_PROCESS_OPTION', `${detail} 在 App 内命令后端不可用；可连接电脑执行`); };
+// A caller that opens the child's log and passes the descriptor is asking for the
+// helper's output to land in that file. Resolve it back to a path so the in-app
+// child can append there itself.
+const descriptorPath = fd => {
+  try {
+    const target = readlinkSync(`/proc/self/fd/${fd}`);
+    return target.startsWith('/') ? target : undefined;
+  } catch { return undefined; }
+};
 const validText = (value, label) => {
   if (typeof value !== 'string' || value.includes('\0')) throw new TypeError(`${label} must be a NUL-free string`);
   return value;
@@ -42,8 +52,11 @@ export function createChildProcessFacade(spawnJob) {
     if (!file) throw new TypeError('file must not be empty');
     args = args.map(value => validText(value, 'argument'));
     if (!options || typeof options !== 'object') throw new TypeError('options must be an object');
-    if (options.detached || options.uid !== undefined || options.gid !== undefined
-      || options.serialization !== undefined || options.argv0 !== undefined) unsupported('detached/uid/gid/IPC/argv0');
+    // detached is only a hint that the child outlives its parent: helpers here always
+    // share this process, so the flag changes nothing and refusing it would stop
+    // launcher plugins (billion-context) from starting their proxy at all.
+    if (options.uid !== undefined || options.gid !== undefined
+      || options.serialization !== undefined || options.argv0 !== undefined) unsupported('uid/gid/IPC/argv0');
     if (options.shell) unsupported('spawn shell 选项；请使用 exec 或明确 sh -c');
     if (options.timeout !== undefined && (!Number.isFinite(options.timeout) || options.timeout < 0 || options.timeout > 2147483647)) throw new RangeError('timeout is outside timer range');
     if (options.killSignal !== undefined && !['SIGTERM', 'SIGKILL'].includes(options.killSignal)) unsupported('killSignal');
@@ -51,7 +64,15 @@ export function createChildProcessFacade(spawnJob) {
       : options.stdio === 'ignore' ? ['ignore', 'ignore', 'ignore']
         : options.stdio === 'inherit' ? ['inherit', 'inherit', 'inherit'] : options.stdio;
     if (!Array.isArray(modes) || modes.length > 3) unsupported('stdio descriptors/IPC');
-    const io = [0, 1, 2].map(i => modes[i] ?? 'pipe');
+    const sinks = [];
+    const io = [0, 1, 2].map(i => modes[i] ?? 'pipe').map((mode, index) => {
+      if (typeof mode !== 'number') return mode;
+      if (index === 0) return 'ignore';
+      const target = descriptorPath(mode);
+      if (target === undefined) return 'ignore';
+      sinks.push([index === 1 ? 'stdout' : 'stderr', target]);
+      return 'pipe';
+    });
     if (io.some(x => !['pipe', 'ignore', 'inherit'].includes(x)) || io[0] === 'inherit') unsupported('继承stdin或外部stdio句柄');
     const child = new ChildProcess();
     child.spawnfile = file; child.spawnargs = [file, ...args];
@@ -83,6 +104,13 @@ export function createChildProcessFacade(spawnJob) {
       child._job = job;
       for (const key of ['stdin', 'stdout', 'stderr']) child[key] = job[key] ?? null;
       child.stdio = [child.stdin, child.stdout, child.stderr];
+      for (const [label, target] of sinks) {
+        const stream = child[label];
+        if (!stream) continue;
+        const sink = createWriteStream(target, { flags: 'a' });
+        sink.on('error', () => {});
+        stream.pipe(sink);
+      }
       Promise.resolve(job.started).then(() => { if (!child._closed) child.emit('spawn'); }, error => {
         if (!child.killed || error.code !== 'ERR_OHOS_NOT_STARTED') report(error);
       });

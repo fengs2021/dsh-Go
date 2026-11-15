@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { openSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { once } from 'node:events';
@@ -41,6 +42,36 @@ test('execFile callback and promisify preserve stdout/stderr, arguments, errors 
   await assert.rejects(exec('node', ['-e', 'process.stdout.write("0123456789")'], { cwd: f.work, maxBuffer: 4 }), error => error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' && error.stdout === '0123');
   assert.throws(() => f.cp.spawnSync('node'), { code: 'ERR_OHOS_SYNC_PROCESS_UNAVAILABLE' });
   assert.throws(() => f.cp.fork('server.js'), { code: 'ERR_OHOS_PROCESS_OPTION' });
+});
+
+test('detached helpers writing to caller-owned log descriptors start and append there', { timeout: 10000 }, async t => {
+  const f = await setup(t), log = join(f.base, 'helper.log');
+  await writeFile(log, 'head\n');
+  const fd = openSync(log, 'a');
+  let child;
+  try {
+    child = f.cp.spawn('node', ['-e', 'console.log("helper-out");console.error("helper-err")'],
+      { cwd: f.work, detached: true, stdio: ['ignore', fd, fd] });
+  } finally { closeSync(fd); }
+  child.on('error', error => assert.fail(error));
+  assert.deepEqual(await closed(child), { code: 0, signal: null });
+  let text = '';
+  for (let attempt = 0; attempt < 100; attempt++) {
+    text = await readFile(log, 'utf8');
+    if (text.includes('helper-err')) break;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.match(text, /^head\n/);
+  assert.match(text, /helper-out\n/);
+  assert.match(text, /helper-err\n/);
+});
+
+test('an unreadable stdio descriptor is ignored instead of refusing the spawn', { timeout: 10000 }, async t => {
+  const f = await setup(t);
+  const child = f.cp.spawn('node', ['-e', 'process.exit(7)'], { cwd: f.work, detached: true, stdio: ['ignore', 987654, 987654] });
+  child.on('error', error => assert.fail(error));
+  assert.equal(child.stdout, null);
+  assert.deepEqual(await closed(child), { code: 7, signal: null });
 });
 
 test('non-Node commands fail clearly without Linux and failed spawn emits no spawn/exit', async t => {
