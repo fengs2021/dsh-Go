@@ -14,6 +14,7 @@
 | 构建用 node | `/root/node-host/bin/node`（24.22.1）、`/root/npm1190/bin/npm`（11.9.0） |
 | OHOS SDK | `/root/sdk`（native 在 `/root/sdk/native`，hvigor 6.26.9 / SDK 26.0.0.38） |
 | 签名 | HoKit（Windows 应用）+ CDP 远程执行，证书 `hokit_debug` |
+| 产物目录 | **工作文件夹**下的 `hap-build`：WSL `/mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/hap-build`，Windows `D:\\Users\\liqih\\Documents\\deepseek-harness\\default-workspace\\hap-build`（2026-11-15 从 `D:\\hap-build` 整体迁入，旧路径已不存在；用户要求以后一律在工作文件夹操作） |
 | 代理 | `https_proxy=http://127.0.0.1:7890`；git 需 `-c http.version=HTTP/1.1 -c http.postBuffer=524288000` |
 
 ## 1. 构建链（三段）
@@ -130,7 +131,7 @@ tooling/ohos/build-linux-assets.py \
 
 ```sh
 # 1) 未签名包必须放在 Windows 侧 D 盘（CDP 表达式里写死 D 盘路径）
-cp <entry-default-unsigned.hap> /mnt/d/hap-build/dsh-ohos-vNN-unsigned.hap
+cp <entry-default-unsigned.hap> /mnt/d/Users/liqih/Documents/deepseek-harness/default-workspace/hap-build/dsh-ohos-vNN-unsigned.hap
 # 2) HoKit 开着远程调试端口（--remote-debugging-port=9222）
 curl -s http://127.0.0.1:9222/json/version     # 期望 Chrome/132.x，ho-kit/1.8.10
 # 3) 生成表达式 /mnt/d/tools/hokit-asar/resign-expr-vNN.js（照抄上一版改包名）
@@ -150,11 +151,11 @@ cd /mnt/d/tools/hokit-asar && /opt/node22/bin/node cdp.mjs resign-expr-vNN.js
 HDC=/mnt/d/tools/hdc-oh/hdc.exe
 T=192.168.2.102:45957
 $HDC tconn $T                      # 不在 list targets 里时
-$HDC -t $T install -r "D:\hap-build\dsh-ohos-v41-signed.hap"
+$HDC -t $T install -r "D:\Users\liqih\Documents\deepseek-harness\default-workspace\hap-build\dsh-ohos-v41-signed.hap"
 $HDC -t $T shell "bm dump -n io.github.ccch1mneyyy.dsh_app | grep version"   # 装机后核对 versionCode/Name
 ```
 
-- hdc.exe 是 Windows 程序：**所有传给它/从它传出的路径都必须是 Windows 路径**（`D:\\hap-build\\x.json`），
+- hdc.exe 是 Windows 程序：**所有传给它/从它传出的路径都必须是 Windows 路径**（`D:\\Users\\liqih\\Documents\\deepseek-harness\\default-workspace\\hap-build\\x.json`），
   用 WSL 路径会报 `Error opening file: no such file or directory, path:D:\...\tmp\x.json`。
 - 应用启动前设备不能锁屏，否则 `aa start` 报
   `Error Code:10106102 The device screen is locked during the application launch`（开发者模式下不会自动解锁）。
@@ -165,7 +166,7 @@ $HDC -t $T shell "bm dump -n io.github.ccch1mneyyy.dsh_app | grep version"   # �
 1. **界面文本抓取**（最有用）：
    ```sh
    $HDC -t $T shell "uitest dumpLayout -p /data/local/tmp/l.json"
-   $HDC -t $T file recv /data/local/tmp/l.json "D:\\hap-build\\l.json"
+   $HDC -t $T file recv /data/local/tmp/l.json "D:\\Users\\liqih\\Documents\\deepseek-harness\\default-workspace\\hap-build\\l.json"
    ```
    然后按 `attributes.text` / `bounds` 读状态；点击用 `uitest uiInput click <x> <y>`
    （坐标取 bounds 中点；页面滚动后坐标会变，**每次点击前重新 dump**）。
@@ -182,8 +183,8 @@ $HDC -t $T shell "bm dump -n io.github.ccch1mneyyy.dsh_app | grep version"   # �
 3. 后台构建必须 `setsid`；`nohup &` 会被杀。
 4. `execFileSync` 不显式给 PATH → `rm/ls: command not found`（`/etc/profile` 还会打印 run-parts 噪音）。
 5. hdc 路径必须 Windows 风格（见 §5）。
-6. 签名输入包必须在 `D:\hap-build\`；文件名要与表达式里写的一致（曾因名字不一致报
-   `Error opening file: no such file or directory, path:D:\hap-build\dsh-ohos-v40-unsigned_signed.hap`）。
+6. 签名输入包必须在 `D:\Users\liqih\Documents\deepseek-harness\default-workspace\hap-build\`；文件名要与表达式里写的一致（曾因名字不一致报
+   `Error opening file: no such file or directory, path:D:\Users\liqih\Documents\deepseek-harness\default-workspace\hap-build\dsh-ohos-v40-unsigned_signed.hap`）。
 7. 屏幕锁定会挡住 `aa start`（10106102）。
 8. `getLinuxStatus failed with ohos_linux_engine_unavailable` 只是「Node 引擎还没 running」，不是资产问题；
    等引擎起来后再刷新页面即可。
