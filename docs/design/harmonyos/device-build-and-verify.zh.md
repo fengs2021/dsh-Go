@@ -196,3 +196,91 @@ $HDC -t $T shell "bm dump -n io.github.ccch1mneyyy.dsh_app | grep version"   # �
   `libs` 含 `libdsh_linux.so`（HAP 内 185,544 B），`linuxAssets` 六件哈希与源一致。
 - 装机后：设置 · 能力 · Linux 环境 = **「已开启」**，不再出现「暂不可用 / 需要重开 App」；
   App RSS ≈ 984 MB，`hilog` 中 danmaku 心跳正常。
+
+## 9. v42 实测结论（2026-11-15）
+
+### 9.1 AOT 只能来自 CI（本机没有 oh-flutter）
+
+本机 /root/f47（flutter 3.4x）与 /root/flutter 都不是 oh-flutter fork：
+在两棵树的 packages/flutter_tools/lib 里 grep ohos_aot_bundle 都是 0 命中。
+唯一来源是 GitHub Actions .github/workflows/ohos-compile.yml（工作流 id 416048431，repo fengs2021/dsh-Go）：
+
+- 触发条件只匹配 claude/harmonyos-ohos 与 ohos/**，**port/v42 必须手动 dispatch**：
+
+  ```sh
+  TOKEN=$(grep -o "ghp_[A-Za-z0-9]*" /root/.git-credentials | head -1)
+  printf %s "{\"ref\":\"port/v42\"}" > /tmp/dispatch.json
+  curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
+    https://api.github.com/repos/fengs2021/dsh-Go/actions/workflows/ohos-compile.yml/dispatches \
+    -H "Accept: application/vnd.github+json" -d @/tmp/dispatch.json -w "%{http_code}\n"   # 期望 204
+  ```
+
+- artifact 名绑定 commit sha（ohos-aot-<sha40>），所以**所有改动必须先提交并推送**再 dispatch，
+  否则 AOT 与代码 sha 不匹配（App 内 runtimeVersion 与实际 Dart 代码对不上）。
+- 产物解包结构：flutter_assets/（191 文件）、arm64-v8a/app.so、native_assets/libs/arm64-v8a/libsqlite3.so。
+
+### 9.2 权威 AOT 组装目录（v42 起）
+
+```sh
+cp -a /root/aot42/ohos-aot-<sha> /root/aot42/plain-new
+cp /root/aot42/libsqlite3-ohos.so /root/aot42/plain-new/native_assets/libs/arm64-v8a/libsqlite3.so
+```
+
+- **必须整个 artifact 拷**，不能只挑 flutter_assets + arm64-v8a：v41 就是这么漏掉 native_assets/ 的，
+  结果 HAP 里**没有 libsqlite3.so**（manifest 一直声明），设备上表现为「酒馆打不开」
+  （package:sqlite3 在运行时按名字加载动态库，找不到就崩）。
+- CI 自带的 libsqlite3.so **是 glibc 版，不能用**：
+  NEEDED libm.so.6 / libc.so.6 / ld-linux-aarch64.so.1，strings 含 GLIBC_2.17/2.28/2.29/2.33/2.34。
+  正确的那份由 tooling/ohos/build-sqlite3-native.py 用 OHOS NDK 编出：
+  NEEDED libc.so、SONAME libsqlite3.so、strings 含 OHOS (dev) clang version 15.0.4、.note.ohos.ident。
+- 判据命令（装包前就能查）：
+
+  ```sh
+  rm -rf /tmp/h && unzip -o -q <hap> "libs/arm64-v8a/libsqlite3.so" -d /tmp/h
+  readelf -d /tmp/h/libs/arm64-v8a/libsqlite3.so | grep NEEDED
+  # 通过 = 只有 libc.so（不含 libm.so.6 / ld-linux-aarch64.so.1）
+  ```
+
+### 9.3 22 MB 的 AOT 走代理很慢 → 分块并发下载
+
+单连接要 20+ 分钟，curl -C - 续传也慢。可用手法：
+
+1. 先拿带 SAS 的直链（无需鉴权）：
+   `curl -sS -o /dev/null -D - -H "Authorization: Bearer $TOKEN" https://api.github.com/repos/fengs2021/dsh-Go/actions/artifacts/<id>/zip | grep -i "^location:"`
+2. 再按 Range 12 片并发（脚本 /root/dl-aot42-par.sh：每片 curl -r start-end、失败重试，最后按序 cat）。
+3. unzip -t 必须 ZIP_OK；v42 的 artifact 是 **22,271,936 B**。
+
+### 9.4 构建工具链缓存可以搬（省掉 atomgit 龟速下载）
+
+check-arkts.sh 只在 [ -f "$WORK/dl/$2" ] 缺失时才 curl（:132），$WORK 只有 --clean 才 rm -rf（:124）。
+所以换 --work 目录时，先把上一版 <work>/dl/ 里的三个包拷进新 <work>/dl/：
+hvigor-6.26.9.tgz（16,267,839）、hvigor-ohos-plugin-6.26.9.tgz（33,683,148）、
+ohos-arm64-release-artifacts.zip（15,485,641，md5 ef9d1896730d4824175157ff0fdacdea）。
+下载卡住时 kill 掉 curl 和父脚本、补文件、重跑即可（缓存复用，不从头再来）。
+
+### 9.5 签名补充
+
+- api.cert.list 报 HTTP 401（[AppGalleryConnectUserAuthService]getTokenInfo return null）**不影响签名**：
+  HoKit 用本机缓存好的 hokit_debug 证书完成重签，返回仍是 success:true + outputPath。
+- v42 实测约 40 秒完成，签名产物 274,400,119 B（md5 b555bdfc16fda7885fa30f3d0232b2cf）。
+
+### 9.6 v42 产物事实
+
+| 项 | 值 |
+| --- | --- |
+| 提交 | 94fc94fc（分支 port/v42，84 文件，13967+/1412−） |
+| HAP（未签名） | 274,323,138 B，md5 ac1a4eed18d34c9393d95b21d5477569 |
+| HAP（已签名） | 274,400,119 B，md5 b555bdfc16fda7885fa30f3d0232b2cf |
+| module.json | versionCode 32 / versionName 1.0.32 / compileSdk 26.0.0.38 / API 26 |
+| runtime | ohos-4304faae5cb3ac4a61e366c8，files 55,553，bytes 589,627,270，archive 205,333,124 |
+| runtime archive sha256 | 6aec90b2a4c69323b06ff6e2a8ea7450bf31aeb9a2c4765caec411d2910273c4 |
+| HAP 内 libsqlite3.so | 1,437,800 B，md5 0ea0b5537d71f07326bb31c3705dc5c7（OHOS 版，NEEDED libc.so） |
+| audit | audit-hap: OK，证据 /root/arkts-hap42/check-e6sRSGrK/hap-audit.json |
+
+### 9.7 设备侧注意
+
+- 2026-11-15 13:40 起手机 192.168.2.102 从局域网消失（Windows arp -a 无该条目、
+  全子网扫描 45957 端口 0 命中、hdc list targets 只剩 [Empty] 与 UART）。
+  装机前先确认手机连的 Wi-Fi 与 PC 同网段且「无线调试」开着，否则只有 [Fail]Connect failed。
+- 装包命令与验收方法见 §5、§6；「酒馆可打开」的判据是进入酒馆页不弹引擎错误，
+  hilog 里没有 sqlite3 / Failed to load dynamic library 报错。
