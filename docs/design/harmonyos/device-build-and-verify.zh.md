@@ -992,3 +992,60 @@ ctx.tools.register({ name: 'mcp__engine__sessions', output: { schema, render } ,
 ### 25.6 验收判据（装机后）
 1. 手机桥恢复：`mcp__engine__sessions`（`action=list`）、`mcp__phone__ui`（`action=shot`）、`mcp__engine__log` 都可用；引擎日志里不应再出现 `[phone] register failed`。
 2. 用英文提问 + 要求英文思考，思考写完直接展开就是中文，胶囊显示「查看原文」；旧消息展开仍显示「翻译」。
+
+## 26 「插话中」的消息永远不生效（v64）
+
+### 26.1 现象（用户 m08306 + 截图 m08308）
+会话「起点读书福利中心自动…」的一轮已经结束（界面显示 `已停止`、`1 分 17 秒 · 1 步 · 122K tokens`），它下面挂着两条用户消息「把所有的去完成点掉就行」「记录就行，明天再搞」，都标着 `↳ 插话中`，之后再没有任何助手输出 —— 消息既不生效，也没有任何按钮能救（既不能重发也不能撤回）。
+
+### 26.2 引擎契约：插话只在「下一个 step 边界」被吃
+取证目录 `/root/prep48/dsh/node_modules/@deepseek-ai/`：
+
+| 位置 | 行为 | 后果 |
+| --- | --- | --- |
+| `dsh-agent-loop/lib/index.js:620-622` | `steer(input) = send(input, 'next-step', true)`；`followup` 用 `'next-turn'`（:619） | 插话落进 inbox 的 `nextStep` 队列，等当前 step 结束 |
+| `:670` `wakeDriver()` | `phase.kind !== 'idle'` 时，只有 `maintenance` 或 `wakeAfterAbort` 才置 `wakeRequested = true`，否则直接 `return` | 运行中到达的插话**不留唤醒标记** |
+| `turn()` 尾部 `:871-879` | 回合该结束时若 `inbox.nextStep.length === 0` 就 `break`；否则 `target = 'next-step'` 再跑一个 step | 只有「还没结束」的轮次会消费插话 |
+| `turn()` finally | error/aborted 时 `inbox.recover()` 只恢复 `inFlight` 的 claim，**不碰未 claim 的 next-step 待办**，并清 `wakeRequested` | 停止/失败后残留的插话没人认领 |
+| `kick()` finally `:715-737` | `setPhase({kind:'idle'})` 之后只有 `!recovered && wakeRequested && inbox.hasPending` 才 `wakeDriver()` | 三个条件缺一 → 残留插话**永远不启动**，要等下一条用户消息 |
+| `dsh-api-session-controller/lib/index.js:1075-1078` | `cancel` → `agent.cancel({kind:'user'}, {keepInbox: true})` | 停止不清队列，所以「停止前排队、停止后才到」的插话被保留下来悬着 |
+| 同文件 `:961-991` `hasPromptRequest()` | 扫 `user/message` 与 `agent/inbox/spliced` 里的 `source.rpcId` | **同 requestId 重投对宿主幂等**，重发不会产生重复消息（重发方案的可行性前提） |
+
+### 26.3 App 侧为什么无法自救
+`port40/app/lib/state/chat_state.dart` `_placePending()`（:1217-1257）把本地 pending 与宿主 inbox 按 requestId 对齐：命中者拿到 `slot`/`inboxId`，**未命中的原样保留（`mode = SendMode.steer`、`slot = null`）**。而：
+- `app/lib/ui/chat/chat_list.dart` 的标签 switch 里 `(null, SendMode.steer) => chatSteering` **不看 `_running`** → 轮次早结束了，界面仍显示「插话中」；
+- 同一处 `final canAct = prompt.inboxId != null;` → `slot == null` 的插话**没有任何操作按钮**；
+- `sendNow()` 开头 `if (prompt.inboxId == null) return const [];` → 想手动重发也做不到。
+
+即：引擎那边消息悬着，界面这边把它显示成一个永远进行中的状态，两边都不给出路。
+
+### 26.4 修法（三条，最小改动）
+1. **说实话**：标签 switch 在 `(null, SendMode.steer)` 前插一条 `(null, SendMode.steer) when !_running => chatSteerMissed`（新文案「插话没赶上本轮」），并让这种气泡显示「发送」按钮（`final stranded = !canAct && !_running && prompt.mode == SendMode.steer;`，动作行条件改 `(canAct || stranded) && prompt.resendable`）。
+2. **让它自己能走**：`_publish()` 末尾调 `_rescueStranded(pending, running)` —— 轮次不在跑、且有「`mode=steer`、`slot==null`、未失败、可重发、已存在 >2s」的 pending 时，排一个 3s 定时器，到点按同一条件再筛一次，用 **原 requestId** 调 `sendNow()`，每个 prompt 只自动救一次（`_strandedTries` 记账，防循环）。
+3. **sendNow 支持「没有 inbox 项」**：`final loose = prompt.inboxId == null;`；`loose && state.running` 直接返回空（真在跑就别乱动），否则跳过 `_takeOut`，直接 `_putBack` → 因为 `slot == null` 走 `PromptMode.queue`，宿主 idle 时 `followup` 会立刻起一个新轮次；requestId 不变，宿主侧靠 `hasPromptRequest` 去重。
+
+### 26.5 测试
+- `app/test/chat/send_modes_test.dart`：`an interjection no turn will take: 插话没赶上本轮, 发送` —— 断言标签换成「插话没赶上本轮」、不再显示「插话中」、动作行只有「发送」、点击后 `sentNow == ['r6']`。
+- `app/test/chat/send_controller_test.dart`：`an interjection no turn will take is sent again as the next turn` —— 构造 `turn/start` → `send(..., mode: SendMode.steer)` → `turn/end {reason:{kind:'aborted'}}` + idle 状态，断言 pending 的 `slot`/`inboxId` 为 null、`sendNow` 首次返回空（需要等定时器）、**定时器触发后 `client.prompts` 变 2 条且 `last.requestId` 与原请求一致、`mode == PromptMode.queue`、`client.cancels == 0`**。
+- 结果：`flutter test test/chat` → **2245 pass / 0 fail**（3m29s）；两个新用例用 `--plain-name` 单跑亦 pass；`flutter analyze` 四个改动文件 No issues。
+- 文案经 `cd app && HOME=/root PATH=/root/f47/bin:$PATH python3 tool/l10n_merge.py` 生成（74 parts / 7733 keys），不许手改 `lib/l10n/gen/`。
+
+### 26.6 v64 产物（1.0.54+54）
+| 项 | 值 |
+| --- | --- |
+| CI | run 43837818876（head `ecd1fb54`）completed/success，artifact 14211833853 `ohos-aot-ecd1fb54…` 22,289,202 B |
+| AOT | `/root/aot64/arm64-v8a/app.so` 41,272,200 B md5 `7601e83923acb0b444f73963cf0bf4cc`（与 aot63 同尺寸但 md5 不同；`grep -ac rescueStranded` = 1，aot63 = 0，证明新 Dart 已进包） |
+| runtime | 未改，复用 compose61（`ohos-2a574121ac8a0844e6ed6a33`，archiveSHA256 `88ba9f27…`） |
+| fullhap64 | 17:28，FULLHAP64_RC=0，`audit-hap: OK`，versionCode 54 / versionName 1.0.54，work `/root/b64/work/check-pOaZLYHu` |
+| unsigned | `<WS>/hap-build/dsh-ohos-v64-unsigned.hap` 274,366,420 B md5 `19662a1ca95a9c2599f0eb4f2fce7881` |
+| signed | `<WS>/hap-build/dsh-ohos-v64-signed.hap` 274,441,082 B md5 `ff16bd94b8369414f6c01f1290fc4740`（`tools/hokit-asar/resign-expr-v64.js`）|
+
+### 26.7 验收判据（装机后）
+1. 一轮正在跑时发一条「插话」，再立刻按停止：气泡应在 2~5 秒内从「插话中」变成「插话没赶上本轮」，并自动作为新消息发出去（对话里出现新一轮）。
+2. 若自动重发失败/被中断，气泡保持「插话没赶上本轮」且右侧有「发送」，点一下能直接重投。
+3. 引擎日志（`mcp__engine__log` `action=grep` pattern `turn/start`）应看到停止之后又出现新的 turn。
+
+### 26.8 边界（未做）
+- 自动重发成功后没有额外 notice（文案 `chatSteerMissedResent` 已备但未引用）。
+- `(null, SendMode.now)` 在 idle 时同样会卡在「发送中」，本轮未处理（怕与在途发送重复触发）。
+- 这是 App 侧自愈，不是引擎行为变更：真正根治要改 `dsh-agent-loop` 的 `kick()`（让 idle 收尾时也 consume 残留 next-step），那属于上游包，需另开补丁。
