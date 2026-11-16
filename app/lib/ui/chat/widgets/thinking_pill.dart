@@ -94,7 +94,21 @@ class _ThinkingPillState extends State<ThinkingPill> {
   Widget? _body;
 
   /// 译文与"看译文还是原文":收起再展开也还在。
-  final _translation = _TranslationHolder();
+  final _TranslationHolder _translation = _TranslationHolder();
+
+  /// 这段思考在**本机**正在写过:只有看着它从「思考中」变成「思考」的那一段
+  /// 才自动翻译,翻老消息时保持手动(否则打开长会话会一次打出一堆翻译请求)。
+  bool _sawThinking = false;
+
+  /// 自动翻译只排一次队。
+  bool _autoQueued = false;
+
+  /// 译文逐段落地时刷新(行内预览跟着变中文)。
+  ReasoningTranslation? _listening;
+
+  /// 限量信息(provider 是 autoDispose,订阅着才拿得到值、值到了才重建)。
+  ProviderContainer? _container;
+  ProviderSubscription<Object?>? _limits;
 
   /// 第一帧窗口先关着,下一帧打开,[ExpandReveal] 才有得展开。
   late bool _windowHeld = widget.growIn;
@@ -102,6 +116,7 @@ class _ThinkingPillState extends State<ThinkingPill> {
   @override
   void initState() {
     super.initState();
+    _sawThinking = widget.active;
     if (!_windowHeld) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() => _windowHeld = false);
@@ -113,12 +128,66 @@ class _ThinkingPillState extends State<ThinkingPill> {
     super.didUpdateWidget(oldWidget);
     // 一轮结束:过程收进摘要,亲手展开的全文也不留在外面。
     if (oldWidget.streaming && !widget.streaming) _expanded = false;
+    if (widget.active) _sawThinking = true;
   }
 
   @override
   void dispose() {
+    _listening?.removeListener(_changed);
+    _limits?.close();
     _translation.dispose();
     super.dispose();
+  }
+
+  void _listen(ReasoningTranslation? controller) {
+    if (identical(controller, _listening)) return;
+    _listening?.removeListener(_changed);
+    _listening = controller?..addListener(_changed);
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  /// 只在这一段思考"刚写完"时才订阅翻译限量:普通历史消息不惊动引擎。
+  ProviderContainer? _subscribe(BuildContext context) {
+    final container = ProviderScope.containerOf(context, listen: false);
+    if (identical(container, _container)) return container;
+    _limits?.close();
+    _container = container;
+    _limits = container.listen(cotTranslationProvider, (previous, next) {
+      if (mounted) setState(() {});
+    });
+    return container;
+  }
+
+  /// 思考刚写完就自动译一遍,用户展开时已经是中文,不用再点「翻译」。
+  void _maybeAutoTranslate(BuildContext context) {
+    if (!_sawThinking || widget.active || _autoQueued || _translation.controller != null) return;
+    if (!_hasProviderScope(context)) return;
+    final container = _subscribe(context);
+    if (container == null) return;
+    final limits = container.read(cotTranslationProvider).value;
+    if (limits == null) return;
+    final translator = container.read(reasoningTranslatorProvider);
+    if (translator == null) return;
+    final text = widget.reasoning.trim();
+    if (text.isEmpty) return;
+    if (!reasoningNeedsTranslation(text, limits.targetFor(reasoningUiLanguage))) return;
+    _autoQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _translation.controller != null) return;
+      final sessionId = container.read(currentSessionProvider);
+      _translation.language = reasoningUiLanguage;
+      final controller = _translation.controller = ReasoningTranslation(
+        maxTextChars: limits.maxTextChars,
+        translate: (fragment) => translator(fragment, limits: limits, sessionId: sessionId),
+      );
+      // 默认就看译文;想读原文点胶囊上的「查看原文」。
+      _translation.showTranslation = true;
+      controller.update(text, running: false);
+      setState(() {});
+    });
   }
 
   @override
@@ -129,9 +198,16 @@ class _ThinkingPillState extends State<ThinkingPill> {
     // 深色底上品牌蓝提一档亮度,图形才不发闷。
     final brand = dark ? Color.lerp(_brandBlue, Colors.white, 0.3)! : _brandBlue;
     final active = widget.active;
+    // 刚写完的思考先在后台译好,展开即中文。
+    _maybeAutoTranslate(context);
+    _listen(_translation.controller);
+    final translated =
+        _translation.showTranslation && _translation.controller != null && !_translation.controller!.failed
+            ? _translation.controller!.text
+            : null;
     // 思考中或展开了全文:内容在下面,行内不再重复一行预览。
     final open = active || _expanded;
-    final preview = open ? '' : thinkingPreview(widget.reasoning);
+    final preview = open ? '' : thinkingPreview(translated ?? widget.reasoning);
     final detail = StreamRow.detail(context);
 
     final header = Row(

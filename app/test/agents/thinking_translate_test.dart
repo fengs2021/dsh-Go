@@ -49,6 +49,8 @@ Widget _app(
   CotTranslationLimits? limits = _limits,
   _Translator? translator,
   Brightness brightness = Brightness.light,
+  bool active = false,
+  bool streaming = false,
 }) => testApp(
   Scaffold(
     body: SafeArea(
@@ -56,7 +58,7 @@ Widget _app(
         padding: const EdgeInsets.all(16),
         child: Align(
           alignment: Alignment.topLeft,
-          child: ThinkingPill(reasoning: reasoning),
+          child: ThinkingPill(reasoning: reasoning, active: active, streaming: streaming),
         ),
       ),
     ),
@@ -104,6 +106,39 @@ void main() {
     await _expand(tester);
     expect(find.textContaining('只发出一次请求'), findsOneWidget);
     expect(translator.asked, hasLength(2));
+  });
+
+  testWidgets('a thinking block that just finished translates itself', (tester) async {
+    final translator = _Translator();
+    await tester.pumpWidget(_app(_english, translator: translator, active: true));
+    await pumpFrames(tester, 3);
+    expect(translator.asked, isEmpty, reason: '还在思考，不翻');
+
+    // 思考写完（active 由 true 变 false）:不用点「翻译」,展开直接是译文。
+    await tester.pumpWidget(_app(_english, translator: translator));
+    await pumpFrames(tester, 8);
+    expect(translator.asked, hasLength(2));
+    await _expand(tester);
+    expect(find.textContaining('只发出一次请求'), findsOneWidget);
+    expect(find.text('翻译'), findsNothing);
+    expect(find.text('查看原文'), findsOneWidget);
+
+    // 收起再展开:沿用同一份译文,不再发请求。
+    await tester.tap(find.text('思考'));
+    await pumpFrames(tester, 6);
+    await _expand(tester);
+    expect(find.textContaining('只发出一次请求'), findsOneWidget);
+    expect(translator.asked, hasLength(2));
+  });
+
+  testWidgets('an old thinking block stays manual: no request until asked', (tester) async {
+    final translator = _Translator();
+    await tester.pumpWidget(_app(_english, translator: translator));
+    await pumpFrames(tester, 6);
+    expect(translator.asked, isEmpty);
+    await _expand(tester);
+    expect(find.text('翻译'), findsOneWidget);
+    expect(translator.asked, isEmpty);
   });
 
   testWidgets('not offered without the bundle or for Chinese reasoning', (tester) async {
