@@ -1049,3 +1049,53 @@ ctx.tools.register({ name: 'mcp__engine__sessions', output: { schema, render } ,
 - 自动重发成功后没有额外 notice（文案 `chatSteerMissedResent` 已备但未引用）。
 - `(null, SendMode.now)` 在 idle 时同样会卡在「发送中」，本轮未处理（怕与在途发送重复触发）。
 - 这是 App 侧自愈，不是引擎行为变更：真正根治要改 `dsh-agent-loop` 的 `kick()`（让 idle 收尾时也 consume 残留 next-step），那属于上游包，需另开补丁。
+
+## 27 切到后台计时就停：长时任务从「只有 TASK_KEEPING」改成「TASK_KEEPING 优先 + DATA_TRANSFER 兜底」（v65）
+
+### 27.1 现象（用户 2026-11-16）
+「鸿蒙本地任务，切换到后台后计时出现明显停滞，切换小窗模式保持明显好转。怎么能改善这点，在 Hmos 后台保持进程。」
+
+### 27.2 根因（两层，第一层以前从来没被查过）
+
+| 层 | 事实 | 位置 |
+| --- | --- | --- |
+| 构建配置 | v64 的 HAP 里 `requestPermissions` 只有 INTERNET / GET_NETWORK_INFO / VIBRATE / MICROPHONE，`EntryAbility.backgroundModes` 为空 → 长时任务**根本不可能获批** | 解包 `dsh-ohos-v64-unsigned.hap` 的 `module.json`；成因是 `tooling/ohos/check-arkts.sh:66` 的 `DISTRIBUTION=""` 默认空，只有传 `--distribution` 才跑 `hap-distribution.py permissions` |
+| 模式选择 | 即使声明了权限，代码只申请 `MODE_TASK_KEEPING`，而 SDK 明文要求非 PC/2-in-1 设备持受限 ACL `KEEP_BACKGROUND_RUNNING_SYSTEM`（调试签名不下发）→ 手机上必然 `denied` | `app/ohos/entry/src/main/ets/runtime/ContinuousTaskOwner.ets` 旧版；SDK `@ohos.resourceschedule.backgroundTaskManager.d.ts` |
+
+结果：`longTaskEligible` 恒 false，后台只剩 `requestSuspendDelay`（≤3 分钟），到点进程被冻结 → 计时停滞；小窗是前台可见状态，所以「明显好转」。
+
+### 27.3 修法（只动 ArkTS + module.json5，Dart 无改动）
+
+| 文件 | 改动 |
+| --- | --- |
+| `app/ohos/entry/src/main/module.json5` | `requestPermissions` 加 `ohos.permission.KEEP_BACKGROUND_RUNNING`；EntryAbility 加 `"backgroundModes": ["dataTransfer"]` |
+| `runtime/BackgroundCompute.ets` | 新增 `continuousTaskModes(token)`：先 taskKeeping（ACL 查询单独 try/catch，未声明受限权限只判该模式不可用），再 dataTransfer（带 live view 子类型）；`backgroundComputePermission()` 改为「候选非空即 granted」 |
+| `runtime/ContinuousTaskOwner.ets` | `start()` 按候选逐个尝试，被拒就试下一个；成功后记 mode 并与 dataTransfer 起 `PROGRESS_INTERVAL_MS = 240000` 的 `updateBackgroundRunning` 续期；刷新失败置 `ohos_continuous_progress_failed` 并按「系统已收回」落回短时任务；`stop()` 清定时器与租约 |
+
+两个实现坑：
+
+- **class field 不能和原型方法同名**：字段原名 `request` 与 `request()` 冲突，运行时 `owner.request is not a function`（ArkTS 编译会报重复标识符）→ 改名 `outstanding`。
+- **`checkAccessTokenSync(token, perm)` 的第二个参数是字面量类型 `Permissions`**，传 `string` 变量编译报 `10505001`（`Argument of type 'string' is not assignable to parameter of type 'Permissions'`）→ 权限名要写成字面量传入。
+
+### 27.4 测试
+`cd <WS>/port40 && node --test tooling/ohos/tests/lifecycle-host.test.mjs tooling/ohos/tests/continuous-task-owner.test.mjs tooling/ohos/tests/transient-task.test.mjs` → **51 pass / 0 fail**（新增 `continuous-task-owner.test.mjs` 7 例；`transient-task-fixture.mjs` 补 `continuousTaskModes`/`hilog`/`BackgroundTaskSubmode`/`updateBackgroundRunning` 桩，否则 14 例因未定义标识符失败）。`python3 tooling/ohos/tests/hap-distribution.test.py` → 6 tests OK。
+
+### 27.5 产物（v65，1.0.55+55）
+runtime 复用 compose61（`ohos-2a574121ac8a0844e6ed6a33`，archiveSHA256 `88ba9f2728c3bc4b4d60ece8c6f5d2415579c9a687176f13a568f98a6a9ea0ce`），AOT 复用 `/root/aot64`（`DSH_ALLOW_STALE_AOT=1`），构建脚本 `<WS>/scripts/fullhap65.sh`，18:07 完成 `FULLHAP65_RC=0` / `audit-hap: OK`，work `/root/b65/work/check-VmRrbK9I`。
+
+| 产物 | 证据 |
+| --- | --- |
+| HAP 内权限 | `requestPermissions` = INTERNET / GET_NETWORK_INFO / VIBRATE / **KEEP_BACKGROUND_RUNNING** / MICROPHONE；`EntryAbility.backgroundModes` = `['dataTransfer']` |
+| unsigned | `<WS>/hap-build/dsh-ohos-v65-unsigned.hap` 274,371,690 B md5 `6c1b4e68d8c02d819dbef15d7122b14d` |
+| signed | `<WS>/hap-build/dsh-ohos-v65-signed.hap` 274,452,284 B md5 `36edfdcb1edf68d2bcc7215e5ec77449`（`tools/hokit-asar/resign-expr-v65.js`）|
+
+### 27.6 验收判据（装机后）
+1. 设置 › 能力 › 后台保活 的副标题应变成「这个版本可以申请长时任务」那套长版文案（`longTaskEligible` 变 true）。
+2. 跑一轮本地对话，切到后台（不进小窗），看主界面计时是否继续累加；通知栏应出现长时任务通知（dataTransfer + live view）。
+3. `mcp__engine__log` / hilog tag `DshBackground` 应能看到 `continuous task <id> holds mode 1`；若拿到 ACL 会是 `holds mode 9`。
+4. 若系统拒绝，会依次退到下一个模式、最终退到短时任务，日志里是 `refused` 与 `ohos_continuous_progress_failed`，界面文案回到短版。
+
+### 27.7 边界（未做 / 未验证）
+- DATA_TRANSFER 语义上是上传下载，属权宜之计：常驻一条通知，系统若判定滥用仍可取消；合规做法是拿 `KEEP_BACKGROUND_RUNNING_SYSTEM` ACL 的签名 profile，调试签名未见下发。
+- 没有做设置开关（有本地回合在跑 + 应用在后台时自动申请）；也没做静音音频那类替代（`AUDIO_PLAYBACK` 需要 AVSession 且更越界，文档立场是不用）。
+- 真机未验证：系统是否接受 DATA_TRANSFER、live view 通知形态、240 s 刷新能否撑过整轮、熄屏是否仍被冻结。

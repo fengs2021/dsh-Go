@@ -16,8 +16,9 @@ export function tickRetry() {
   if (id === undefined) throw new Error('No scheduled retry');
   timers.delete(id); timer.callback(); return timer.delay;
 }
-export const permission = { grants: 0, modes: 0, status: 0, supported: true,
-  accessCapability: true, backgroundCapability: true, reminderCapability: true, error: null, requestedModes: null, systemStatus: null };
+export const permission = { grants: 0, modes: 0, status: 0, supported: true, dataSupported: true,
+  accessCapability: true, backgroundCapability: true, reminderCapability: true, error: null, requestedModes: null,
+  requestedSubmodes: null, systemStatus: null };
 export const abilityAccessCtrl = {
   GrantStatus: { PERMISSION_GRANTED: 0, PERMISSION_DENIED: -1 },
   createAtManager() { return { checkAccessTokenSync(id, name) {
@@ -26,12 +27,42 @@ export const abilityAccessCtrl = {
     return name === 'ohos.permission.KEEP_BACKGROUND_RUNNING_SYSTEM' && permission.systemStatus !== null ? permission.systemStatus : permission.status;
   } }; },
 };
+// Owner-side state: one record of what the OS was asked to do.
+export const task = { startCalls: [], startResults: [], updates: 0, updateFails: false, stops: [],
+  listeners: [], logs: [], nextId: 400 };
+export const wantAgent = {
+  OperationType: { START_ABILITY: 1 },
+  WantAgentFlags: { CONSTANT_FLAG: 1 },
+  async getWantAgent(config) { return { config }; },
+};
+export const hilog = {
+  info(domain, tag, format, ...rest) { task.logs.push({ level: 'info', format, rest }); },
+  warn(domain, tag, format, ...rest) { task.logs.push({ level: 'warn', format, rest }); },
+};
 export const backgroundTaskManager = {
-  BackgroundTaskMode: { MODE_TASK_KEEPING: 9 },
+  BackgroundTaskMode: { MODE_DATA_TRANSFER: 1, MODE_TASK_KEEPING: 9 },
+  BackgroundTaskSubmode: { SUBMODE_NORMAL_NOTIFICATION: 2, SUBMODE_LIVE_VIEW_NOTIFICATION: 3 },
+  on(event, callback) { task.listeners.push(event); },
+  off(event, callback) { task.listeners = task.listeners.filter(name => name !== event); },
+  async startBackgroundRunning(context, request) {
+    task.startCalls.push(request.backgroundTaskModes[0]);
+    const plan = task.startResults.length > 0 ? task.startResults.shift() : 'start';
+    if (plan === 'refuse') throw Object.assign(new Error('mode refused by the system'), { code: 9800005 });
+    return { continuousTaskId: plan === 'no-id' ? undefined : task.nextId++ };
+  },
+  async updateBackgroundRunning(context, request) {
+    task.updates++;
+    if (task.updateFails) throw new Error('progress rejected');
+    return { continuousTaskId: request.continuousTaskId };
+  },
+  async stopBackgroundRunning(context, id) { task.stops.push(id); },
   ContinuousTaskRequest: class {
     isModeSupported() {
       permission.modes++; permission.requestedModes = this.backgroundTaskModes;
-      return permission.supported;
+      permission.requestedSubmodes = this.backgroundTaskSubmodes ?? null;
+      // A device may support the unattended mode and still refuse the fallback.
+      const modes = this.backgroundTaskModes ?? [];
+      return modes.length === 1 && modes[0] === 1 ? permission.supported && permission.dataSupported : permission.supported;
     }
   },
 };
@@ -51,7 +82,20 @@ export async function loadHostModules(sourceOverride) {
     .replace("import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';", '');
   await fs.writeFile(path.join(directory, 'BackgroundCompute.mts'),
     `import { abilityAccessCtrl, backgroundTaskManager, canIUse } from '${fixture}';\n` + permissionSource);
+  // The OS task owner only needs the platform modules stubbed away above.
+  const ownerSource = (await fs.readFile(path.join(source, 'ContinuousTaskOwner.ets'), 'utf8'))
+    .replace(/^import common from '@ohos\.app\.ability\.common';\n/m, '')
+    .replace(/^import wantAgent from '@ohos\.app\.ability\.wantAgent';\n/m, '')
+    .replace(/^import backgroundTaskManager from '@ohos\.resourceschedule\.backgroundTaskManager';\n/m, '')
+    .replace(/^import hilog from '@ohos\.hilog';\n/m, '')
+    .replace(/^import \{ NativeHostModule \} from '\.\/NativeHost';\n/m, '')
+    .replace("from './BackgroundCompute';", "from './BackgroundCompute.mts';");
+  if (ownerSource.includes("from '@ohos.") || ownerSource.includes("from './NativeHost'"))
+    throw new Error('The owner fixture did not detach every platform import');
+  await fs.writeFile(path.join(directory, 'ContinuousTaskOwner.mts'),
+    `import { testSetTimeout as setTimeout, testClearTimeout as clearTimeout, backgroundTaskManager, wantAgent, hilog } from '${fixture}';\n` + ownerSource);
   const modules = { ...await import(pathToFileURL(path.join(directory, 'RuntimeLifecycle.mts'))),
-    ...await import(pathToFileURL(path.join(directory, 'BackgroundCompute.mts'))) };
+    ...await import(pathToFileURL(path.join(directory, 'BackgroundCompute.mts'))),
+    ...await import(pathToFileURL(path.join(directory, 'ContinuousTaskOwner.mts'))) };
   return { ...modules, directory, async close() { await fs.rm(directory, { recursive: true, force: true }); } };
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { loadHostModules, timers, tickRetry, permission } from './lifecycle-host-fixture.mjs';
 
 const modules = await loadHostModules(process.env.DSH_LIFECYCLE_ETS_SOURCE);
-const { RuntimeLifecycle, LifecycleFailure, agentReminderAccess, backgroundComputePermission } = modules;
+const { RuntimeLifecycle, LifecycleFailure, agentReminderAccess, backgroundComputePermission, continuousTaskModes } = modules;
 after(() => modules.close());
 const models = [];
 afterEach(() => {
@@ -105,14 +105,20 @@ test('reminder access: granted, a build without the permission, a device without
   reset(); permission.reminderCapability = false; assert.equal(agentReminderAccess(42), 'unsupported');
   assert.equal(permission.grants, 0, 'nothing asked on a device without it');
 });
-test('public eligibility query distinguishes prerequisite denial from unsupported or failed observation', () => {
-  const reset = () => Object.assign(permission, { grants: 0, modes: 0, status: 0, supported: true,
-    accessCapability: true, backgroundCapability: true, error: null, requestedModes: null, systemStatus: null });
+test('public eligibility query prefers task keeping and falls back to data transfer', () => {
+  const reset = () => Object.assign(permission, { grants: 0, modes: 0, status: 0, supported: true, dataSupported: true,
+    accessCapability: true, backgroundCapability: true, error: null, requestedModes: null, requestedSubmodes: null, systemStatus: null });
   reset(); assert.equal(backgroundComputePermission(42), 'granted');
   assert.deepEqual(permission.last, { id: 42, name: 'ohos.permission.KEEP_BACKGROUND_RUNNING_SYSTEM' });
-  assert.equal(permission.grants, 2);
-  assert.deepEqual(permission.requestedModes, [9]); assert.equal(permission.modes, 1);
-  reset(); permission.systemStatus = -1; assert.equal(backgroundComputePermission(42), 'denied'); assert.equal(permission.modes, 0);
+  assert.equal(permission.grants, 2, 'the public permission, then the restricted ACL');
+  assert.deepEqual(continuousTaskModes(42), [9, 1]);
+  assert.deepEqual(permission.requestedModes, [1]);
+  assert.deepEqual(permission.requestedSubmodes, [3], 'a data-transfer task carries a live-view notification');
+  reset(); permission.systemStatus = -1;
+  assert.equal(backgroundComputePermission(42), 'granted', 'a phone without the ACL still holds a data-transfer task');
+  assert.deepEqual(continuousTaskModes(42), [1]);
+  reset(); permission.systemStatus = -1; permission.dataSupported = false;
+  assert.equal(backgroundComputePermission(42), 'denied'); assert.equal(permission.modes, 1);
   reset(); permission.status = -1; assert.equal(backgroundComputePermission(42), 'denied'); assert.equal(permission.modes, 0);
   reset(); permission.supported = false; assert.equal(backgroundComputePermission(42), 'denied');
   reset(); permission.backgroundCapability = false; assert.equal(backgroundComputePermission(42), 'unknown');
