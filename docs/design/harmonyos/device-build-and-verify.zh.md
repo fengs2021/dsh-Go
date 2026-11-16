@@ -708,3 +708,48 @@ const boundary = typeof directRoot === "string" && (home === directRoot || home.
 1. `grep -a "\[attach\]" <app>/files/dsh-runtime/engine.log` → 期望**没有** `persist failed`；若有，读它的 `code=` 直接定位。
 2. 会话里 `ui · shot` → `read_image phone-shots/shot-*.jpg` 应当能真正看到图（此前必然 `Unable to persist attachment.`）。
 3. 顺带验证：手机端上传普通文件（`saveFile`）此前同样会失败，这次应当也恢复。
+
+## 20. 会话自己读引擎日志：mcp__engine__log（2026-11-16 v59）
+
+### 20.1 为什么要一个工具
+v58 验收时用户在会话里想 grep 一下 [attach] 行，结果 $DSH_HOME 下 find 是空的：会话里的 bash 走虚拟文件系统（runtime/ohos/process/filesystem.mjs），只放行**会话工作区**与**本次运行的临时目录**，<filesDir>/dsh-runtime/engine.log 在两者之外。而引擎进程自己读得到——这个文件就是 ArkTS 宿主写的（app/ohos/entry/src/main/ets/runtime/PersistedRuntimeLog.ets:43，1 MB 滚动到 engine.log.1）。
+
+所以「读日志」必须做成工具：工具在引擎进程内用 node:fs 读，绕开虚拟 shell 的路径围栏；同时避免把 1 MB 日志复制进工作区（save 只在你明确要一份副本时才写）。
+
+### 20.2 日志路径怎么找（不写死，三条线索）
+`runtime/ohos/phone/engine-log.mjs` 的 `engineLogPaths(env)`，按可靠性排序：
+
+| 顺序 | 线索 | 说明 |
+| --- | --- | --- |
+| 1 | `DSH_GO_ENGINE_LOG` | 完整路径，宿主目前不设，留给以后（测试也用它注入） |
+| 2 | `DSH_GO_OHOS_LINUX_DIRECTORY` 的兄弟目录 | 宿主每次注入 `= <filesDir>/linux-tools`（`host_core.cpp:328`），所以 `<filesDir>/dsh-runtime/engine.log` 直接可得 |
+| 3 | 从 `DSH_HOME` 往上 8 层 | `DSH_HOME = <filesDir>/runtime/rootfs/root/.dsh`，向上必然经过 `<filesDir>` |
+
+`resolveEngineLog()` 只认**真的存在**的候选；`engine.log` 不在但 `engine.log.1` 在也算找到（刚滚动过）。`action=path` 会把每个候选按 `字节数 / 缺失` 列出来，路径这类问题一眼就能定位。
+
+### 20.3 工具动作
+| action | 参数 | 行为 |
+| --- | --- | --- |
+| `tail` | `lines`（默认 200，上限 2000） | 文件末尾若干行，报「末尾 N 行（文件共 M 行）」 |
+| `grep` | `pattern`（正则，写坏自动退回字面量）、`limit`（默认 100，上限 500）、`ignoreCase`、`includeRotated`（默认 true） | 带行号的命中行；默认连 `engine.log.1` 一起找，命中数分文件统计 |
+| `path` | — | 列出候选路径与大小 |
+| `save` | `lines` | 把末尾若干行写进**会话工作区** `engine-log-<ts>.log`，之后 bash/grep 就能直接看这份副本 |
+
+只读，不进审批表（`asked` 里没有它）。正文单次上限 96 KB、单行 2000 字符；超限时**截尾不截头**（日志里最新的才是现场）。
+
+### 20.4 挂载与测试
+- 注册在已有的 `phone` 插件里（`runtime/ohos/phone/index.mjs` 的 `apply()` → `registerEngineLogTool(ctx)`），**不动宿主**：`RuntimeCore.ets:53` 与 `host_core.cpp:314` 的固定入口表不新增条目，省一次 ArkTS 侧改动风险。
+- `runtime/tests/ohos/engine-log-tools.test.mjs` 13 例（本机可跑）：路径线索顺序、只认存在的文件、`tail`/`grep`/`path`/`save` 四个动作、坏正则回退、超长行与超限正文截断、空 pattern 与未知 action 报 `invalid_args`、读不了文件报 `log_unreadable`。与既有 ohos 测试合跑 45 pass / 0 fail。
+- 一个刻意的顺序：**参数错误先判**，不要因为本机恰好没有日志文件，就把「action 写错」报成「找不到日志」。
+
+### 20.5 产物（v59，设备离线未装机）
+| 版本 | runtimeVersion | unsigned | signed |
+| --- | --- | --- | --- |
+| 1.0.49+49 | `ohos-7ec3c1e522365524b2815971` | `dsh-ohos-v59-unsigned.hap` 274,347,216 B md5 `5f5d0d8b97363604aec855176b864fc0` | `dsh-ohos-v59-signed.hap` 274,424,695 B md5 `c3f839a0fa6a11de76e37694dd067270` |
+
+构建链：`scripts/compose57.sh`（payloadFiles 55,556，`archiveBytes` 205,347,744）→ `scripts/fullhap59.sh`（10:04:07→10:05:12，`FULLHAP59_RC=0`，`audit-hap: OK`，`archiveSHA256` `a5ea938f7d5e636907b8a21e5d944bcbd00fb4da329231e3e1b7d61dad45a4ec`，`identicalToInput: true`，work `/root/b59/work/check-yDSO4giQ`）→ HoKit 签名（`tools/hokit-asar/resign-expr-v59.js`）。
+
+### 20.6 验收判据（下次连上设备时）
+1. 会话里问「引擎日志里有没有 attach 报错」→ 模型应调用 `mcp__engine__log` `action=grep` `pattern` 为 `\[attach\]`，返回带行号的命中行或明确「没有匹配」。
+2. `action=path` 的第一个候选应当形如 `/data/app/el2/100/base/io.github.ccch1mneyyy.dsh_app/files/dsh-runtime/engine.log`。
+3. `action=save` 后工作区出现 `engine-log-<ts>.log`，会话 bash 能 grep 这份副本。
