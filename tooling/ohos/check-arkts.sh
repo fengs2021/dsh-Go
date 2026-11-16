@@ -129,7 +129,9 @@ if [ "$FULL" = 1 ]; then
   if [ -f "$AOT/AOT_COMMIT" ]; then
     aot_commit="$(head -1 "$AOT/AOT_COMMIT" | tr -d '[:space:]')"
     if [ -n "$aot_commit" ] && git -C "$REPO" cat-file -e "$aot_commit^{commit}" 2>/dev/null; then
-      stale="$(git -C "$REPO" log --format=%h "$aot_commit..HEAD" -- app/lib app/pubspec.yaml packages | head -3 | tr '\n' ' ')"
+      # -n 3, not "| head -3": with pipefail a short read makes git die of SIGPIPE and
+      # kills this script with 141 as soon as four commits have touched Dart.
+      stale="$(git -C "$REPO" log -n 3 --format=%h "$aot_commit..HEAD" -- app/lib app/pubspec.yaml packages | tr '\n' ' ')"
       if [ -n "$stale" ] && [ "${DSH_ALLOW_STALE_AOT:-0}" != "1" ]; then
         die "the AOT was built at $aot_commit, before the Dart changes in $stale: rerun the .github/workflows/ohos-compile.yml workflow (Actions → OHOS compile → Run workflow on this branch) and pass the artifact it produces"
       elif [ -n "$stale" ]; then

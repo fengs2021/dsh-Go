@@ -3563,6 +3563,14 @@
           "before": "dd15efce9b5bbd0d896728f22bb3e9dd4643176555174f5bfcb39adfc75074df"
         }
       }
+    },
+    "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-ohos-attachment-persist.diff": {
+      "0.2.2-rc.3": {
+        "node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js": {
+          "after": "8e618d29b831f5fce17496806b0423de0e467dd7e06e7a1c96f93714d716dd5b",
+          "before": "2da6f48979d7ffea3a0ecef8ccd44bdaf769124d299fef5bcad1520db741c810"
+        }
+      }
     }
   },
   "schema": 2,
@@ -3888,7 +3896,8 @@
       "ohos-mcp-command-router.diff",
       "ohos-workspace-grant-paths.diff",
       "ohos-workspace-edit.diff",
-      "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-ohos-image-facts.diff"
+      "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-ohos-image-facts.diff",
+      "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-ohos-attachment-persist.diff"
     ]
   }
 }

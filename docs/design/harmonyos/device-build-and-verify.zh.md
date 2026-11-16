@@ -648,3 +648,63 @@ Error: unreachable variant: "OHOS_IMAGE_CODEC_UNAVAILABLE"
 - 手机端**不能**缩放/重编码图像：超过归一化上限（2048×2048 像素 / 4 MB）或超过模型路由上限（DeepSeek 路由默认 2 MB）的图会被拒绝并提示「先裁小或用连接电脑的会话」。
 - 元数据不剥离（EXIF/XMP/ICC 原样随图发出），因为剥离需要重编码。真要在手机上脱敏，得等一个鸿蒙原生的图像库。
 - 只支持 JPEG/PNG；WebP/GIF 仍报 `OHOS_IMAGE_CODEC_UNAVAILABLE`。
+
+## 19. 手机端 read_image 的第二道门：附件落盘为什么要 fsync 到 /data（2026-11-16 v58）
+
+### 19.1 现象
+v57 装机后，手机本地会话里 `ui · shot` 成功写出 `phone-shots/shot-1794791755443.jpg`，紧接着 `查看图片` 报：
+
+```
+Error: Unable to persist attachment.
+```
+
+即解码那一道门（§18）已经过了，卡在把图**持久化**到附件库。
+
+### 19.2 根因：耐久边界的兜底值是「文件系统根」，而手机上 /data 不可读
+`@deepseek-ai/dsh-attachment-local/lib/index.js` 的落盘链是
+`saveImage` → `commitPreparedImageFile` → `stageImmutableObject` → `publishStagedObject`，
+其中第一步都要 `ensureDurableHome(dirname(dirname(root)))`（`root = DSH_HOME/attachments/v1`，于是 home 就是 `DSH_HOME`）。
+
+`ensureDurableHome` 原本这样选耐久边界（`:581`）：
+
+```js
+const directRoot = globalThis[Symbol.for("dsh.go.direct")]?.root;
+const boundary = typeof directRoot === "string" && (home === directRoot || home.startsWith(directRoot + "/")) ? directRoot : parse(home).root;
+```
+
+兜底值 `parse(home).root` 就是 `/`，于是 `ensureDurableDirectory` 会从 `DSH_HOME` 一路向上，对每个祖先目录做
+`open(dir, O_RDONLY)` + `handle.sync()`，包括 `/data/storage/el2/base/files/runtime/rootfs/root`、`…/files`、`…/el2/base`、`/data/storage`、`/data`、`/`。
+
+手机上的 `/data` 是 `drwxrwx--x root:system`（other 只有 x 没有 r），应用进程 `open("/data", O_RDONLY)` 直接 **EACCES** →
+`ensureDurableHome` 抛错 → 外层统一包成 `AttachmentError("Unable to persist attachment.", "ATTACHMENT_WRITE_FAILED", { cause })`，
+而 UI 只显示最外层 message，所以看不到 EACCES。
+
+这也解释了「会话能存、附件不能存」：会话 checkpoint 走的是 publication 服务（只 publish，不做祖先目录 fsync），
+只有 attachment-local 这条链会一路 sync 到 `/`。
+
+### 19.3 修法（补丁 `zzzz…zz-ohos-attachment-persist.diff`，54 个 z）
+| 位置 | 修法 | 理由 |
+| --- | --- | --- |
+| `ensureDurableHome` | `process.platform === "openharmony"` 时 `boundary = home` | 应用无权读 `/data`；DSH_HOME 自身已经由安装/首次创建负责，不向上 sync |
+| `syncDirectory` | 鸿蒙分支 try/catch：失败只打 `[attach] skipped directory fsync path=… code=…`，不抛 | 目录 fsync 是耐久性优化，不该让保存失败 |
+| 三处 `ATTACHMENT_WRITE_FAILED` | 抛之前 `logPersistFailure(where, error, detail)` → `[attach] persist failed where=alias|stage|publish code=… message=… detail=…` | UI 只显示外层 message，把 cause 写进 engine.log（`<app>/files/dsh-runtime/engine.log`） |
+
+补丁顺序与登记仍是硬约束（见 §18.4）：`series` 末尾登记、`pins.json` 的 `targetSets.ohos` 加名、用**纯净树**（`runtime/locks/dsh-0.2.2-rc.3` + `npm ci` 到 `/root/pristine47`）跑 `patch-dsh --record`，链条 `2da6f48979d7 -> 8e618d29b831` 连续。
+
+### 19.4 顺手修的构建缺陷：陈旧 AOT 守卫自己会 141
+守卫里原本是 `git log … | head -3 | tr '\n' ' '`。脚本带 `set -euo pipefail`，一旦 `git log` 的输出超过 3 行，
+`head` 先退出 → `git` 收到 SIGPIPE（141）→ pipeline 141 → `set -e` 直接结束脚本，
+表现为 `FULLHAP58_RC=141` 且**日志里一行解释都没有**（v57 时刚好只有 3 行所以没暴露）。
+改成 `git log -n 3 --format=%h …`（不让 `head` 提前关闭管道）。
+
+### 19.5 产物（v58，设备离线未装机）
+| 版本 | runtimeVersion | unsigned | signed |
+| --- | --- | --- | --- |
+| 1.0.48+48 | `ohos-9d03124a23a22e747e1b9d16` | `dsh-ohos-v58-unsigned.hap` 274,341,919 B md5 `9e8a58c100e98f6698e1d50b13cecb7b` | `dsh-ohos-v58-signed.hap` 274,416,503 B md5 `9a571d507281551875e1caf0cecf506a` |
+
+构建链：`scripts/prep47.sh`（45 s，dshFiles 93,691）→ `scripts/compose56.sh`（payloadFiles 55,555，`archiveBytes` 205,342,447）→ `scripts/fullhap58.sh`（09:29，61 s，`FULLHAP58_RC=0`，`audit-hap: OK`，versionCode 48，work `/root/b58/work/check-ZKDRlADh`）→ HoKit 签名（`tools/hokit-asar/resign-expr-v58.js`）。
+
+### 19.6 验收判据（下次连上设备时）
+1. `grep -a "\[attach\]" <app>/files/dsh-runtime/engine.log` → 期望**没有** `persist failed`；若有，读它的 `code=` 直接定位。
+2. 会话里 `ui · shot` → `read_image phone-shots/shot-*.jpg` 应当能真正看到图（此前必然 `Unable to persist attachment.`）。
+3. 顺带验证：手机端上传普通文件（`saveFile`）此前同样会失败，这次应当也恢复。

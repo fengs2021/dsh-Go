@@ -1,0 +1,69 @@
+--- a/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
+@@ -16,6 +16,14 @@
+ 	return service.publish(source, target, { fs });
+ }
+ 
++// Diagnostics for this port: the UI only shows the outer AttachmentError, so the
++// underlying system error is recorded where the engine log can be read.
++function logPersistFailure(where, error, detail) {
++	const code = error?.code ?? (error instanceof AttachmentError ? error.code : void 0) ?? "unknown";
++	const message = error?.message ?? String(error);
++	console.error("[attach] persist failed where=" + where + " code=" + code + " message=" + message + (detail === void 0 ? "" : " detail=" + detail));
++}
++
+ //#region lib/types/compression-limiter.js
+ /** Instance-owned concurrency bound for native image transformations. */
+ /**
+@@ -536,6 +544,18 @@
+ async function syncDirectory(path) {
+ 	/* v8 ignore next -- Windows cannot open directory handles; NTFS metadata journaling owns entry durability there. */
+ 	if (process.platform === "win32") return;
++	if (process.platform === "openharmony") {
++		let ohosHandle;
++		try {
++			ohosHandle = await open(path, constants.O_RDONLY);
++			await ohosHandle.sync();
++		} catch (error) {
++			console.error("[attach] skipped directory fsync path=" + path + " code=" + (error?.code ?? error?.message ?? "unknown"));
++		} finally {
++			if (ohosHandle !== void 0) await ohosHandle.close().catch(() => {});
++		}
++		return;
++	}
+ 	/* v8 ignore start -- Windows cannot exercise directory fsync; POSIX behavior tests enforce this peer. */
+ 	const handle = await open(path, constants.O_RDONLY);
+ 	try {
+@@ -582,7 +602,7 @@
+ 	const home = resolve(path);
+ 	if (!durableHomes.has(home)) {
+ 		const directRoot = globalThis[Symbol.for("dsh.go.direct")]?.root;
+-		const boundary = typeof directRoot === "string" && (home === directRoot || home.startsWith(directRoot + "/")) ? directRoot : parse(home).root;
++		const boundary = process.platform === "openharmony" ? home : typeof directRoot === "string" && (home === directRoot || home.startsWith(directRoot + "/")) ? directRoot : parse(home).root;
+ 		await ensureDurableDirectory(home, boundary);
+ 		durableHomes.add(home);
+ 	}
+@@ -685,6 +705,7 @@
+ 		}
+ 	} catch (error) {
+ 		if (error instanceof AttachmentError) throw error;
++		logPersistFailure("alias", error, target);
+ 		throw new AttachmentError("Unable to persist attachment.", "ATTACHMENT_WRITE_FAILED", { cause: error });
+ 	}
+ }
+@@ -725,6 +746,7 @@
+ 		);
+ 		if (temporary !== void 0) await removeTemporary(temporary);
+ 		if (error instanceof AttachmentError || signal?.aborted === true) throw error;
++		logPersistFailure("stage", error, root);
+ 		throw new AttachmentError("Unable to persist attachment.", "ATTACHMENT_WRITE_FAILED", { cause: error });
+ 	}
+ }
+@@ -756,6 +778,7 @@
+ 	} catch (error) {
+ 		await removeTemporary(staged.path);
+ 		if (error instanceof AttachmentError) throw error;
++		logPersistFailure("publish", error, target);
+ 		throw new AttachmentError("Unable to persist attachment.", "ATTACHMENT_WRITE_FAILED", { cause: error });
+ 	}
+ }
