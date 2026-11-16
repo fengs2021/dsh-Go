@@ -1,0 +1,23 @@
+--- a/node_modules/@deepseek-ai/dsh-llm/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-llm/lib/index.js
+@@ -510,7 +510,19 @@
+ *
+ * @module @deepseek-ai/dsh-llm/retry-policy
+ */
+-const DEFAULT_MAX_RETRIES = 5;
++/**
++* The phone host reaches the model over links that fail slowly: a mobile radio,
++* a relay, a cross-border tunnel. Retrying five times behind a 120s upstream
++* timeout turns one stuck request into many minutes of silence, so the
++* OpenHarmony host retries once and surfaces the failure instead.
++* DSH_OHOS_MAX_RETRIES raises the budget (up to the upstream default of 5).
++*/
++const DEFAULT_MAX_RETRIES = openharmonyDefaultMaxRetries();
++function openharmonyDefaultMaxRetries() {
++	if (process.platform !== "openharmony") return 5;
++	const raw = Number.parseInt(process.env.DSH_OHOS_MAX_RETRIES ?? "", 10);
++	return Number.isInteger(raw) && raw >= 0 && raw <= 5 ? raw : 1;
++}
+ const DEFAULT_INITIAL_DELAY_MS = 500;
+ const DEFAULT_MAX_DELAY_MS = 1e4;
+ const DEFAULT_JITTER_RATIO = .1;

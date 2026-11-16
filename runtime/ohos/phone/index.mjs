@@ -4,6 +4,7 @@ import { registerPhoneRoutes } from './routes.mjs';
 import { registerPhoneTools } from './tools.mjs';
 import { registerUiTools, shText, dumpUi } from './ui-tools.mjs';
 import { registerEngineLogTool } from './engine-log.mjs';
+import { registerSessionsTool } from './sessions.mjs';
 import { diagnoseHdc } from './hdc-link.mjs';
 import { authorizedStatus, probeAndWrite, startHdcStatusWatch } from './hdc-status.mjs';
 import { startProgressFeed } from './progress-feed.mjs';
@@ -20,17 +21,22 @@ export function apply(ctx) {
   if (process.platform !== 'openharmony' && globalThis[simulationSymbol] !== true) return;
   if (Object.hasOwn(globalThis, phoneSymbol)) throw new Error('One phone callback owner is allowed per engine');
   const queue = new PhoneQueue(createNativePhonePort(ctx.ohosLifecycle.bootId));
-  let removeTools, removeUiTools, removeLogTools;
-  try { removeTools = registerPhoneTools(ctx, queue); removeUiTools = registerUiTools(ctx); removeLogTools = registerEngineLogTool(ctx); }
+  let removeTools, removeUiTools, removeLogTools, removeSessionTools;
+  try {
+    removeTools = registerPhoneTools(ctx, queue);
+    removeUiTools = registerUiTools(ctx);
+    removeLogTools = registerEngineLogTool(ctx);
+    removeSessionTools = registerSessionsTool(ctx);
+  }
   catch (error) {
     // 已经失败的注册不再抛第二个错：从前到后把建起来的都拆掉。
-    for (const dispose of [removeLogTools, removeUiTools, removeTools]) { try { dispose?.(); } catch { /* 忽略 */ } }
+    for (const dispose of [removeSessionTools, removeLogTools, removeUiTools, removeTools]) { try { dispose?.(); } catch { /* 忽略 */ } }
     queue.close();
     throw error;
   }
   // A disposed bridge stays closed. Reloading a plugin must never replay an old call.
   Object.defineProperty(globalThis, phoneSymbol, { value: queue, configurable: false, writable: false });
-  ctx.effect(() => () => { queue.close(); removeTools(); removeUiTools(); removeLogTools(); }, 'ohos phone shutdown');
+  ctx.effect(() => () => { queue.close(); removeTools(); removeUiTools(); removeLogTools(); removeSessionTools(); }, 'ohos phone shutdown');
   // 启动自检：验证 app 内部能否经 hdc 通道拿到 shell uid 并驱动 uitest（结果写入 engine.log，便于 PC 侧排查）。
   // 同时把结论写进 dsh-app/hdc-status.json，「系统操作」页据此显示已授权 / 未授权 + 下一步。
   if (process.env.DSH_GO_PHONE_PROBE !== '0') {

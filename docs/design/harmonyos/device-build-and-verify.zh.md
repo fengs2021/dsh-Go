@@ -808,3 +808,53 @@ mcp__engine__log action=grep pattern=ERR_ENCODING_NOT_SUPPORTED
 2. 之前自动失活的插件（dshmarket / better-sidebar）在插件页恢复为可启用状态，不再从列表消失；`dsh: warning: N entries did not activate` 的 N 下降。
 3. GBK 场景下界面文字退化为乱码，但插件活着（原来整插件崩）。
 4. 关掉垫片可复现原症状：`DSH_GO_NO_OHOS_SHIMS=1` 时日志出现 `[ohos-shim] disabled by DSH_GO_NO_OHOS_SHIMS`，行为回到 v59。
+
+## 22 会话体检工具 mcp__engine__sessions 与手机端重试预算（v61）
+
+动机：用户问「鸿蒙 dshgo 的最新对话为什么这么慢」，但 App 抽屉里那条会话属于「未分组」，Remote 桥只能按 workspaceId 读，永远拿不到；同时 `files/` 下的子目录已变成 0770（shell uid 2000 无组关系），hdc 侧连 `engine.log` 都读不了。结论：**只能让引擎自己读自己的会话日志**，于是给 phone 插件加了第三个工具。
+
+### 22.1 为什么「读个日志文件」不够
+- 会话落在 `<DSH_HOME>/sessions/<工作区哈希目录>/<session-id>/session.v4.jsonl.zstd`。它不是按工作区索引的：cwd 未注册成工作区的会话（App 里的「未分组」）同样在这棵树里，只是目录名不同 —— 这就是工具能看见 Remote 看不见的会话的原因。
+- 文件是**多帧 Zstandard 拼接**，每个持久化检查点一帧。Node 的 `zstdDecompressSync` 与 `createZstdDecompress()` 流**都只解第一帧**（实测 2 MB 文件只得到 319 B = 首行 header）。必须自己走帧结构：`scanZstdFrames()` 依 frame header + block header 逐帧求 `{start,end}`（魔数 `0xFD2FB528`，`descriptor & 24` 为保留位），再对每帧单独 `zstdDecompressSync`。同样的扫描逻辑在 `@deepseek-ai/dsh-session-persistence-jsonl` 的 `scanZstdFrames()` 里（`:1304`），本工具内联了一份，不依赖引擎包解析。
+- 行格式：首行 `{"type":"session","version":4,"id":…,"cwd":…,"createdAt":…}`，其后每行 `{"type":…,"seq":N,"time":<ms>,"data":{…}}`。耗时全靠 `time` 差值。
+
+### 22.2 工具动作（`mcp__engine__sessions`）
+| action | 参数 | 返回 |
+| --- | --- | --- |
+| `list`（默认） | — | 全部会话（最多 200 条，按文件 mtime 倒序）：id / 轮数 / 尝试数 / 失败数 / 标题（首个非系统提示的用户消息，最长 60 字）|
+| `timing` | `session`（省略=最新）、`slowMs`（默认 20000）| 每轮 `startedAt`/`endedAt`/`durationMs`/步数/每次尝试时长与失败原文；`slowest` 前三名；行里 ≥ 阈值的打 `⚠慢` |
+| `events` | `session`、`lines`（默认 60，上限 500）| 末尾 N 条事件的时间 + 类型 + data 摘要（单次正文上限 64 KB）|
+
+错误码：`sessions_unavailable`（没有 DSH_HOME/DSH_GO_SESSIONS_DIR）、`sessions_not_found`（目录空或 id 不存在）、`invalid_args`、`sessions_failed`。参数校验放在路径解析**之前**，避免「动作写错」被误报成「没有会话」。
+
+实现：`runtime/ohos/phone/sessions.mjs`（纯逻辑，全部导出便于单测）；注册走 `registerSessionsTool(ctx)`，与 `mcp__engine__log` 同层，只读、不进审批表；`sessionWorkspace(exec)` 复用 ui-tools 的取法。手机侧读会话不受 `runtime/ohos/process/filesystem.mjs` 的路径围栏限制，因为工具直接在引擎进程里 `fs.readFileSync`。
+
+### 22.3 手机端重试预算：5 → 1
+`runtime/patches/zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-ohos-retry-budget.diff`（55 个 z，排最后）：
+```js
+const DEFAULT_MAX_RETRIES = openharmonyDefaultMaxRetries();
+function openharmonyDefaultMaxRetries() {
+	if (process.platform !== "openharmony") return 5;
+	const raw = Number.parseInt(process.env.DSH_OHOS_MAX_RETRIES ?? "", 10);
+	return Number.isInteger(raw) && raw >= 0 && raw <= 5 ? raw : 1;
+}
+```
+理由（实测）：会话 `session-618b6fc0` 的第 5 轮，6 次尝试（1+5 重试）在 120 s 的 Cloudflare 上游超时后面排队，从 16:40:24 拖到 16:51:33，**797 秒零输出**。重试在这里不是韧性，是把一次卡死放大成十几分钟。桌面/CI 行为不变（`process.platform !== "openharmony"` 直接 5）；需要更多重试可用 `DSH_OHOS_MAX_RETRIES`。
+
+### 22.4 产物（v61，1.0.51+51）
+| 项 | 值 |
+| --- | --- |
+| runtimeVersion | `ohos-5418455ce3f8888cd9b33b47`（payloadFiles 55,558，+sessions.mjs）|
+| 构建链 | `scripts/prep48.sh` → `scripts/compose59.sh`（`COMPOSE_RC=0`，archiveBytes 205,357,752）→ `scripts/fullhap61.sh`（`FULLHAP61_RC=0`、`audit-hap: OK`、versionCode 51 / 1.0.51、`archiveSHA256` `e5c9bce8fd03a96523c9db83f4bb0849f05baebd50a1f7dff188fa9eee036717`、`identicalToInput: true`、work `/root/b61/work/check-pL07rh9A`）|
+| unsigned | `<WS>/hap-build/dsh-ohos-v61-unsigned.hap` 274,357,224 B md5 `696c7b241c9e3cf66397310ed66db281` |
+| signed | `<WS>/hap-build/dsh-ohos-v61-signed.hap` 274,432,884 B md5 `1e3aaf54db4d9cfa723e33b6b4ca71cf`（`tools/hokit-asar/resign-expr-v61.js`）|
+| 装机 | `cd <WS>/hap-build && ../tools/hdc-oh/hdc.exe -t 192.168.2.102:45957 install -r dsh-ohos-v61-signed.hap` → `install bundle successfully` |
+
+### 22.5 验收判据
+1. 会话里问「列一下本机会话」→ 工具返回的清单**包含 App 抽屉「未分组」里的会话**（如「起点读书福利中心任务」），这是 Remote 桥做不到的。
+2. 对含失败的会话跑 `action=timing` → 每轮给出秒数与每次尝试的失败原文，慢轮带 `⚠慢`。
+3. 造一次必然失败的请求（例如把渠道接口地址改成不通的域名）→ 引擎日志里 `llm/retry` 只有 1 次、界面约 2 分钟内出错误，而不是 13 分钟空转。
+
+### 22.6 两条环境坑（本轮踩到）
+- 设备锁屏时 `aa start` 报 `Error Code:10106102 … The current mode is developer mode, and the screen cannot be unlocked automatically`：**必须让用户手动解锁**，脚本无法代劳。
+- `hdc shell` 偶发返回 `Check in the settings whether the current device is in developer mode…`，同一目标重试即恢复（不是设备真的不可用）。
