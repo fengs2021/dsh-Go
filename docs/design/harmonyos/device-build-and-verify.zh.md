@@ -920,3 +920,75 @@ DSH-Go 鸿蒙 App 的聊天界面是 **Flutter 原生渲染**，没有 DOM、也
 1. `engine.log`（App 内用 `mcp__engine__log action=grep pattern='\[cot\]'`）出现 `[cot] mount translator {"provider":"bing"}`、`[cot] mount cot-translation …`、`[cot] applied …`。
 2. 展开一段英文思考 → 出现翻译胶囊 → 点它，思考文字就地变中文，并有「查看原文」。
 3. 翻译失败时保留原文且可重试（网络问题应表现为 `[cot]` 之外的 translator 错误，不崩会话）。
+
+
+## 24. 一个工具的 schema 写错，整个手机桥都没了（v63）
+
+### 24.1 现象
+v62 装到手机上后，手机桥（截图 / 点击 / shell / `mcp__engine__log` / `mcp__engine__sessions`）**整组消失**，不只是会话体检工具不可用。引擎日志里 ohos-phone 插件没有生效。
+
+### 24.2 根因
+`runtime/ohos/phone/sessions.mjs` 注册工具时把 `output.schema` 写成了一个"可执行 schema"：
+
+```js
+const schema = { parse(value) { return value; } };
+ctx.tools.register({ name: 'mcp__engine__sessions', output: { schema, render } , ... });
+```
+
+新版工具注册表（`@deepseek-ai/dsh-tools` 0.2.2-rc.3）只接受 JSON Schema 的一个**子集**：
+
+| 位置 | 行为 |
+| --- | --- |
+| `lib/index.js:548` | output 必须声明 `{ schema, render, presentationMeta? }`，否则 `TypeError` |
+| `lib/index.js:549` | `assertSupportedJsonSchema(output.schema)` |
+| `lib/shared-DGx6D7zk.js:337` | 逐节点校验，只允许 `type / oneOf / properties / required / additionalProperties / items / enum / const` + 注解；其它键抛 `JsonSchemaError: schema.parse is not a supported keyword (subset: …)` |
+| `lib/shared-DGx6D7zk.js:166-175` | `required` 里的键必须出现在 `properties`；`additionalProperties` 必须是 boolean；`type` 不支持数组 |
+| `lib/pipeline.js:770` | 调用期还要 `validateJsonSchemaValue(tool.output.schema, value)`，值是 `undefined` 属性会被判"非无损 JSON" |
+
+而 `runtime/ohos/phone/index.mjs` 的 `apply()` 原本把四组注册塞进同一个 try/catch：任一组抛出就整块回滚并 rethrow → ohos-phone 插件 apply 失败 → 手机桥所有工具一起消失。
+
+### 24.3 修法
+1. `sessions.mjs` 导出真正的 `sessionsSchema`（`{type:'object', additionalProperties:false, properties:{ok,code,message,data}, required:[ok,code,message,data]}`），删掉手写 `parse`。
+2. 同文件加 `jsonSafe(value)`（递归去掉值为 `undefined` 的属性），`result()` 恒返回四个字段 —— 否则 `data` 里的 `lastFailure: undefined` 会让调用期校验报 `"value.data" must be a lossless JSON object`。
+3. `index.mjs` 改成 `safeRegister(label, register)`：一组失败只 `console.error('[phone] register failed …')` 并返回空的 dispose，其余三组照常注册。
+4. 新测试 `runtime/tests/ohos/phone-tool-schemas.test.mjs`（4 例）：用**真的** `assertSupportedJsonSchema` / `validateJsonSchemaValue` 把 phone/ui/engine-log/engine-sessions 的 parameters 与 output.schema 全过一遍，并断言 `assertSupportedJsonSchema({ parse(v){return v;} })` 必抛 `JsonSchemaError`（钉成回归）。
+
+回归：`node --test runtime/tests/ohos/{engine-log-tools,engine-sessions-tool,phone-ui-tools,phone-tool-schemas,cot-translation}.test.mjs` → 56 pass / 0 fail。
+
+### 24.4 教训
+- 工具注册是**契约**，不是鸭子类型：`output.schema` 必须能被 JSON Schema 子集校验器读懂。
+- 一组注册失败不能带走整桥 —— 能力之间要相互隔离，错误进日志而不是静默。
+- 返回值的形状也要守契约：`undefined` 属性不是"没写"，是"非法 JSON"。
+
+## 25. 思考写完之后自己翻译（v63）
+
+### 25.1 需求
+用户 m08124：「能让它默认自动翻译，不需要我手动去点一下吗」。
+
+### 25.2 规则
+- **只翻刚刚写完的那段**：`ThinkingPill` 记住自己是否处于「思考中」（`_sawThinking`），在 `active` 由 true→false 的那一帧自动开始翻译，并把 `showTranslation` 置 true、行内一行预览也用译文。
+- **历史消息仍手动**：翻旧消息会在打开长会话时一次打出几十个翻译请求（bing 匿名接口），所以只有"看着它写完"的那段自动。
+- 失败仍是「翻译暂不可用」+「重试」，原文保留。
+
+### 25.3 实现要点
+- `ThinkingPill` 保持普通 `StatefulWidget`（不能用 `ConsumerState`：golden 测试里没有 `ProviderScope`，文件里 `_hasProviderScope` 就是为此存在）。
+- 因此用 `ProviderScope.containerOf(context, listen: false)` 拿容器，并 `container.listen(cotTranslationProvider, …)` 订阅：既让 autoDispose 的限量 provider 活着，又在值到达时 `setState`。订阅只在这一段思考刚写完时建立，`dispose` 里 `_limits?.close()`。
+- 一句判断决定翻不翻：`reasoningNeedsTranslation(text, limits.targetFor(reasoningUiLanguage))` —— 中文界面里的英文思考才翻，中文思考不翻。
+
+### 25.4 测试
+`port40/app/test/agents/thinking_translate_test.dart` 12 例（含两枚 golden 未变）：新加「a thinking block that just finished translates itself」（active true→false 后自动发请求、展开即中文、胶囊变「查看原文」、收起再展开不重发）与「an old thinking block stays manual」（历史消息不发请求）。
+`flutter test test/agents test/chat` → 2314 pass / 1 skipped / 0 fail。
+
+### 25.5 v63 产物（1.0.53+53）
+| 项 | 值 |
+| --- | --- |
+| CI | run 43825209781（head `db1008f5`）completed/success，artifact `ohos-aot-db1008f5…` 22,288,852 B |
+| AOT | `/root/aot63/arm64-v8a/app.so` 41,272,200 B（`aot-fetch.py` 已把 glibc 版 libsqlite3.so 换回鸿蒙版） |
+| compose61 | `{"runtimeVersion": "ohos-2a574121ac8a0844e6ed6a33", "payloadFiles": 55559, "archiveBytes": 205361049}`，COMPOSE_RC=0；zip md5 `94356e56dc49d8a910a9f766d39734e0` |
+| fullhap63 | 15:45，FULLHAP63_RC=0，`audit-hap: OK`，versionCode 53 / versionName 1.0.53，runtime `ohos-2a574121ac8a0844e6ed6a33`，`archiveSHA256 88ba9f2728c3bc4b4d60ece8c6f5d2415579c9a687176f13a568f98a6a9ea0ce` |
+| unsigned | `<WS>/hap-build/dsh-ohos-v63-unsigned.hap` 274,367,405 B md5 `571d4ef7b7cf8f7eaf28b70e1023cc59` |
+| signed | `<WS>/hap-build/dsh-ohos-v63-signed.hap` 274,445,178 B md5 `363d65e52bc28b0d3907231b777fdd56`（`tools/hokit-asar/resign-expr-v63.js`）|
+
+### 25.6 验收判据（装机后）
+1. 手机桥恢复：`mcp__engine__sessions`（`action=list`）、`mcp__phone__ui`（`action=shot`）、`mcp__engine__log` 都可用；引擎日志里不应再出现 `[phone] register failed`。
+2. 用英文提问 + 要求英文思考，思考写完直接展开就是中文，胶囊显示「查看原文」；旧消息展开仍显示「翻译」。
