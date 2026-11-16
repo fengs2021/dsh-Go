@@ -815,6 +815,45 @@ void main() {
       expect(client.cancels, 0);
     });
 
+    testWidgets('an interjection no turn will take is sent again as the next turn', (tester) async {
+      await inTestClock(tester);
+      var seq = 0;
+      void emit(String type, Map<String, Object?> data) => client.events.add(
+        SessionLogEvent.fromJson({'seq': ++seq, 'time': 1792700000000 + seq, 'type': type, 'data': data}),
+      );
+      emit('turn/start', {'turn': 1});
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 32));
+      expect(await chat().send('记录就行，明天再搞', mode: SendMode.steer), isTrue);
+      final id = client.prompts.single.requestId!;
+      expect(client.prompts.single.mode, PromptMode.steer);
+
+      // The turn ends without the Host ever taking it: no echo, no inbox item.
+      emit('turn/end', {
+        'turn': 1,
+        'reason': {'kind': 'aborted'},
+      });
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 32));
+      client.events.add(const SessionStatusEvent('s1', false));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 32));
+
+      final stranded = state().pending.single;
+      expect(stranded.requestId, id);
+      expect(stranded.slot, isNull);
+      expect(stranded.inboxId, isNull);
+      expect(stranded.mode, SendMode.steer);
+
+      // Nothing to take out, nothing running: deliver it again as the next
+      // turn, under the same id so a Host that did take it does not repeat it.
+      expect(await chat().sendNow(stranded), isEmpty);
+      expect(client.prompts, hasLength(2));
+      expect(client.prompts.last.requestId, id);
+      expect(client.prompts.last.mode, PromptMode.queue);
+      expect(client.cancels, 0);
+    });
+
     for (final fate in ['claimed', 'canceled', 'echoed', 'restored']) {
       test('a snapshot reconstructs an entirely missed request outcome: $fate', () async {
         await chat().send('missed during disconnect', attachments: [image, file]);

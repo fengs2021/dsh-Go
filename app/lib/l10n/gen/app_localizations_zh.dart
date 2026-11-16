@@ -3682,6 +3682,12 @@ class L10nZh extends L10n {
   String get chatSteering => '插话中';
 
   @override
+  String get chatSteerMissed => '插话没赶上本轮';
+
+  @override
+  String get chatSteerMissedResent => '插话没赶上上一轮，已作为新消息重发';
+
+  @override
   String get chatQueued => '排队中';
 
   @override

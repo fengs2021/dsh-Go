@@ -6824,6 +6824,18 @@ abstract class L10n {
   /// **'插话中'**
   String get chatSteering;
 
+  /// No description provided for @chatSteerMissed.
+  ///
+  /// In zh, this message translates to:
+  /// **'插话没赶上本轮'**
+  String get chatSteerMissed;
+
+  /// No description provided for @chatSteerMissedResent.
+  ///
+  /// In zh, this message translates to:
+  /// **'插话没赶上上一轮，已作为新消息重发'**
+  String get chatSteerMissedResent;
+
   /// No description provided for @chatQueued.
   ///
   /// In zh, this message translates to:

@@ -1108,12 +1108,18 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       (_?, _) when !_running => (appL10n.chatUnsent, AppIcons.paused),
       (InboxSlot.nextStep, _) => (appL10n.chatSteerNextStep, AppIcons.steer),
       (InboxSlot.nextTurn, _) => (appL10n.chatQueuedAfterTurn, AppIcons.queued),
+      // Sent as an interjection but never taken, and no turn is running to
+      // take it: it would wait for the next message sent.
+      (null, SendMode.steer) when !_running => (appL10n.chatSteerMissed, AppIcons.paused),
       (null, SendMode.steer) => (appL10n.chatSteering, AppIcons.steer),
       (null, SendMode.queue) => (appL10n.chatQueued, AppIcons.queued),
       (null, SendMode.interrupt) => (appL10n.chatStoppingTurn, AppIcons.interrupt),
       (null, SendMode.now) => (appL10n.chatSending, AppIcons.queued),
     };
     final canAct = prompt.inboxId != null;
+    // Not in the inbox with no turn running: nothing to withdraw, but it can
+    // still be sent as the next turn (the Host dedups the request id).
+    final stranded = canAct == false && !_running && prompt.mode == SendMode.steer;
     return UserBubble(
       text: prompt.text,
       attachments: prompt.attachments.isEmpty ? null : SentAttachments.pending(prompt.attachments),
@@ -1121,7 +1127,7 @@ class _ChatListState extends ConsumerState<ChatList> with SingleTickerProviderSt
       pendingIcon: prompt.failed ? AppIcons.error : icon,
       pendingActions: [
         if (prompt.failed && prompt.resendable) (appL10n.chatEditFailedSubmission, () => _editFailedSubmission(prompt)),
-        if (canAct && prompt.resendable && widget.onSendNow != null)
+        if ((canAct || stranded) && prompt.resendable && widget.onSendNow != null)
           (_running ? appL10n.chatSendNow : appL10n.commonSend, () => widget.onSendNow!(prompt)),
         if (canAct && _running && prompt.slot == InboxSlot.nextTurn)
           (appL10n.chatSwitchToSteer, () => chat.steerQueued(prompt)),

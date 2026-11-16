@@ -1122,6 +1122,8 @@
   "chatSteerNextStep": "Steer · Next step",
   "chatQueuedAfterTurn": "Queued · Next turn",
   "chatSteering": "Steering",
+  "chatSteerMissed": "Missed that turn",
+  "chatSteerMissedResent": "The interjection missed that turn, so it was sent again as a new message",
   "chatQueued": "Queued",
   "chatStoppingTurn": "Stopping this turn",
   "chatSending": "Sending",

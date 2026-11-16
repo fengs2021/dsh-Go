@@ -11,6 +11,8 @@
   "chatSteerNextStep": "插话 · 下一步生效",
   "chatQueuedAfterTurn": "排队中 · 本轮结束后发送",
   "chatSteering": "插话中",
+  "chatSteerMissed": "插话没赶上本轮",
+  "chatSteerMissedResent": "插话没赶上上一轮，已作为新消息重发",
   "chatQueued": "排队中",
   "chatStoppingTurn": "正在停止本轮",
   "chatSending": "发送中",

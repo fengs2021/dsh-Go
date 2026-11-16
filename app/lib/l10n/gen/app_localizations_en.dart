@@ -3866,6 +3866,12 @@ class L10nEn extends L10n {
   String get chatSteering => 'Steering';
 
   @override
+  String get chatSteerMissed => 'Missed that turn';
+
+  @override
+  String get chatSteerMissedResent => 'The interjection missed that turn, so it was sent again as a new message';
+
+  @override
   String get chatQueued => 'Queued';
 
   @override

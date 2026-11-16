@@ -156,6 +156,33 @@ void main() {
     expect(harness.controllers['s1']!.sentNow, ['r4']);
   });
 
+  testWidgets('an interjection no turn will take: 插话没赶上本轮, 发送', (tester) async {
+    final harness = ChatHarness(
+      session: 's1',
+      states: {
+        's1': ChatState(
+          loading: false,
+          pending: [
+            PendingPrompt(
+              requestId: 'r6',
+              text: '记录就行，明天再搞',
+              time: DateTime.now(),
+              mode: SendMode.steer,
+            ),
+          ],
+        ),
+      },
+    );
+    await pumpScreen(tester, harness);
+    expect(find.text('插话没赶上本轮'), findsOneWidget);
+    expect(find.text('插话中'), findsNothing);
+    expect(pendingActions(tester), ['发送']);
+
+    await tester.tap(find.text('发送'));
+    await pumpFrames(tester);
+    expect(harness.controllers['s1']!.sentNow, ['r6']);
+  });
+
   testWidgets('sent elsewhere with attachments: no 立即发送', (tester) async {
     final harness = ChatHarness(
       session: 's1',

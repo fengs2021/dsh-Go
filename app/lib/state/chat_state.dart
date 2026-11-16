@@ -466,6 +466,12 @@ class ChatController extends Notifier<ChatState> {
   StreamSubscription<DshEvent>? _sub;
   StreamSubscription<DshConnectionState>? _states;
   Timer? _flush;
+
+  /// A prompt sent as an interjection that no running turn will take (see
+  /// [_rescueStranded]): the flag that it got its one retry, and the timer
+  /// that waits long enough for the Host's inbox echo to prove otherwise.
+  Timer? _strandedTimer;
+  final Map<String, int> _strandedTries = {};
   Timer? _stopTimeout;
   _ChatOperation? _stoppingOperation;
   bool _dirty = false;
@@ -609,6 +615,8 @@ class ChatController extends Notifier<ChatState> {
       release?.cancel();
       _flush?.cancel();
       _flush = null;
+      _strandedTimer?.cancel();
+      _strandedTimer = null;
       _stopTimeout?.cancel();
       _awayTimer?.cancel();
       unawaited(_sub?.cancel());
@@ -1147,6 +1155,11 @@ class ChatController extends Notifier<ChatState> {
   }
 
   /// Coalesces streaming updates to roughly one rebuild per frame.
+  /// How long a pending interjection waits for the Host's inbox echo before
+  /// it counts as stranded, and how long past that the retry waits.
+  static const Duration _strandedGrace = Duration(seconds: 2);
+  static const Duration _strandedWait = Duration(seconds: 3);
+
   void _schedule() {
     _dirty = true;
     _flush ??= Timer(const Duration(milliseconds: 32), () {
@@ -1207,6 +1220,47 @@ class ChatController extends Notifier<ChatState> {
       goal: _transcript.goal,
       clockSkew: _skew ?? Duration.zero,
     );
+    _rescueStranded(pending, running);
+  }
+
+  /// An interjection lands only at a step boundary of the turn that is
+  /// running: one that arrives too late, or right before a stop, is never
+  /// taken, and DSH starts the next turn only for a prompt sent afterwards.
+  /// Rather than leave it sitting there until the person notices and types it
+  /// again, send it as the next turn. Each prompt gets one attempt, so nothing
+  /// loops; the request id is reused, so one the Host did take is not repeated.
+  void _rescueStranded(List<PendingPrompt> pending, bool running) {
+    if (running || !_canControl) return;
+    final now = DateTime.now();
+    final waiting = pending.any(
+      (p) =>
+          p.mode == SendMode.steer &&
+          p.slot == null &&
+          !p.failed &&
+          !p.isAutomatic &&
+          p.resendable &&
+          now.difference(p.time) > _strandedGrace &&
+          (_strandedTries[p.requestId] ?? 0) == 0,
+    );
+    if (!waiting) return;
+    _strandedTimer ??= Timer(_strandedWait, () {
+      _strandedTimer = null;
+      if (!ref.mounted || state.running || !_canControl) return;
+      final now = DateTime.now();
+      for (final prompt in _pending) {
+        if (prompt.mode != SendMode.steer ||
+            prompt.slot != null ||
+            prompt.failed ||
+            prompt.isAutomatic ||
+            !prompt.resendable) {
+          continue;
+        }
+        if (now.difference(prompt.time) <= _strandedGrace) continue;
+        if ((_strandedTries[prompt.requestId] ?? 0) > 0) continue;
+        _strandedTries[prompt.requestId] = 1;
+        unawaited(sendNow(prompt));
+      }
+    });
   }
 
   /// Our pending prompts with their inbox slot, plus prompts waiting in the
@@ -1632,17 +1686,30 @@ class ChatController extends Notifier<ChatState> {
   /// stop it goes back, which starts the next turn, and prompts queued
   /// behind it go back after it, or they would overtake it. Resolves to what
   /// could not be put back (the screen returns it to the composer).
+  /// Sends [prompt] again, now: taken out of the inbox first when the Host
+  /// holds it, or — for one that never reached the inbox while no turn is
+  /// running to join — delivered again as the next turn.
   Future<List<PendingPrompt>> sendNow(PendingPrompt prompt) async {
     final client = _client;
-    if (client == null || !_canControl || prompt.isAutomatic || prompt.inboxId == null || !prompt.resendable) {
+    if (client == null || !_canControl || prompt.isAutomatic || !prompt.resendable) {
       return const [];
     }
+    // Nothing to take out, and no turn to join: it never landed.
+    final loose = prompt.inboxId == null;
+    if (loose && state.running) return const [];
     final operation = _ChatOperation(ref, client, _syncScope);
     final behind = [
-      for (final p in _waiting().skipWhile((p) => p.requestId != prompt.requestId).skip(1))
-        if (p.slot == InboxSlot.nextTurn && p.resendable) p,
+      if (!loose)
+        for (final p in _waiting().skipWhile((p) => p.requestId != prompt.requestId).skip(1))
+          if (p.slot == InboxSlot.nextTurn && p.resendable) p,
     ];
-    if (!await _takeOut(operation, prompt) || !_currentOperation(operation)) return const [];
+    if (loose) {
+      if (!_pending.any((p) => p.requestId == prompt.requestId)) return const [];
+      _moving[prompt.requestId] = operation;
+      state = state.copyWith(pending: _placePending());
+    } else if (!await _takeOut(operation, prompt) || !_currentOperation(operation)) {
+      return const [];
+    }
     // Stopped or not, it goes back: a turn that goes on takes it as before.
     if (state.running) {
       await _stop(operation, failure: appL10n.stateChatStopFailed);
