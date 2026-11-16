@@ -858,3 +858,65 @@ function openharmonyDefaultMaxRetries() {
 ### 22.6 两条环境坑（本轮踩到）
 - 设备锁屏时 `aa start` 报 `Error Code:10106102 … The current mode is developer mode, and the screen cannot be unlocked automatically`：**必须让用户手动解锁**，脚本无法代劳。
 - `hdc shell` 偶发返回 `Check in the settings whether the current device is in developer mode…`，同一目标重试即恢复（不是设备真的不可用）。
+
+## 23. 原生思考链翻译（v62）
+
+### 23.1 现象与真正的缺口
+用户在网页端装了 `dsh-think-translate`（思考链翻译），手机上装了同名插件却**没有任何翻译效果**。
+原因不是插件坏了，而是它属于 **web 渲染层插件**：它靠 `window.__ModuleLoader__` + React + `document` 往网页 DOM 里插翻译胶囊；
+DSH-Go 鸿蒙 App 的聊天界面是 **Flutter 原生渲染**，没有 DOM、也没有那个挂载点，装多少份都不会生效。
+
+反过来，App 侧的原生实现其实**早就写完了**，缺的只是引擎侧的服务：
+
+| 位置 | 已实现的内容 |
+| --- | --- |
+| `app/lib/state/cot_translation_state.dart`（153 行） | `cotTranslationProvider` 取 `cotTranslationLimits()`；`reasoningTranslatorProvider` 调 `translateReasoning(text, targetLanguage, provider, sessionId)`；`ReasoningTranslation`（按段落顺序翻译、按原文缓存、失败保留原文可重试）|
+| `app/lib/ui/chat/widgets/thinking_pill.dart` | `:740` 读 limits、`:721` 建翻译器、`:810` 长按胶囊进「思考链翻译」设置 |
+| `app/lib/ui/engine_settings/namespace_copy.dart:103` | `cot-translation` 命名空间的 `provider`（bing/google/deepseek-account/deepseek-official）与 `targetLanguage`（auto=跟随界面语言）文案 |
+
+客户端调的两个 RPC（`cotTranslation.limits` / `cotTranslation.translate`）由官方插件 `@deepseek-ai/dsh-experimental-client-ui-cot-translation` 提供，
+它依赖的翻译服务由 `@deepseek-ai/dsh-experimental-translator` 提供。**这两个包本来就随 runtime 打进包里了**（runtime.zip 里有 646 条 cot 相关条目），
+只是没有任何东西去 `ctx.plugin` 它们 —— 网页端靠 profile bundle 的 `cordis.patch.yml` insert 两行，手机端没有 npm/profile bundle 这条路。
+
+### 23.2 为什么不去改 C++ 的入口表
+手机引擎的插件入口写死在 native：`app/ohos/entry/src/main/cpp/host_core.cpp` 的 `WriteProfile` 往 `ohos-host.patch.json` 里写固定 insert 列表
+（ohos-subprocess / ohos-sandbox / ohos-lifecycle / **ohos-phone** / ohos-capabilities / dsh-go-bridge），`argv` 再加 `--patch <profile>`。
+新增一个入口要同时改 ArkTS（`RuntimeCore.ets:53` 的 validateManifest 固定表）与 C++，而本机编不了 native —— 所以**挂在我们已有的 `ohos-phone` 插件里**。
+
+### 23.3 实现（`runtime/ohos/phone/cot-translation.mjs`，101 行）
+- `startCotTranslation(ctx, options)`：动态 `import()` 两个官方包 → 取 `.default` → `ctx.plugin(Translator, {provider})` → `ctx.plugin(CotTranslationController, {provider, targetLanguage})`。
+  子 fiber 随宿主插件 fiber 级联销毁，不需要额外停机代码。
+- 默认 **provider=bing、targetLanguage=auto**。理由：translator 只认四个 provider，匿名的只有 bing/google，
+  实测 bing（`edge.microsoft.com/translate/translatetext`）0.45 s 返回 `用户要求翻译思维。`，google（`translate.googleapis.com`）国内 20 s 超时不可达；
+  `auto` 让 controller 接受客户端每次请求带的目标语言（App 按界面语言算）。
+- 可用环境变量临时改，不必重新打包：`DSH_GO_COT_PROVIDER`、`DSH_GO_COT_TARGET`（非法的 provider 回落 bing，不会挂载失败）。
+- 幂等与降级：`globalThis[Symbol.for('dsh.go.ohos.cotTranslation')]` 防重复挂载；平台不是 openharmony（且无仿真标记）直接返回；
+  取包失败/导出异常/`ctx.plugin` 不存在都只 `console.error('[cot] …')` 返回，不影响其它能力。
+- `index.mjs` 在 `apply()` 末尾 `Promise.resolve().then(...)` 调用，日志形如 `[cot] mounted provider=bing target=auto`。
+
+### 23.4 能力与已知边界
+- 免费匿名可用（bing）；`deepseek-account` / `deepseek-official` 两条要密钥，手机上没有配置入口，暂不启用。
+- controller 构造时 `settings.configure({ auto: false })` —— 官方**不给这个插件实例自动生成设置页**，所以 App「设置 › 思考链翻译」里没有可编辑字段；
+  provider 由挂载时传的 config 决定。要换 provider 目前靠环境变量或重打补丁。
+- 匿名翻译走 `TRANSLATION_SESSION_ACTIVE` 路线：`TranslationStorage` 需要 `sessionPersistence` 与活跃 session（App 传 sessionId），手机有；
+  翻译结果按段落写进会话的 plugin record，可复用缓存。
+
+### 23.5 测试与预检
+- `runtime/tests/ohos/cot-translation.test.mjs` **8 例全通过**：默认挂载顺序与 config、options>env 优先级、非法 provider 回落、二次挂载被拒、
+  缺包/缺 default/缺 ctx.plugin 的降级、非鸿蒙平台不挂载（仿真标记可绕过）。`node --test runtime/tests/ohos/cot-translation.test.mjs` → 8 pass / 0 fail。
+- 打包前在 compose 树上做了真实 import 预检（`/root/compose60/.../files` 里跑裸包名 import）：
+  `translator function Translator`（Config 键 provider/googleEndpoint/bingEndpoint/…），`controller function CotTranslationController`（inject `["translator","typert","sessionController"]`），
+  证明 runtime 树的 `node_modules` 解析与导出形状都对；三个依赖服务在 `dsh-api-session-controller` / `dsh-typert-*` / `dsh-session-persistence-*` 里都有。
+
+### 23.6 v62 产物（1.0.52+52）
+| 项 | 值 |
+| --- | --- |
+| compose60 | `{"runtimeVersion": "ohos-169c8dbb77824640a7e42e1a", "payloadFiles": 55559, "archiveBytes": 205360526}`，COMPOSE_RC=0 |
+| fullhap62 | 14:32→14:33:35（63 s），FULLHAP62_RC=0，`audit-hap: OK`，versionCode 52 / versionName 1.0.52 |
+| unsigned | `<WS>/hap-build/dsh-ohos-v62-unsigned.hap` 274,359,998 B md5 `fc9b6be98758346baf914e8907567df1` |
+| signed | `<WS>/hap-build/dsh-ohos-v62-signed.hap` 274,436,983 B md5 `92a0a2be68d22cf03fb4d4cef3e309bd`（`tools/hokit-asar/resign-expr-v62.js`）|
+
+### 23.7 验收判据（装机后）
+1. `engine.log`（App 内用 `mcp__engine__log action=grep pattern='\[cot\]'`）出现 `[cot] mount translator {"provider":"bing"}`、`[cot] mount cot-translation …`、`[cot] applied …`。
+2. 展开一段英文思考 → 出现翻译胶囊 → 点它，思考文字就地变中文，并有「查看原文」。
+3. 翻译失败时保留原文且可重试（网络问题应表现为 `[cot]` 之外的 translator 错误，不崩会话）。

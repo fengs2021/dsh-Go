@@ -8,6 +8,7 @@ import { registerSessionsTool } from './sessions.mjs';
 import { diagnoseHdc } from './hdc-link.mjs';
 import { authorizedStatus, probeAndWrite, startHdcStatusWatch } from './hdc-status.mjs';
 import { startProgressFeed } from './progress-feed.mjs';
+import { startCotTranslation } from './cot-translation.mjs';
 
 export const name = 'dsh-go-ohos-phone';
 export const inject = ['tools', 'ohosLifecycle', 'approval'];
@@ -104,5 +105,17 @@ export function apply(ctx) {
   try { startProgressFeed(ctx); } catch (error) { console.error('[progress-feed] start failed: ' + ((error && error.message) || error)); }
   // 「重新检测」：页面写 dsh-app/hdc-probe.json 的请求序号，这里轮询到就再诊断一次并更新状态文件。
   try { startHdcStatusWatch(ctx); } catch (error) { console.error('[phone-hdc] status watch failed: ' + ((error && error.message) || error)); }
+  // 原生思考链翻译：App（Flutter）侧已有完整界面与 RPC（cotTranslation.limits / translate），
+  // 缺的只是引擎侧这两个官方插件被挂上。挂不上只写日志，不影响其它能力（engine.log 搜 [cot]）。
+  Promise.resolve().then(async () => {
+    try {
+      const started = await startCotTranslation(ctx);
+      console.error('[cot] ' + (started
+        ? 'mounted provider=' + started.provider + ' target=' + started.targetLanguage
+        : 'not mounted'));
+    } catch (error) {
+      console.error('[cot] start failed: ' + ((error && error.message) || error));
+    }
+  });
   ctx.inject(['webServer'], webCtx => registerPhoneRoutes(webCtx, queue));
 }
