@@ -607,3 +607,44 @@ billion-context 的「原生插件模式」是让代理进程住进客户端里�
 - 顺带记下两条硬事实（不要重复踩）：
   - `/data/local/tmp` 是 `drwxrwx--x 7 shell shell`（0771），App 进程（uid 20020326）连列目录都不行，只能按确切路径读 0644 的单个文件；所以「bash 把设备文件搬进工作区」走不通。
   - 完全权限（`danger-full-access`）只决定审批，不放开路径；路径围栏在 `runtime/ohos/process/runtime.mjs:80`（`this.roots = 工作区 + 临时目录`）与 `runtime/ohos/process/filesystem.mjs:44`（那条中文 EACCES 的出处）。
+
+## 18. 手机端 read_image 为什么报 OHOS_IMAGE_CODEC_UNAVAILABLE，以及怎么在无 sharp 的平台上把图交给模型（2026-11-16 v57）
+
+### 18.1 现象
+v56 装机后，手机本地会话里 `mcp__phone__ui action=shot` 已经把截图落到会话工作区 `phone-shots/shot-<ts>.jpg`（v56 修的就是这个），但紧接着的 `read_image` 直接失败：
+
+```
+Error: unreachable variant: "OHOS_IMAGE_CODEC_UNAVAILABLE"
+```
+
+### 18.2 根因：三条路径都要 sharp，而鸿蒙没有 sharp
+`read_image` 在引擎里走 `@deepseek-ai/dsh-attachment-local`：`saveImage`（`prepareImageFile` → `inspectMetadata` → `detectImage` → `normalizeImage`）与随后发请求时的 `readImageRequest` → `createRequestImage`。这三处都调 `requireSharp()`；而 `runtime/patches/zzzzzzzzzzzz-ohos-composition.diff` 早先把这个函数在 `process.platform === "openharmony"` 下改成「直接抛 `OHOS_IMAGE_CODEC_UNAVAILABLE`」。所以不是像素超限，也不是字节超限，是**根本没有解码器**。
+
+### 18.3 修法：只读图像头 + 原字节直通
+新增补丁 `runtime/patches/zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-ohos-image-facts.diff`（必须排在 `zzzzzzzzzzzz-ohos-composition.diff` 之后，因为它改的是后者引入的 `loadSharp`/`requireSharp` 文本），在 `dsh-attachment-local/lib/index.js` 里做四件事：
+
+| 位置 | 鸿蒙分支 | 说明 |
+| --- | --- | --- |
+| `probeImage` / `detectImage` | 纯 JS 读 JPEG marker 流（SOI→SOF 取宽高，APP1/APP2/APP13/COM 记 `carriesMetadata`）与 PNG chunk 流（IHDR 取宽高/位深/色彩类型，acTL→animated，eXIf/iCCP/tEXt/zTXt/iTXt→metadata，tRNS→alpha） | 不再需要 sharp；坏头报 `INVALID_IMAGE`，非 JPEG/PNG 报 `OHOS_IMAGE_CODEC_UNAVAILABLE` 并说明「请先转成 JPEG/PNG」 |
+| `normalizeImage` | 限额内直接返回原字节，不重编码 | 超限报错并给出「先裁小图片」的可行做法 |
+| `createRequestImage` | `data.byteLength <= target.maxBytes` 时返回原字节 | 跳过缩放/缓存；超限才报错 |
+
+`sourcePipeline`（`:998`）与 `normalizeImage` 的重编码分支在鸿蒙上永远不会被走到，因此整条链路不再触碰 sharp。
+
+### 18.4 补丁怎么进包（顺序与登记是硬约束）
+1. `runtime/patches/series` 末尾**必须**登记新补丁 —— 应用顺序以 `series` 为准，文件名里的 z 只是历史习惯，不再是排序依据。
+2. `runtime/patches/pins.json` 的 `targetSets.ohos` **必须**加入补丁名，否则 `patch-dsh` 直接失败：`patch target registration mismatch: unregistered=[...]`。
+3. 录入 pin：`HOME=/root python3 -I -B runtime/lib/rtbuild.py patch-dsh --prefix <dsh tree> --dsh-version 0.2.2-rc.3 --target ohos --patches runtime/patches --out /tmp/pin-out.json --target-report /tmp/pin-report.json --record`；输出里会打印每个文件的 `before -> after`，其中 `before` 必须等于上一个补丁的 `after`（本次 `dd15efce9b5b -> 2da6f48979d7`，链条连续）。
+4. 改完 node_modules 树以后，旧 `prepared-inputs.json` 作废：`compose-runtime.py` 会报 `Prepared dsh input bytes/file set changed after its recipe ran`，必须重跑 `prepare-inputs.py`（`scripts/prep46.sh`，全量约 2.5 分钟）再 compose。
+
+### 18.5 产物（v57，未装机：设备 08:35 起离线）
+| 版本 | runtimeVersion | unsigned | signed |
+| --- | --- | --- | --- |
+| 1.0.47+47 | `ohos-7b192a15aa2cf081d2baecae` | `dsh-ohos-v57-unsigned.hap` 274,341,574 B md5 `664d7b5f6cc7590557035806bd251e0a` | `dsh-ohos-v57-signed.hap` 274,416,503 B md5 `dc99c24951914e0aa37bdb35ca88b2b5` |
+
+构建：`scripts/prep46.sh` → `scripts/compose55.sh`（payloadFiles 55,555，`archiveBytes` 205,342,102）→ `scripts/fullhap57.sh`（08:30:52→08:31:56，`FULLHAP57_RC=0`，`audit-hap: OK`，work `/root/b57/work/check-L7lUqkcS`）→ HoKit 签名（`tools/hokit-asar/resign-expr-v57.js`）。
+
+### 18.6 已知取舍
+- 手机端**不能**缩放/重编码图像：超过归一化上限（2048×2048 像素 / 4 MB）或超过模型路由上限（DeepSeek 路由默认 2 MB）的图会被拒绝并提示「先裁小或用连接电脑的会话」。
+- 元数据不剥离（EXIF/XMP/ICC 原样随图发出），因为剥离需要重编码。真要在手机上脱敏，得等一个鸿蒙原生的图像库。
+- 只支持 JPEG/PNG；WebP/GIF 仍报 `OHOS_IMAGE_CODEC_UNAVAILABLE`。

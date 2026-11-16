@@ -1,0 +1,204 @@
+--- a/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
++++ b/node_modules/@deepseek-ai/dsh-attachment-local/lib/index.js
+@@ -130,6 +130,138 @@
+ 	if (process.platform === "openharmony") throw new AttachmentError("鸿蒙本机尚无可用的图像解码/重编码库；请连接电脑处理图像。普通文件仍可上传或保存。", "OHOS_IMAGE_CODEC_UNAVAILABLE");
+ 	return loadSharp();
+ }
++
++/** Header-only image facts for the formats this port can inspect without a codec. */
++const OHOS_IMAGE_METADATA_MARKERS = /* @__PURE__ */ new Set([
++	225,
++	226,
++	237,
++	254
++]);
++const OHOS_JPEG_SOF_MARKERS = /* @__PURE__ */ new Set([
++	192,
++	193,
++	194,
++	195,
++	197,
++	198,
++	199,
++	201,
++	202,
++	203,
++	205,
++	206,
++	207
++]);
++const ohosBytes16 = (bytes, at) => bytes[at] << 8 | bytes[at + 1];
++const ohosBytes32 = (bytes, at) => (bytes[at] << 24 | bytes[at + 1] << 16 | bytes[at + 2] << 8 | bytes[at + 3]) >>> 0;
++function ohosAscii(bytes, at, length) {
++	let text = "";
++	for (let index = 0; index < length; index += 1) text += String.fromCharCode(bytes[at + index] ?? 0);
++	return text;
++}
++/**
++* Read one JPEG's intrinsic facts from its marker stream without decoding pixels.
++* APP/COM segments only mark the source as carrying metadata, which the phone
++* cannot strip because it has no re-encoder.
++*/
++function ohosJpegFacts(bytes) {
++	if (bytes.byteLength < 4 || bytes[0] !== 255 || bytes[1] !== 216) return void 0;
++	if (bytes[bytes.byteLength - 2] !== 255 || bytes[bytes.byteLength - 1] !== 217) return void 0;
++	let carried = false;
++	let at = 2;
++	while (at + 3 < bytes.byteLength) {
++		if (bytes[at] !== 255) return void 0;
++		const marker = bytes[at + 1];
++		if (marker === 255) {
++			at += 1;
++			continue;
++		}
++		if (marker === 216 || marker === 217 || marker === 1 || marker >= 208 && marker <= 215) {
++			at += 2;
++			continue;
++		}
++		const length = ohosBytes16(bytes, at + 2);
++		if (length < 2 || at + 2 + length > bytes.byteLength) return void 0;
++		if (OHOS_IMAGE_METADATA_MARKERS.has(marker)) carried = true;
++		if (OHOS_JPEG_SOF_MARKERS.has(marker)) {
++			const height = ohosBytes16(bytes, at + 5);
++			const width = ohosBytes16(bytes, at + 7);
++			if (width === 0 || height === 0) return void 0;
++			return {
++				mediaType: "image/jpeg",
++				width,
++				height,
++				animated: false,
++				carriesMetadata: carried,
++				depth: "uchar",
++				space: "srgb",
++				hasAlpha: false
++			};
++		}
++		at += 2 + length;
++	}
++	return void 0;
++}
++/** Read one PNG's intrinsic facts from its chunk stream without decoding pixels. */
++function ohosPngFacts(bytes) {
++	if (bytes.byteLength < 33) return void 0;
++	const signature = [
++		137,
++		80,
++		78,
++		71,
++		13,
++		10,
++		26,
++		10
++	];
++	for (let index = 0; index < signature.length; index += 1) if (bytes[index] !== signature[index]) return void 0;
++	if (ohosAscii(bytes, 12, 4) !== "IHDR") return void 0;
++	const width = ohosBytes32(bytes, 16);
++	const height = ohosBytes32(bytes, 20);
++	const bitDepth = bytes[24];
++	const colourType = bytes[25];
++	let carried = false;
++	let animated = false;
++	let alpha = colourType === 4 || colourType === 6;
++	let at = 8;
++	let ended = false;
++	while (at + 8 <= bytes.byteLength) {
++		const length = ohosBytes32(bytes, at);
++		const type = ohosAscii(bytes, at + 4, 4);
++		if (type === "acTL") animated = true;
++		else if (type === "eXIf" || type === "iCCP" || type === "tEXt" || type === "zTXt" || type === "iTXt") carried = true;
++		else if (type === "tRNS") alpha = true;
++		else if (type === "IEND") {
++			ended = true;
++			break;
++		}
++		at += 12 + length;
++	}
++	if (!ended || width === 0 || height === 0) return void 0;
++	return {
++		mediaType: "image/png",
++		width,
++		height,
++		animated,
++		carriesMetadata: carried,
++		depth: bitDepth === 16 ? "ushort" : bitDepth <= 8 ? "uchar" : "float",
++		space: "srgb",
++		hasAlpha: alpha
++	};
++}
++function ohosImageFacts(bytes) {
++	return ohosJpegFacts(bytes) ?? ohosPngFacts(bytes);
++}
++/** Whether the bytes at least start like the two formats the phone reads header-only. */
++function ohosImageLooksKnown(bytes) {
++	return bytes.byteLength > 3 && bytes[0] === 255 && bytes[1] === 216 || bytes.byteLength > 8 && bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71;
++}
++/** Refuse one image the phone cannot shrink or re-encode, naming what the caller can do instead. */
++function ohosImageTooLargeForCodec(detail) {
++	return new AttachmentError("鸿蒙本机没有图像编解码库，不能缩放或重编码：" + detail + "。请先裁小图片，或用连接电脑的会话查看。", "OHOS_IMAGE_CODEC_UNAVAILABLE");
++}
+ //#endregion
+ //#region lib/types/image.js
+ /** Raster inspection: full decode at admission, header-only probe on verified reads. */
+@@ -179,6 +311,12 @@
+ * @returns verified format and dimensions.
+ */
+ async function probeImage(data) {
++	if (process.platform === "openharmony") {
++		const facts = ohosImageFacts(data);
++		if (facts !== void 0) return facts;
++		if (ohosImageLooksKnown(data)) throw new AttachmentError("Unsupported or malformed image data.", "INVALID_IMAGE");
++		throw new AttachmentError("鸿蒙本机只能直接读取 JPEG/PNG 的图像头；其它图像格式需要编解码库，请先转成 JPEG/PNG，或连接电脑处理。", "OHOS_IMAGE_CODEC_UNAVAILABLE");
++	}
+ 	const sharp = requireSharp();
+ 	try {
+ 		return await imageMetadata(sharp(data, {
+@@ -197,6 +335,16 @@
+ * @returns verified format and dimensions.
+ */
+ async function detectImage(data, limits) {
++	if (process.platform === "openharmony") {
++		const facts = ohosImageFacts(data);
++		if (facts === void 0) {
++			if (ohosImageLooksKnown(data)) throw new AttachmentError("Unsupported or malformed image data.", "INVALID_IMAGE");
++			throw new AttachmentError("鸿蒙本机只能直接读取 JPEG/PNG 的图像头；其它图像格式需要编解码库，请先转成 JPEG/PNG，或连接电脑处理。", "OHOS_IMAGE_CODEC_UNAVAILABLE");
++		}
++		if (limits?.maxPixels !== void 0 && facts.width * facts.height > limits.maxPixels) throw new AttachmentError("Image exceeds the configured decoded-pixel limit.", "IMAGE_TOO_MANY_PIXELS");
++		if (limits?.maxDimension !== void 0 && Math.max(facts.width, facts.height) > limits.maxDimension) throw new AttachmentError("Image exceeds the configured per-side pixel limit.", "IMAGE_DIMENSION_TOO_LARGE");
++		return facts;
++	}
+ 	const sharp = requireSharp();
+ 	try {
+ 		const image = sharp(data, {
+@@ -267,6 +415,16 @@
+ * @returns verified provider-independent normalized bytes and metadata.
+ */
+ async function normalizeImage(data, detected, policy) {
++	if (process.platform === "openharmony") {
++		const fits = data.byteLength <= policy.maxBytes && detected.width * detected.height <= policy.maxPixels && Math.max(detected.width, detected.height) <= policy.maxDimension;
++		if (!fits) throw ohosImageTooLargeForCodec("这张 " + detected.width + "x" + detected.height + " 的图有 " + data.byteLength + " 字节，超出手机端归一化上限");
++		return {
++			data,
++			mediaType: detected.mediaType,
++			width: detected.width,
++			height: detected.height
++		};
++	}
+ 	if (canPassThroughNormalization(detected, data.byteLength, policy)) return {
+ 		data,
+ 		mediaType: detected.mediaType,
+@@ -843,6 +1001,15 @@
+ 	}).toColourspace("srgb");
+ }
+ async function createRequestImage(attachment, target, hasAlpha) {
++	if (process.platform === "openharmony") {
++		if (attachment.data.byteLength > target.maxBytes) throw ohosImageTooLargeForCodec("这张 " + attachment.ref.width + "x" + attachment.ref.height + " 的图有 " + attachment.data.byteLength + " 字节，超过当前模型允许的 " + target.maxBytes + " 字节");
++		return {
++			data: attachment.data,
++			mediaType: attachment.ref.mediaType,
++			width: attachment.ref.width,
++			height: attachment.ref.height
++		};
++	}
+ 	if (target.width >= attachment.ref.width && target.height >= attachment.ref.height && attachment.data.byteLength <= target.maxBytes) return {
+ 		data: attachment.data,
+ 		mediaType: attachment.ref.mediaType,
