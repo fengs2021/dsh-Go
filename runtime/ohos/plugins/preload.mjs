@@ -1,6 +1,10 @@
 import { isMainThread, getEnvironmentData, setEnvironmentData, workerData } from 'node:worker_threads';
 
 if (process.platform === 'openharmony') {
+  // Plugin compatibility shims go first: a stripped runtime must not fail an
+  // import just because it lacks the inspector or a legacy text decoder.
+  const { installCompatShims } = await import('./shims.mjs');
+  installCompatShims();
   const internal = !isMainThread && (workerData?.dshOhosVirtualProcess?.protocol === 1 ||
     workerData?.dshOhosNodeScript?.protocol === 1);
   // Dedicated command Workers have their own cwd/fs/child_process guards.

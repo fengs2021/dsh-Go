@@ -753,3 +753,58 @@ v58 验收时用户在会话里想 grep 一下 [attach] 行，结果 $DSH_HOME �
 1. 会话里问「引擎日志里有没有 attach 报错」→ 模型应调用 `mcp__engine__log` `action=grep` `pattern` 为 `\[attach\]`，返回带行号的命中行或明确「没有匹配」。
 2. `action=path` 的第一个候选应当形如 `/data/app/el2/100/base/io.github.ccch1mneyyy.dsh_app/files/dsh-runtime/engine.log`。
 3. `action=save` 后工作区出现 `engine-log-<ts>.log`，会话 bash 能 grep 这份副本。
+
+## 21. 插件「import 即崩」不再等于插件消失：能力垫片（2026-11-16 v60）
+
+手机是「本机引擎 + Web GUI（ArkWeb）」的精简运行时：`icu_small` 只有 utf-8 编码、没有 inspector。症状很刺眼——上架插件在模块加载期就抛（`new TextDecoder('gbk', {fatal:true})` 写在顶层、`import inspector from 'node:inspector'` 也在顶层），插件从界面上直接消失。桌面侧灵枢给了两例热修（dshmarket 改用 `createRequire` 取 inspector、better-sidebar 把 GBK 解码器改成惰性工厂）和一份 6 条建议。本节记录**在 dsh-go 侧**核验与落地的是哪一半。
+
+### 21.1 结论先行
+
+| 队友建议 | 我的判定 | 处置 |
+| --- | --- | --- |
+| P0-1 能力垫片（缺 builtin / 旧编码 → 惰性失败） | **成立，真正的解锁点** | 已落地 `runtime/ohos/plugins/shims.mjs`，v60 起随宿主加载 |
+| P0-2「`did not activate` 只有一行无主 warning，没有插件名/错因/栈」 | **不成立**（见 21.2） | 不改代码，只补 grep 配方 |
+| P1-3 preflight 扫描 / P1-4 状态机 / P2-5 热修资产化 / P2-6 背 full-icu | 有价值但成本高、收益靠后 | 暂不做，记为后续 |
+### 21.2 先纠正一条误判：engine.log 里本来就有插件名和栈
+
+队友看到的是首行 `dsh: warning: 2 entries did not activate`，据此判断「没有插件名、没有错因、没有栈」。源码不是这样：
+- `node_modules/@deepseek-ai/dsh-app-boot/lib/index.js:5264`：`if (failures.length > 0) warn(activationDiagnostic(binName, failures));`，而 `auditStartupEntries(ctx, binName, warn = (line) => void process.stderr.write(line))` —— **默认 sink 就是 stderr**，在手机上即 `files/dsh-runtime/engine.log`。
+- `inactiveDiagnostic({entry, outcome}, stacks = true)`（:5207）返回 `${entry.options.id} (${entry.options.name}): ${detail}`，`detail` 由 `failureDetail` 拼 `phase: ` 加 `formatActivationError(error, stacks)`（:5068，递归展开 `value.stack ?? value.message` 与 `cause`）。
+- 设备侧历史证据对得上：engine.log 里 `ERR_INSPECTOR_NOT_AVAILABLE` 8 次、`ERR_ENCODING_NOT_SUPPORTED`（gbk）8 次，正是这两条链的产物。
+
+所以不新增「结构化事件」也能定位是哪个插件、在哪个阶段崩的。会话里直接查：
+
+```
+mcp__engine__log action=grep pattern=did not activate
+mcp__engine__log action=grep pattern=ERR_INSPECTOR_NOT_AVAILABLE
+mcp__engine__log action=grep pattern=ERR_ENCODING_NOT_SUPPORTED
+```
+
+真正的残余缺口是**界面可见性**（插件页徽标）与机器可读事件，两者都在 Web 前端 bundle 里，不是 runtime 能顺手修的。
+### 21.3 垫片做了什么
+
+`runtime/ohos/plugins/shims.mjs`：
+
+1. **builtin 存根**：`node:inspector` / `node:inspector/promises` 在运行时缺失时（用 `createRequire` 探测，抛 `ERR_INSPECTOR_NOT_AVAILABLE` 即判定缺失）用 `module.registerHooks` 的 resolve 钩子把它们指到一段 **data: URL** 的 ESM 存根。存根导出名齐全（`url`/`open`/`close`/`waitForDebugger`/`Session`/`console`），探测型 API 返回 `undefined`（`url()` 恒为 undefined，于是「有没有调试器」判成否），真要用才抛 `ERR_DSHGO_BUILTIN_UNAVAILABLE`。插件顶层 import 不再炸，能力按需失败。
+2. **惰性 TextDecoder**：仅在 `new TextDecoder('gbk')` 会抛 `ERR_ENCODING_NOT_SUPPORTED` 的机器上安装（full-icu 的桌面不受影响）。utf-8 完全委派原生实现；非 utf-8 构造不抛，`decode()` 时才抛同名错误（带 `.encoding`/`.cause`），于是 GBK 退化成个别乱码，而不是整个插件崩掉。同时替换 `globalThis.TextDecoder` 与 `require('node:util').TextDecoder`。
+3. **每次生效写一行** `[ohos-shim] …` 进 engine.log，会话可自查；`DSH_GO_NO_OHOS_SHIMS=1` 可整体关掉，全局标记保证幂等。
+
+**一个必须记住的实测坑**：resolve 钩子里必须放过 `require` 条件 —— `const conditions = context?.conditions; if (!Array.isArray(conditions) || conditions.includes('require')) return nextResolve(specifier, context);`。否则 `require('node:inspector')` 被短路到 `data:` 会炸在 `node:internal/modules/cjs/loader` 的 `loadBuiltinWithHooks`（`TypeError: Cannot read properties of undefined (reading 'exports')`），比原来的错误更糟。CJS 侧保持原样：插件用 `createRequire` 加 `try/catch` 的写法本来就能兜住。
+
+接线在 `runtime/ohos/plugins/preload.mjs` 最前面（`process.platform === 'openharmony'` 分支的第一件事），因为垫片必须早于任何插件 import。
+
+### 21.4 测试
+`runtime/tests/ohos/plugin-compat-shims.test.mjs` 9 例（本机可跑）：三态探测、存根源码内容、全可用时不注册钩子、ESM 短路与 require/条件缺失的 passthrough、`registerHooks` 缺失时降级、`createLazyTextDecoder` 的委派/惰性抛错/fatal/标签、`installEncodingShims` 三种返回、以及**子进程真跑**一段 `import inspector, { Session } from 'node:inspector'` 的插件代码，验证拿到的是存根而不是崩溃。与既有 10 个 ohos 测试合跑 **99 pass / 2 fail**；两个 fail 是环境性既有问题（`plugin-package-harness.mjs:16` 的 `resolve(undefined)`），在加载本改动之前就崩。
+
+### 21.5 产物（v60，设备离线未装机）
+| 版本 | runtimeVersion | unsigned | signed |
+| --- | --- | --- | --- |
+| 1.0.50+50 | `ohos-bb21f83be5af4f52af44ae73` | `dsh-ohos-v60-unsigned.hap` 274,350,980 B md5 `cc314ac1e21c761e336ab1af7387cc73` | `dsh-ohos-v60-signed.hap` 274,428,789 B md5 `f162f9d777e602aed62ad17e6a9407c1` |
+
+链路：`scripts/compose58.sh`（payloadFiles 55,557，比 v59 多出 shims.mjs；`archiveBytes` 205,351,508）→ `scripts/fullhap60.sh`（`FULLHAP60_RC=0`，`audit-hap: OK`，`archiveSHA256` `90f8974980a705ef46ceadb3ba7e5f1b43521e1bc269ce62effd123034a20e65`，`identicalToInput: true`，work `/root/b60/work/check-DqXOdv9z`）→ HoKit 签名（`tools/hokit-asar/resign-expr-v60.js`）。
+
+### 21.6 验收判据
+1. `engine.log` 出现 `[ohos-shim] node:inspector is missing in this runtime` 与 `[ohos-shim] TextDecoder shim installed` 两行 → 垫片装上了。
+2. 之前自动失活的插件（dshmarket / better-sidebar）在插件页恢复为可启用状态，不再从列表消失；`dsh: warning: N entries did not activate` 的 N 下降。
+3. GBK 场景下界面文字退化为乱码，但插件活着（原来整插件崩）。
+4. 关掉垫片可复现原症状：`DSH_GO_NO_OHOS_SHIMS=1` 时日志出现 `[ohos-shim] disabled by DSH_GO_NO_OHOS_SHIMS`，行为回到 v59。
