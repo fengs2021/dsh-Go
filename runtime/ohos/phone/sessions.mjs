@@ -266,11 +266,22 @@ export function turnTimings(events, options = {}) {
   return { turns, slowest, slow: turns.filter(turn => (turn.durationMs ?? 0) >= slowMs).length };
 }
 
-function result(ok, code, message, data) {
-  const value = { ok, code };
-  if (message) value.message = message;
-  if (data !== undefined) value.data = data;
+// 输出会被注册表快照成无损 JSON（pipeline.js），所以四个字段必须始终存在，
+// 也不能带值为 undefined 的属性（JSON.stringify 会把它悄悄丢掉，快照却会失败）。
+function jsonSafe(value) {
+  if (Array.isArray(value)) return value.map(jsonSafe);
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) if (item !== undefined) out[key] = jsonSafe(item);
+    return out;
+  }
   return value;
+}
+
+export { jsonSafe };
+
+function result(ok, code, message, data) {
+  return { ok, code, message: typeof message === 'string' ? message : '', data: jsonSafe(data === undefined ? {} : data) };
 }
 
 export function renderSessionSummary(summary) {
@@ -349,6 +360,21 @@ export async function readSessions(args = {}, deps = {}) {
   return result(true, 'ok', headline, { session: summary, timings: { slowest: timings.slowest, slow: timings.slow, turns: timings.turns }, lines });
 }
 
+// 注册表只认 JSON Schema 的一个子集（type/oneOf/properties/required/
+// additionalProperties/items/enum/const + 注解），不认 Standard Schema 那种
+// 带 parse 方法的对象；写错会让 ctx.tools.register 抛错、整个插件加载失败。
+export const sessionsSchema = Object.freeze({
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    ok: { type: 'boolean' },
+    code: { type: 'string' },
+    message: { type: 'string' },
+    data: { type: 'object', additionalProperties: true },
+  },
+  required: ['ok', 'code', 'message', 'data'],
+});
+
 export const sessionsTool = Object.freeze({
   name: 'mcp__engine__sessions',
   description: '读取本机引擎的会话日志（含 App 里"未分组"的会话）：列会话、看每一轮/每次尝试的耗时与失败原因。参数 action=list|timing|events，session 可给 id（默认最新一条），timing 用 slowMs 判定慢轮，events 用 lines 取末尾事件数。',
@@ -365,18 +391,13 @@ export const sessionsTool = Object.freeze({
 });
 
 export function registerSessionsTool(ctx) {
-  const schema = {
-    parse(value) {
-      return value;
-    },
-  };
   const text = value => [value.message, ...(Array.isArray(value.data && value.data.lines) ? value.data.lines : [])].filter(Boolean).join('\n');
   return ctx.tools.register({
     name: sessionsTool.name,
     description: sessionsTool.description,
     parameters: sessionsTool.parameters,
     timeoutMs: 30000,
-    output: { schema, render: (_args, value) => text(value) },
+    output: { schema: sessionsSchema, render: (_args, value) => text(value) },
     async execute(args, exec) {
       try {
         return await readSessions(args || {}, { workspace: sessionWorkspace(exec) });

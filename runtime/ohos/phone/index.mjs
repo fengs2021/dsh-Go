@@ -22,19 +22,18 @@ export function apply(ctx) {
   if (process.platform !== 'openharmony' && globalThis[simulationSymbol] !== true) return;
   if (Object.hasOwn(globalThis, phoneSymbol)) throw new Error('One phone callback owner is allowed per engine');
   const queue = new PhoneQueue(createNativePhonePort(ctx.ohosLifecycle.bootId));
-  let removeTools, removeUiTools, removeLogTools, removeSessionTools;
-  try {
-    removeTools = registerPhoneTools(ctx, queue);
-    removeUiTools = registerUiTools(ctx);
-    removeLogTools = registerEngineLogTool(ctx);
-    removeSessionTools = registerSessionsTool(ctx);
-  }
-  catch (error) {
-    // 已经失败的注册不再抛第二个错：从前到后把建起来的都拆掉。
-    for (const dispose of [removeSessionTools, removeLogTools, removeUiTools, removeTools]) { try { dispose?.(); } catch { /* 忽略 */ } }
-    queue.close();
-    throw error;
-  }
+  // 逐个注册：一个工具的描述写错，不该把整个手机桥（截图/点击/引擎日志）一起带走。
+  const safeRegister = (label, register) => {
+    try { return register(); }
+    catch (error) {
+      console.error('[phone] register failed ' + label + ': ' + ((error && error.message) || error));
+      return () => {};
+    }
+  };
+  const removeTools = safeRegister('mcp__phone__*', () => registerPhoneTools(ctx, queue));
+  const removeUiTools = safeRegister('mcp__phone__ui', () => registerUiTools(ctx));
+  const removeLogTools = safeRegister('mcp__engine__log', () => registerEngineLogTool(ctx));
+  const removeSessionTools = safeRegister('mcp__engine__sessions', () => registerSessionsTool(ctx));
   // A disposed bridge stays closed. Reloading a plugin must never replay an old call.
   Object.defineProperty(globalThis, phoneSymbol, { value: queue, configurable: false, writable: false });
   ctx.effect(() => () => { queue.close(); removeTools(); removeUiTools(); removeLogTools(); removeSessionTools(); }, 'ohos phone shutdown');
