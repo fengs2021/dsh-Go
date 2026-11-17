@@ -420,4 +420,62 @@ void main() {
     expect(phoneResultDecision(result(DshPhoneStatus.timedOut, 'deadline_expired')), 'timeout');
     expect(phoneResultDecision(result(DshPhoneStatus.cancelled, 'user_stopped')), 'stopped');
   });
+
+  group('调试通道状态：引擎写的 hdc-status.json → 页面用的形状', () {
+    test('没有状态文件（引擎没跑过自检）就是「还没检测」', () {
+      for (final map in <Map<Object?, Object?>?>[null, const {}]) {
+        final hdc = HdcChannelState.fromMap(map);
+        expect(hdc.loaded, isFalse);
+        expect(hdc.stage, HdcStage.unknown);
+        expect(hdc.checking, isFalse);
+        expect(hdc.checkedAt, isNull);
+        expect(hdc.authorized, isFalse);
+      }
+    });
+
+    test('已授权：带端口、检测时间与引擎给的下一步', () {
+      final hdc = HdcChannelState.fromMap(const {
+        'present': true,
+        'stage': 'authorized',
+        'authorized': true,
+        'updatedAt': 1700000000000,
+        'port': 45957,
+        'hints': ['第一步', '', '第二步', 42],
+      });
+      expect(hdc.loaded, isTrue);
+      expect(hdc.authorized, isTrue);
+      expect(hdc.port, 45957);
+      expect(hdc.checkedAt, DateTime.fromMillisecondsSinceEpoch(1700000000000));
+      expect(hdc.hints, ['第一步', '第二步'], reason: '空串和非字符串提示要丢掉');
+    });
+
+    test('每个 stage 都各自有对应值，未知值退回 unknown', () {
+      for (final (raw, expected) in [
+        ('unauthorized', HdcStage.unauthorized),
+        ('no_port', HdcStage.noPort),
+        ('error', HdcStage.error),
+        ('authorized', HdcStage.authorized),
+        ('莫名其妙', HdcStage.unknown),
+      ]) {
+        final hdc = HdcChannelState.fromMap({'present': true, 'stage': raw});
+        expect(hdc.stage, expected, reason: raw);
+      }
+      // 授权字段为真时压过 stage：引擎只在通道确实可用时才这么写。
+      expect(HdcChannelState.fromMap(const {'present': true, 'stage': 'unauthorized', 'authorized': true}).authorized, isTrue);
+      // 只有 stage 说已授权、字段没真时，仍然按 stage 认出已授权（旧状态文件没有该字段）。
+      expect(HdcChannelState.fromMap(const {'present': true, 'stage': 'authorized'}).authorized, isTrue);
+    });
+
+    test('重新检测中的状态能叠加到已有状态上，检测时间不变', () {
+      final before = HdcChannelState.fromMap(const {
+        'present': true,
+        'stage': 'unauthorized',
+        'updatedAt': 1700000000000,
+      });
+      final checking = before.copyWith(checking: true);
+      expect(checking.checking, isTrue);
+      expect(checking.stage, HdcStage.unauthorized);
+      expect(checking.checkedAt, before.checkedAt);
+    });
+  });
 }
