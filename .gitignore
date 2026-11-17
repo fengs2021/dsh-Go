@@ -42,5 +42,8 @@ site/build/
 
 # Reproducible private OHOS rg regex build
 runtime/ohos/process/build/
+
+# hdc 客户端密钥：本机生成、随包内置的那一份不入库（缺了会按需生成到 ~/.dsh/hdc-client/）
+runtime/ohos/phone/hdc-key/
 # NodeMobile, the runtime archive and addon sources: tooling/ios/prepare-engine.sh
 app/ios/Engine/
