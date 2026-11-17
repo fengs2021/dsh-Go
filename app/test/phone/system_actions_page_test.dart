@@ -142,6 +142,53 @@ void main() {
     expect(find.textContaining('悬浮'), findsNothing);
   });
 
+  group('界面操作（调试通道）这张卡只说现在为真的事', () {
+    testWidgets('还没授权：说还没授权，并给出第一次授权的四步', (tester) async {
+      await _pump(
+        tester,
+        const SystemActionsPage(),
+        state: const SystemActionsState(
+          loaded: true,
+          hdc: HdcChannelState(loaded: true, stage: HdcStage.unauthorized),
+        ),
+      );
+      expect(find.text(_zh.systemActionsScreenTitle), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenUnauthorized), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenStepsTitle), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenSteps), findsOneWidget);
+      // 没授权时「做不到的」那张卡里仍然明说看屏幕做不到。
+      expect(find.text(_zh.systemActionsCannotScreen), findsOneWidget);
+    });
+
+    testWidgets('已授权：说已授权、显示检测时间，不再说看屏幕做不到', (tester) async {
+      await _pump(
+        tester,
+        const SystemActionsPage(),
+        state: SystemActionsState(
+          loaded: true,
+          hdc: HdcChannelState(
+            loaded: true,
+            stage: HdcStage.authorized,
+            checkedAt: DateTime(2026, 11, 17, 22, 5),
+            port: 45957,
+          ),
+        ),
+      );
+      expect(find.text(_zh.systemActionsScreenAuthorized), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenAuthorizedHint), findsOneWidget);
+      expect(find.text('22:05'), findsOneWidget, reason: '检测时间用 24 小时制 HH:mm');
+      expect(find.text(_zh.systemActionsScreenSteps), findsNothing);
+      expect(find.text(_zh.systemActionsCannotScreen), findsNothing);
+    });
+
+    testWidgets('引擎还没写过状态文件：说还没检测，不说没授权', (tester) async {
+      await _pump(tester, const SystemActionsPage(), state: const SystemActionsState(loaded: true));
+      expect(find.text(_zh.systemActionsScreenNeverChecked), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenUnknown), findsOneWidget);
+      expect(find.text(_zh.systemActionsScreenUnauthorized), findsNothing);
+    });
+  });
+
   group('闹钟和计时器 say what is true of this build', () {
     Finder under(String card, String title) => find.descendant(
       of: find.ancestor(of: find.text(card), matching: find.byType(ListPageCard)),
