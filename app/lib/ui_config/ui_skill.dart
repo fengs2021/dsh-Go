@@ -56,6 +56,12 @@ const companionAdaptSkillName = 'companion-adapt';
 /// can run them on the host.
 const petThemeSkillName = 'pet-theme';
 
+/// Launches and drives Android apps living inside a HarmonyOS compatibility
+/// container (卓易通). Those apps expose no accessibility nodes and have no
+/// HarmonyOS bundle name, so the skill teaches screenshot-plus-coordinate work
+/// and a one-time calibration that caches a replayable `aa start` command.
+const containerSkillName = 'zhuoyitong';
+
 /// The managed line inside SKILL.md's front matter.
 const uiSkillManagedMarker = '# dsh-go:managed';
 
@@ -180,6 +186,7 @@ final extraSkillLoadersProvider = Provider<List<UiSkillBundleLoader>>((ref) {
     () => loadUiSkillBundle(null, supportSkillName),
     () => loadUiSkillBundle(null, companionAdaptSkillName),
     () => loadUiSkillBundle(null, petThemeSkillName),
+    () => loadUiSkillBundle(null, containerSkillName),
   ];
 });
 
