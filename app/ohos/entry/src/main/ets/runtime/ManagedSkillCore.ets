@@ -1,3 +1,12 @@
+// The skills the app itself installs into the engine home. Both sides must agree:
+// Dart's extraSkillLoadersProvider installs each of these by name, and a name missing
+// here makes parse() return null, which the Dart installer treats as "not current"
+// and stops installing every later skill in the same batch.
+export const MANAGED_SKILL_NAMES: string[] = [
+  'dsh-go-ui', 'dsh-go-plugin', 'dsh-go-guide', 'dsh-go-support',
+  'companion-adapt', 'pet-theme', 'zhuoyitong',
+];
+
 // Pure admission/queue/transaction logic. No launcher and no platform globals.
 export class ManagedSkillOwner {
   private alive: boolean = true;
@@ -101,7 +110,7 @@ export class ManagedSkillRequest {
         typeof root !== 'string' || root.length === 0 || root.length > 4096 ||
         typeof token !== 'string' || token.length === 0 || token.length > 4096 ||
         typeof generation !== 'number' || !Number.isSafeInteger(generation) || generation < 1 ||
-        typeof name !== 'string' || !['dsh-go-ui', 'dsh-go-plugin', 'dsh-go-guide', 'dsh-go-support'].includes(name) ||
+        typeof name !== 'string' || !MANAGED_SKILL_NAMES.includes(name) ||
         !(files instanceof Map) || files.size < 1 || files.size > ManagedSkillRequest.MAX_FILES) return null;
     const checked = new Map<string, string>();
     let units = 0;
