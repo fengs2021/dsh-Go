@@ -13,13 +13,27 @@
 | `requestId` | 非空字符串，最多 200 个 UTF-16 单元，同一 owner 未结束请求不能重名 |
 | `expectedRoot` / `expectedToken` | 非空字符串，各最多 4096 个单元；root 在 IO 阶段比较 canonical path，token 只在内存比较 |
 | `expectedGeneration` | 已公布的正安全整数，必须与 owner 当前许可相等 |
-| `name` | 仅 `dsh-go-ui`、`dsh-go-plugin`、`dsh-go-guide`、`dsh-go-support` |
+| `name` | 仅 `dsh-go-ui`、`dsh-go-plugin`、`dsh-go-guide`、`dsh-go-support`、`companion-adapt`、`pet-theme`、`zhuoyitong`（ArkTS 与 Android 两侧同名白名单，见 §名字同步） |
 | `files` | 1–64 项字符串 Map，必须含 `SKILL.md`；路径最多 512 字符，只允许 ASCII 字母、数字、下划线、连字符开头的安全段，禁止绝对路径、空段、`.` 和 `..` |
 | 文本预算 | 每项 UTF-16 单元先限 512 Ki，总量先限 1 Mi；严格编码后仍分别限 UTF-8 512 KiB / 1 MiB，不截断 |
 
 回包仍为 `{result, current, reason}`。`result` 是 `installed`、`updated`、`unchanged`、`userOwned`、`noHome` 或 null；`current` 在回调交付时再次校验；`reason` 只使用固定协议值，不返回文件正文、token 或系统错误文本。`cancelManagedSkill` 仅取消当前 owner 的精确 `requestId`，非法或不存在的 id 不改变其他事务。
 
 Flutter OH StandardMessageCodec 将 INT32、可安全表示的 INT64 和 FLOAT64 解成 JS number，因此安装器只能验证正安全整数，不能再区分 wire 上的 `1` 与 `1.0`。超出 JS 安全整数的值拒绝；许可计数到达 `Number.MAX_SAFE_INTEGER` 后不再签发，不发生取整复用。该限制来自实际编码器声明与实现，不伪称完全保留 Kotlin Int/Long 的运行时类型区别。
+
+## 名字同步
+
+白名单在三个地方各写一份，任一处漏掉都会让安装**静默失败**：
+
+| 位置 | 作用 |
+| --- | --- |
+| `app/ohos/entry/src/main/ets/runtime/ManagedSkillCore.ets` 的 `MANAGED_SKILL_NAMES` | ArkTS 侧准入；`parse()` 返回 null → Service 回 `{result:null, current:false, reason:'invalid'}` |
+| `app/android/.../runtime/ManagedSkillInstaller.kt` 的 `names` | Android 侧准入 |
+| `app/lib/ui_config/ui_skill.dart` 的 `extraSkillLoadersProvider` | Dart 侧实际要装的技能清单 |
+
+Dart 的 `UiSkillAutoInstaller` 按顺序逐个装，**只要有一个回 `current:false` 就把整个 batch 判成 retired 并 `break`**，后面的技能也不会再装，且异常被 `catch (_) {}` 吞掉、用户与日志都看不到。2026-11-18 之前 ArkTS 白名单只有 4 个名字（缺 `companion-adapt`、`pet-theme`），Android 缺 `pet-theme`，所以鸿蒙上排队在后面的技能实际从未安装成功；同批修复时把 ArkTS 常量改成导出数组，新增技能（`zhuoyitong`）三处同步补齐。
+
+新增技能请同时改：资产目录 + `pubspec.yaml` 资产表 + 上表三处 + `docs/design/harmonyos/managed-skills.md` 的 `name` 行 + `app/test/ui_config/<name>_skill_test.dart`。
 
 ## 运行许可与 owner
 
