@@ -19,10 +19,13 @@ void main() {
     expect(bundle.files.keys, ['SKILL.md']);
     expect(bundle.writeOrder.last.key, 'SKILL.md');
     expect(isManagedUiSkill(bundle.skillMd), isTrue);
-    // The trigger the person actually says, and the tool it must name.
+    // 校正后的关键事实：一条 aa start 带入口 Activity、bm dump 查不到属正常、坐标是兜底。
     expect(bundle.skillMd, contains('name: zhuoyitong'));
-    expect(bundle.skillMd, contains('mcp__phone__ui'));
-    expect(bundle.skillMd, contains('10104001'));
+    expect(bundle.skillMd, contains('aa start -b <安卓包名> -a <入口Activity>'));
+    expect(bundle.skillMd, contains('com.qidian.QDReader.ui.activity.SplashActivity'));
+    expect(bundle.skillMd, contains('bundle not exist'));
+    expect(bundle.skillMd, contains('mcp__phone__shell'));
+    expect(bundle.skillMd, contains('no_nodes'));
     final root = tempRootfs();
     addTearDown(() => root.deleteSync(recursive: true));
     expect(await installUiSkill(root, bundle), UiSkillInstallResult.installed);
