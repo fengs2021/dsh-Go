@@ -49,6 +49,7 @@ export class LinuxInstallationOwner {
       this.#instance=await openLinuxInstance({directory,manifest,lockExclusive:this.#internals.lockExclusive??linuxHostLock()},this.#internals.instance);
       const store=this.#instance;
       this.#retainedExisting=store.existing;this.#attempt=store.directory;this.#persistentId=store.persistentInstanceId;this.#bootMode=store.existing?'resume':'install';
+      if(store.unconfirmedClose)console.error('[linux] resuming a retained instance whose close was never confirmed (process killed by an App update, a crash or a power loss)');
       const epoch=this.#epoch=store.epoch;let images;
       const paths=Object.fromEntries(['bios','kernel','tools'].map(name=>[name,join(this.#attempt,name+'.bin')]));
       signal.throwIfAborted();

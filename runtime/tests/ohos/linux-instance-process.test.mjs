@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, stat, readFile, readdir, writeFile, rename, rm, link, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 // The coordinator is outside O0 solely to create/kill independent processes and
@@ -68,28 +69,36 @@ test('real held lock prevents download; release admits the same inode and only t
   const after = await stat(f.directory); assert.equal(after.ino, before.ino); assert.equal(after.dev, before.dev);
 });
 
-test('unconfirmed controlled native retirement keeps a real cross-process lock; after process exit dirty state still refuses', async t => {
+test('unconfirmed controlled native retirement keeps a real cross-process lock; after process exit the retained disk resumes', async t => {
   const f = await fixture(t), first = f.start('debt'), held = await first.next();
   assert.equal(held.event, 'debt'); assert.equal(held.retirement.resourcesRetired, false); assert.equal(held.retirement.cleanCheckpoint, false);
   const lock = await stat(join(f.directory, '.lock')), before = await stat(held.disk.path);
   const blocked = f.start('reject'), busy = await blocked.next(); assert.equal(busy.errorCode, 'ERR_OHOS_LINUX_BUSY');
   assert.equal(busy.downloads, 0); assert.equal(busy.created, 0); assert.deepEqual(await blocked.exited, { code: 0, signal: null });
   first.child.stdin.end('exit\n'); assert.deepEqual(await first.exited, { code: 0, signal: null });
-  const reopened = f.start('reject'), rejected = await reopened.next();
-  assert.equal(rejected.errorCode, 'ERR_OHOS_LINUX_RECOVERY_REQUIRED'); assert.equal(rejected.downloads, 0); assert.equal(rejected.created, 0);
+  // The process is gone and its record still says active with no confirmed close:
+  // exactly what an App update leaves behind. The next owner resumes the disk it has.
+  const reopened = f.start('resume'), resumed = await reopened.next();
+  assert.equal(resumed.event, 'resumed'); assert.equal(resumed.downloads, 0); assert.equal(resumed.created, 1);
+  assert.equal(resumed.disk.path, held.disk.path); assert.equal(resumed.retirement.cleanCheckpoint, true);
   assert.deepEqual(await reopened.exited, { code: 0, signal: null });
-  unchanged(before, await stat(held.disk.path)); unchanged(lock, await stat(join(f.directory, '.lock')));
-  t.diagnostic(JSON.stringify({ scope: 'real flock/real processes; native join is a controlled unconfirmed acknowledgement', pids: [held.pid, busy.pid, rejected.pid], dirtyState: held.disk.record.state, lockInode: lock.ino }));
+  assert.equal(createHash('sha256').update(await readFile(held.disk.path)).digest('hex'), held.disk.sha256);
+  unchanged(lock, await stat(join(f.directory, '.lock')));
+  t.diagnostic(JSON.stringify({ scope: 'real flock/real processes; native join is a controlled unconfirmed acknowledgement', pids: [held.pid, busy.pid, resumed.pid], dirtyState: held.disk.record.state, lockInode: lock.ino }));
 });
 
-test('SIGKILL releases the real FD lock but cannot promote the durable pre-boot dirty record', async t => {
+test('SIGKILL releases the real FD lock and the durable pre-boot dirty record resumes instead of demanding a reinstall', async t => {
   const f = await fixture(t), first = f.start('crash'), booting = await first.next();
   assert.equal(booting.event, 'booting'); assert.equal(booting.disk.record.state, 'booting');
-  const before = await readFile(booting.disk.path), lock = await stat(join(f.directory, '.lock'));
+  const lock = await stat(join(f.directory, '.lock'));
   first.child.kill('SIGKILL'); assert.deepEqual(await first.exited, { code: null, signal: 'SIGKILL' });
-  const second = f.start('reject'), result = await second.next();
-  assert.equal(result.errorCode, 'ERR_OHOS_LINUX_RECOVERY_REQUIRED'); assert.equal(result.downloads, 0); assert.equal(result.created, 0);
-  assert.deepEqual(await second.exited, { code: 0, signal: null }); assert.deepEqual(await readFile(booting.disk.path), before);
+  // Crash recovery, not a reinstall: the exclusive lock already proved no live
+  // owner exists, and the target is re-validated by identity and size first.
+  const second = f.start('resume'), result = await second.next();
+  assert.equal(result.event, 'resumed'); assert.equal(result.downloads, 0); assert.equal(result.created, 1);
+  assert.equal(result.disk.path, booting.disk.path); assert.equal(result.retirement.cleanCheckpoint, true);
+  assert.deepEqual(await second.exited, { code: 0, signal: null });
+  assert.equal(createHash('sha256').update(await readFile(booting.disk.path)).digest('hex'), booting.disk.sha256);
   unchanged(lock, await stat(join(f.directory, '.lock')));
   await rm(booting.fixtureRoot, { recursive: true, force: true });
   t.diagnostic(JSON.stringify({ scope: 'real SIGKILL/flock/files; native create is a controlled boundary, not a VM', pids: [booting.pid, result.pid], target: booting.disk, lockInode: lock.ino }));
