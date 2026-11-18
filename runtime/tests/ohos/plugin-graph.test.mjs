@@ -64,6 +64,37 @@ test('host peers and dependencies keep one host instance; missing and incompatib
     hostPackages: new Map([['core', { version: '2.0.0', packageDir: '/engine/core' }]]) }), /core.*incompatible/);
 });
 
+test('web GUI peers are recorded as absent instead of failing the install', async () => {
+  const peers = { react: '^18.2.0', 'react-dom': '^18.2.0', 'react/jsx-runtime': '^18.2.0' };
+  const { client } = fixture({ root: { '1.0.0': pkg('root', '1.0.0', { peerDependencies: peers }) } });
+  const graph = await resolveGraph({ spec: 'root', registryClient: client });
+  assert.equal(graph.nodes.length, 1);
+  for (const name of Object.keys(peers)) assert.match(graph.nodes[0].omitted[name], /web GUI peer/);
+  assert.deepEqual(graph.nodes[0].peers, {});
+  // A peer that is neither a host package nor the web GUI's stays a hard error.
+  const other = fixture({ root: { '1.0.0': pkg('root', '1.0.0', { peerDependencies: { absent: '*' } }) } });
+  await assert.rejects(resolveGraph({ spec: 'root', registryClient: other.client }),
+    /unsupported non-host peer absent/);
+});
+
+test('a peer no host provides is supplied from the registry as a package edge', async () => {
+  const { client } = fixture({
+    root: { '1.0.0': pkg('root', '1.0.0', { peerDependencies: { sibling: '^1' } }) },
+    sibling: { '1.2.0': pkg('sibling', '1.2.0') },
+  });
+  const graph = await resolveGraph({ spec: 'root', registryClient: client });
+  assert.deepEqual(graph.nodes[0].peers.sibling, { type: 'package', id: 'sibling@1.2.0' });
+  assert.deepEqual(graph.nodes.map(n => n.id).sort(), ['root@1.0.0', 'sibling@1.2.0']);
+  // Same plugin tree: a peer on a sibling package resolves without a second copy.
+  const shared = fixture({
+    root: { '1.0.0': pkg('root', '1.0.0', { dependencies: { sib: '^1' }, peerDependencies: { sib: '^1' } }) },
+    sib: { '1.0.0': pkg('sib', '1.0.0') },
+  });
+  const graph2 = await resolveGraph({ spec: 'root', registryClient: shared.client });
+  assert.deepEqual(graph2.nodes[0].peers.sib, { type: 'package', id: 'sib@1.0.0' });
+  assert.equal(graph2.nodes.length, 2);
+});
+
 test('optional overrides ordinary dependency; explicit platform exclusion recorded', async () => {
   const { client } = fixture({ root: { '1.0.0': pkg('root', '1.0.0', {
     dependencies: { dep: '1' }, optionalDependencies: { dep: '2', linux: '1' },
