@@ -15,6 +15,9 @@ const hex = value => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 // Names an explicit discard gives entries it has taken out of the instance
 // namespace. Such an entry is garbage: never an instance, never resumed.
 const discarded = /^\.discard-[A-Za-z0-9_-]+$/;
+// Marks a retained record whose lifetime ended without a confirmed close. It is
+// never persisted: the resumed attempt persists booting/active/clean anew.
+const UNCONFIRMED = Symbol('unconfirmedClose');
 
 export function cleanGuestClose(value, epoch) {
   return exact(value, ['epoch', 'rootfsSync', 'syncMethod', 'syncScope']) && value.epoch === epoch &&
@@ -47,13 +50,32 @@ function decode(text, expected) {
       !inode(value.root) || !inode(value.instance) || text !== JSON.stringify(value) + '\n') {
     throw fail('ERR_OHOS_LINUX_INSTANCE_CORRUPT', 'Unsupported or ambiguous Linux instance record');
   }
-  if (value.state !== 'clean') throw fail('ERR_OHOS_LINUX_RECOVERY_REQUIRED', 'The retained Linux instance has no confirmed clean close; automatic overwrite is forbidden');
   if (value.assetIdentity !== expected) throw fail('ERR_OHOS_LINUX_ASSET_GENERATION', 'Retained Linux instance belongs to a different asset generation');
   if (!exact(value.target, ['name', 'bytes', 'dev', 'ino']) || value.target.name !== 'target.ext4' ||
-      !Number.isSafeInteger(value.target.bytes) || value.target.bytes <= 0 || !decimal(value.target.dev) || !decimal(value.target.ino) ||
-      !cleanGuestClose(value.guestClose, value.epoch) || !exact(value.native, ['joined', 'retirementError', 'apiResult']) || !cleanNative(value.native)) {
-    throw fail('ERR_OHOS_LINUX_INSTANCE_CORRUPT', 'Linux clean record lacks exact disk or close identity');
+      !Number.isSafeInteger(value.target.bytes) || value.target.bytes <= 0 || !decimal(value.target.dev) || !decimal(value.target.ino)) {
+    throw fail('ERR_OHOS_LINUX_INSTANCE_CORRUPT', 'Linux retained record lacks exact disk identity');
   }
+  if (value.state === 'clean') {
+    if (!cleanGuestClose(value.guestClose, value.epoch) || !exact(value.native, ['joined', 'retirementError', 'apiResult']) || !cleanNative(value.native)) {
+      throw fail('ERR_OHOS_LINUX_INSTANCE_CORRUPT', 'Linux clean record lacks exact close identity');
+    }
+    return value;
+  }
+  if (value.state === 'preparing') throw fail('ERR_OHOS_LINUX_RECOVERY_REQUIRED', 'The retained Linux instance never finished preparing; automatic overwrite is forbidden');
+  // booting or active: the exclusive flock this decode runs under proves no
+  // live owner exists, so the record belongs to a lifetime that ended without a
+  // confirmed close -- the process was killed by an App update, a crash or a
+  // power loss. That is ordinary crash recovery, not a reason to refuse: the
+  // mutable target is re-validated by identity and size, and the immutable boot
+  // copies by checksum, before the guest opens any disk, and the guest's ext4
+  // journal replays whatever the interrupted write path left behind. Only
+  // 'preparing' (whose target may not even exist yet) stays refused above.
+  // A close identity only ever belongs to 'clean'; one left over from an earlier
+  // epoch is stale data from a write that never landed and says nothing about the
+  // disk. The same epoch claiming a confirmed close while the record still says
+  // booting/active is self-contradictory, which no real transition produces.
+  if (cleanGuestClose(value.guestClose, value.epoch)) throw fail('ERR_OHOS_LINUX_INSTANCE_CORRUPT', 'A resumable Linux record claims a confirmed close of its own epoch');
+  Object.defineProperty(value, UNCONFIRMED, { value: true });
   return value;
 }
 
@@ -204,6 +226,7 @@ export async function openLinuxInstance({ directory, manifest, lockExclusive }, 
   }
   return Object.freeze({
     directory: path, existing,
+    unconfirmedClose: existing && record[UNCONFIRMED] === true,
     persistentInstanceId: record.persistentInstanceId,
     epoch: existing ? randomBytes(32).toString('hex') : record.epoch,
     target: join(path, 'target.ext4'),
