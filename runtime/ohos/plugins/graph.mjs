@@ -3,6 +3,13 @@ import { parseRegistrySpec, registryError, secureUrl } from './registry.mjs';
 
 const semver = createRequire(new URL('../../../package.json', import.meta.url))('semver');
 const maxNodes = 512;
+// The phone's UI is Flutter: nothing on OHOS can satisfy a react-shaped peer.
+// Desktop plugins declare them because their client half runs in the web GUI,
+// which brings its own react. Recorded as absent instead of failing the install,
+// so a plugin whose server half needs no react still installs; any other
+// unresolvable peer stays a hard error.
+const webGuiPeers = new Set(['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime',
+  'react-dom/client', 'react-dom/server']);
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 function fields(manifest, name) {
   const value = manifest[name] ?? {};
@@ -71,12 +78,29 @@ export async function resolveGraph({ spec, registryClient, hostPackages = new Ma
     nodes.set(id, node);
     const peerMeta = fields(manifest, 'peerDependenciesMeta');
     for (const [name, range] of Object.entries(fields(manifest, 'peerDependencies'))) {
+      // Checked before parseRegistrySpec: subpath names such as react/jsx-runtime
+      // are not registry specs and would otherwise be rejected as malformed.
+      if (webGuiPeers.has(name)) {
+        Object.defineProperty(node.omitted, name, { value: 'web GUI peer, absent on OHOS', enumerable: true });
+        continue;
+      }
       parseRegistrySpec(`${name}@${range}`);
       const edge = hostEdge(name, range, hostPackages);
-      if (edge) Object.defineProperty(node.peers, name, { value: edge, enumerable: true });
-      else if (peerMeta[name]?.optional === true) Object.defineProperty(node.omitted, name, {
-        value: 'missing optional peer', enumerable: true });
-      else throw registryError(`${manifest.name}: unsupported non-host peer ${name}`);
+      if (edge) {
+        Object.defineProperty(node.peers, name, { value: edge, enumerable: true });
+        continue;
+      }
+      if (peerMeta[name]?.optional === true) {
+        Object.defineProperty(node.omitted, name, { value: 'missing optional peer', enumerable: true });
+        continue;
+      }
+      // No host satisfies this peer, so supply it from the registry the way npm
+      // does: a peer that is already in this graph (plugins commonly peer on
+      // their own sibling packages) or is fetchable becomes a package edge.
+      const supplied = await supplyPeer(`${name}@${range}`);
+      if (supplied === undefined)
+        throw registryError(`${manifest.name}: unsupported non-host peer ${name}`);
+      Object.defineProperty(node.peers, name, { value: supplied, enumerable: true });
     }
     const optionalDeps = fields(manifest, 'optionalDependencies');
     const dependencies = { ...fields(manifest, 'dependencies'), ...optionalDeps };
@@ -90,6 +114,19 @@ export async function resolveGraph({ spec, registryClient, hostPackages = new Ma
       else Object.defineProperty(node.dependencies, name, { value: host ?? { type: 'package', id: target }, enumerable: true });
     }
     return id;
+  }
+  async function supplyPeer(request) {
+    try {
+      const id = await visit(request, true);
+      return id === undefined ? undefined : { type: 'package', id };
+    } catch (cause) {
+      // Only "this package does not exist here" means the peer is unavailable;
+      // network, integrity and locking failures stay fatal.
+      const unavailable = cause?.code === 'ERR_PNPM_FETCH_404' ||
+        (cause?.code === 'ERR_OHOS_PLUGIN_PACKAGE' && /incompatible OHOS arm64 platform/.test(cause.message));
+      if (!unavailable) throw cause;
+      return undefined;
+    }
   }
   const root = await visit(spec);
   return { schema: 1, root, nodes: [...nodes.values()] };
