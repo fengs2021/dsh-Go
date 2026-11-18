@@ -36,7 +36,8 @@ try {
     throw new Error('crash actor must be killed by its coordinator');
   } else {
     const { active } = await installing, retirement = await owner.dispose();
-    send({ event: mode === 'debt' ? 'debt' : 'clean', disk: await disk(), retirement, active, fixtureRoot: f.directory });
+    send({ event: mode === 'debt' ? 'debt' : mode === 'resume' ? 'resumed' : 'clean', disk: await disk(), retirement, active,
+      fixtureRoot: f.directory, downloads, created: f.counts().created });
     if (mode === 'debt') await new Promise(resolve => process.stdin.once('data', resolve));
   }
 } finally { for (const cleanup of cleanups) await cleanup(); }

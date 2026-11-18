@@ -61,8 +61,35 @@ test('dirty consume directory sync failure prevents native create and retains th
   assert.equal(fault.hit(), true); assert.equal(g.counts().created, 0); assert.equal(downloads(), 0);
   assert.equal((await read(active)).state, 'booting'); await fs.access(active.target);
   const retired = await second.dispose(); assert.equal(retired.resourcesRetired, true); assert.equal(retired.cleanCheckpoint, false); assert.equal(retired.dataRetained, true);
-  const { owner: third, g: h } = await next(t, f);
-  await assert.rejects(third.install(), { code: 'ERR_OHOS_LINUX_RECOVERY_REQUIRED' }); assert.equal(h.counts().created, 0);
+  // The retained record only ever says "booting": its owner died before a clean
+  // checkpoint, which is exactly what an App update leaves behind. The next open
+  // resumes the disk it already has instead of demanding a reinstall.
+  const { owner: third, g: h, downloads: thirdDownloads } = await next(t, f), resumed = await third.install();
+  assert.equal(third.bootMode, 'resume'); assert.equal(h.counts().created, 1); assert.equal(thirdDownloads(), 0);
+  assert.equal(resumed.active.target, active.target); assert.equal((await read(active)).state, 'active');
+  assert.equal((await third.dispose()).cleanCheckpoint, true);
+});
+
+test('an instance the App killed while running resumes from its own disk', async t => {
+  const { f, owner, active } = await installed(t); await owner.dispose();
+  const value = await read(active);
+  // What 'hdc install' leaves behind: the process is gone, the record still says
+  // active and no lifetime ever confirmed a close.
+  await fs.writeFile(record(active), JSON.stringify({ ...value, state: 'active', guestClose: null, native: null }) + '\n');
+  const { g, owner: second, downloads } = await next(t, f), resumed = await second.install();
+  assert.equal(second.bootMode, 'resume'); assert.equal(g.counts().created, 1); assert.equal(downloads(), 0);
+  assert.equal(resumed.active.target, active.target); assert.notEqual(resumed.active.epoch, value.epoch);
+  assert.equal((await read(active)).state, 'active');
+  assert.equal((await second.dispose()).cleanCheckpoint, true);
+});
+
+test('a retained record that claims a confirmed close of its own epoch is still refused', async t => {
+  const { f, owner, active } = await installed(t); await owner.dispose();
+  const { owner: second, g, downloads } = await next(t, f), value = await read(active);
+  value.state = 'booting'; await fs.writeFile(record(active), JSON.stringify(value) + '\n');
+  await assert.rejects(second.install(), { code: 'ERR_OHOS_LINUX_INSTANCE_CORRUPT' });
+  assert.equal(g.counts().created, 0); assert.equal(downloads(), 0);
+  assert.equal(await fs.readFile(record(active), 'utf8'), JSON.stringify(value) + '\n');
 });
 
 test('clean rename then directory sync failure is unconfirmed now; a fresh owner validates the visible new clean', async t => {
@@ -116,7 +143,7 @@ test('cancel before resumed opened retains the old disk and a dirty record', asy
   assert.deepEqual(await fs.readFile(active.target), bytes); assert.equal((await read(active)).state, 'booting');
 });
 
-for (const mutation of ['old-v1', 'missing', 'corrupt', 'id-array', 'dirty', 'assets', 'multiple', 'target-replaced', 'target-size', 'boot-copy']) {
+for (const mutation of ['old-v1', 'missing', 'corrupt', 'id-array', 'assets', 'multiple', 'target-replaced', 'target-size', 'boot-copy']) {
   test('retained ' + mutation + ' is refused before download or native create, with no fallback deletion', async t => {
     const { f, owner, active } = await installed(t); await owner.dispose();
     const value = await read(active);
@@ -124,7 +151,6 @@ for (const mutation of ['old-v1', 'missing', 'corrupt', 'id-array', 'dirty', 'as
     if (mutation === 'missing') await fs.unlink(record(active));
     if (mutation === 'corrupt') await fs.writeFile(record(active), '{not-json');
     if (mutation === 'id-array') { value.persistentInstanceId = [value.persistentInstanceId]; await fs.writeFile(record(active), JSON.stringify(value) + '\n'); }
-    if (mutation === 'dirty') { value.state = 'booting'; await fs.writeFile(record(active), JSON.stringify(value) + '\n'); }
     if (mutation === 'assets') { value.assetIdentity = '0'.repeat(64); await fs.writeFile(record(active), JSON.stringify(value) + '\n'); }
     if (mutation === 'multiple') await fs.mkdir(join(f.data, '.installation-unrelated'));
     if (mutation === 'target-replaced') { await fs.rename(active.target, active.target + '.original'); await fs.copyFile(active.target + '.original', active.target); }
@@ -191,12 +217,12 @@ test('discard of a clean retained instance keeps the root and lock inode, and th
   assert.equal((await fresh.dispose()).cleanCheckpoint, true);
 });
 
-for (const [mutation, code] of [['assets', 'ERR_OHOS_LINUX_ASSET_GENERATION'], ['dirty', 'ERR_OHOS_LINUX_RECOVERY_REQUIRED'], ['multiple', 'ERR_OHOS_LINUX_RETAINED_INSTANCE']]) {
+for (const [mutation, code] of [['assets', 'ERR_OHOS_LINUX_ASSET_GENERATION'], ['preparing', 'ERR_OHOS_LINUX_RECOVERY_REQUIRED'], ['multiple', 'ERR_OHOS_LINUX_RETAINED_INSTANCE']]) {
   test('discard clears a retained root refused as ' + code + ' and the next open is a fresh install', async t => {
     const { f, owner, active } = await installed(t); await owner.dispose();
     const value = await read(active);
     if (mutation === 'assets') { value.assetIdentity = '0'.repeat(64); await fs.writeFile(record(active), JSON.stringify(value) + '\n'); }
-    if (mutation === 'dirty') { value.state = 'booting'; await fs.writeFile(record(active), JSON.stringify(value) + '\n'); }
+    if (mutation === 'preparing') { value.state = 'preparing'; value.guestClose = null; value.native = null; await fs.writeFile(record(active), JSON.stringify(value) + '\n'); }
     if (mutation === 'multiple') { await fs.mkdir(join(f.data, '.installation-unrelated')); await fs.writeFile(join(f.data, '.installation-unrelated', 'note'), 'x'); }
     const { owner: refused, g } = await next(t, f);
     await assert.rejects(refused.install(), { code }); assert.equal(g.counts().created, 0);
