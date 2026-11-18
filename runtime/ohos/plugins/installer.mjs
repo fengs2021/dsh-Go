@@ -56,9 +56,29 @@ async function download(node, path, options, budget) {
   }
 }
 
-function checkManifest(expected, actual) {
+// The registry normalises `bin` before it publishes a packument -- a bare string
+// becomes an object keyed by the package name and a leading `./` is dropped -- while the
+// tarball keeps whatever the publisher wrote (`"bin": "./bin.mjs"` stays as-is). Comparing
+// the two shapes verbatim refuses every package that ships a `bin`, so both sides are
+// first resolved to the normalised form npm itself records: sorted `[name, path]` pairs
+// with the leading `./` removed. A genuinely different target still refuses.
+function binEntries(value, name) {
+  if (value === undefined || value === null) return value;
+  const single = typeof value === 'string';
+  if (!single && (typeof value !== 'object' || Array.isArray(value) || Object.values(value).some(item => typeof item !== 'string')))
+    return value;
+  const entries = single
+    ? [[name.includes('/') ? name.slice(name.indexOf('/') + 1) : name, value]]
+    : Object.keys(value).map(key => [key, value[key]]);
+  return entries.sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([key, path]) => [key, path.replace(/^\.\//, '')]);
+}
+
+export function checkManifest(expected, actual) {
   for (const field of manifestFields) {
-    if (!isDeepStrictEqual(expected[field], actual[field]))
+    const left = field === 'bin' ? binEntries(expected[field], expected.name) : expected[field];
+    const right = field === 'bin' ? binEntries(actual[field], actual.name) : actual[field];
+    if (!isDeepStrictEqual(left, right))
       throw registryError(`${expected.name}: archive manifest differs from locked ${field}`);
   }
 }
