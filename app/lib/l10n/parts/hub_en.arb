@@ -51,6 +51,8 @@
   "hubSettingsPreferences": "Personal preferences",
   "hubSettingsAppearance": "Appearance",
   "hubSettingsChatTextSize": "Chat text size",
+  "hubTranslateReasoning": "Translate thinking automatically",
+  "hubTranslateReasoningHint": "Reasoning is translated into the interface language as soon as you expand it; “View original” switches back.",
   "hubSettingsCollapseSteps": "Collapse steps when done",
   "hubSettingsCollapseStepsHint": "Fold thinking and tool calls into one line",
   "hubSettingsWebPhoneLayout": "Web phone layout",

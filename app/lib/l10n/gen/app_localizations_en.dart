@@ -9418,6 +9418,13 @@ class L10nEn extends L10n {
   String get hubSettingsChatTextSize => 'Chat text size';
 
   @override
+  String get hubTranslateReasoning => 'Translate thinking automatically';
+
+  @override
+  String get hubTranslateReasoningHint =>
+      'Reasoning is translated into the interface language as soon as you expand it; “View original” switches back.';
+
+  @override
   String get hubSettingsCollapseSteps => 'Collapse steps when done';
 
   @override

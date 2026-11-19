@@ -11,24 +11,46 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/l10n.dart';
 import 'connection_state.dart';
+import 'local_translation.dart';
 
 /// The app's interface language, the target of `auto`.
 String get reasoningUiLanguage => AppLocale.current.languageCode;
 
-/// `cotTranslation/limits` of the active host; null while the bundle is off,
-/// its provider can't take requests, or nothing is connected. Read only while
-/// a thinking block is open (auto-dispose), so a bundle switched on later
-/// shows up on the next open.
+/// The provider name of the app's own fallback channel (no engine involved).
+const localTranslationProvider = 'local';
+
+/// What the app can do by itself: one fragment at a time through the free
+/// endpoint the bundle's `bing` provider uses.
+const localTranslationLimits = CotTranslationLimits(
+  maxTextChars: 1800,
+  provider: localTranslationProvider,
+  targetLanguage: 'auto',
+  availableProviders: [localTranslationProvider],
+);
+
+/// `cotTranslation/limits` of the active host, or [localTranslationLimits]
+/// when the host has nothing usable — the bundle is off, has no provider that
+/// can take requests, or the host predates it. Null only while nothing is
+/// connected. Read only while a thinking block is open (auto-dispose), so a
+/// bundle switched on later shows up on the next open.
 final cotTranslationProvider = FutureProvider.autoDispose<CotTranslationLimits?>((ref) async {
   final client = ref.watch(activeConnectionProvider).value?.client;
+  final hasLocal = ref.watch(localTranslatorProvider) != null;
   if (client == null) return null;
   try {
     final limits = await client.cotTranslationLimits();
-    return limits.usable ? limits : null;
+    if (limits.usable) return limits;
   } catch (_) {
-    return null;
+    // No bundle, or a host too old to answer: fall through to our own channel.
   }
+  // With no channel of our own (tests, or a build that must not call the
+  // service) there is nothing to offer.
+  return hasLocal ? localTranslationLimits : null;
 });
+
+/// The fallback request behind [reasoningTranslatorProvider]; null turns the
+/// fallback off (tests, or a build that must not talk to the service).
+final localTranslatorProvider = Provider<LocalTranslate?>((ref) => BingTranslator().translate);
 
 /// Translates one fragment with [limits]' accepted provider and language.
 typedef ReasoningTranslator = Future<String> Function(
@@ -37,16 +59,29 @@ typedef ReasoningTranslator = Future<String> Function(
   String? sessionId,
 });
 
-/// The Host call behind [ReasoningTranslator] (a seam for tests).
+/// The Host call behind [ReasoningTranslator] (a seam for tests). A [limits]
+/// naming [localTranslationProvider] goes through the app's own channel
+/// instead; everything else is the host's `cotTranslation/translate`.
 final reasoningTranslatorProvider = Provider<ReasoningTranslator?>((ref) {
   final client = ref.watch(activeConnectionProvider).value?.client;
-  if (client == null) return null;
-  return (text, {required limits, sessionId}) => client.translateReasoning(
-    text,
-    targetLanguage: limits.targetFor(reasoningUiLanguage),
-    provider: limits.provider,
-    sessionId: sessionId,
-  );
+  final local = ref.watch(localTranslatorProvider);
+  if (client == null && local == null) return null;
+  return (text, {required limits, sessionId}) {
+    final target = limits.targetFor(reasoningUiLanguage);
+    if (limits.provider == localTranslationProvider) {
+      final translate = local;
+      if (translate == null) return Future<String>.error(StateError('the local translator is off'));
+      return translate(text, target: target);
+    }
+    final host = client;
+    if (host == null) return Future<String>.error(StateError('no host to translate with'));
+    return host.translateReasoning(
+      text,
+      targetLanguage: target,
+      provider: limits.provider,
+      sessionId: sessionId,
+    );
+  };
 });
 
 /// Whether [text] is worth translating into [target]: reasoning already in

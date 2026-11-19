@@ -6,6 +6,7 @@
 import 'package:dsh_app/l10n/l10n.dart';
 import 'package:dsh_app/state/cot_translation_state.dart';
 import 'package:dsh_app/state/sessions_state.dart';
+import 'package:dsh_app/state/settings_state.dart';
 import 'package:dsh_app/ui/chat/widgets/thinking_pill.dart';
 import 'package:dsh_app/ui/theme/app_icons.dart';
 import 'package:dsh_client/dsh_client.dart';
@@ -44,6 +45,12 @@ class _Translator {
   }
 }
 
+/// 自动翻译关掉(默认是开的):这里测的都是「点胶囊才翻」的那条路。
+class _Settings extends SettingsController {
+  @override
+  AppSettings build() => const AppSettings(loaded: true, translateReasoning: false);
+}
+
 Widget _app(
   String reasoning, {
   CotTranslationLimits? limits = _limits,
@@ -66,6 +73,7 @@ Widget _app(
     currentSessionProvider.overrideWith(() => FixedSession('s1')),
     cotTranslationProvider.overrideWith((ref) async => limits),
     reasoningTranslatorProvider.overrideWithValue((translator ?? _Translator()).call),
+    settingsProvider.overrideWith(_Settings.new),
   ],
 );
 

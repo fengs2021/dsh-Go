@@ -16556,6 +16556,18 @@ abstract class L10n {
   /// **'对话字号'**
   String get hubSettingsChatTextSize;
 
+  /// No description provided for @hubTranslateReasoning.
+  ///
+  /// In zh, this message translates to:
+  /// **'默认翻译思考过程'**
+  String get hubTranslateReasoning;
+
+  /// No description provided for @hubTranslateReasoningHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'展开思考时直接翻成界面语言，不用先点「翻译」；仍可点「查看原文」切回。'**
+  String get hubTranslateReasoningHint;
+
   /// No description provided for @hubSettingsCollapseSteps.
   ///
   /// In zh, this message translates to:

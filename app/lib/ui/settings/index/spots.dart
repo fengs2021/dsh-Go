@@ -944,6 +944,12 @@ abstract final class Spots {
     title: (l) => l.hubHardwareEnterSends,
     keywords: (l) => l.hubHardwareEnterSendsHint,
   );
+  static final translateReasoning = SettingSpot(
+    'translate-reasoning',
+    page: SettingsPageId.interface,
+    title: (l) => l.hubTranslateReasoning,
+    keywords: (l) => l.hubTranslateReasoningHint,
+  );
   static final chatSuggestions = SettingSpot(
     'chat-suggestions',
     page: SettingsPageId.interface,
@@ -1263,6 +1269,7 @@ final _rows = <SettingSpot>[
   Spots.workshop,
   Spots.uiMode,
   Spots.hardwareEnterSends,
+  Spots.translateReasoning,
   Spots.chatSuggestions,
   Spots.quickPanel,
   Spots.tableTint,
