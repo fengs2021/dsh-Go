@@ -107,7 +107,6 @@ for (const [label, entries, meta] of [
   ['native binary', [entry('package/native.node', 'binary')], manifest],
   ['binding.gyp', [entry('package/binding.gyp', '{}')], manifest],
   ['gypfile', [], { ...manifest, gypfile: true }],
-  ['wasm', [entry('package/code.wasm', '\0asm')], manifest],
 ]) test(`reject ${label} and clean owned stage`, async () => fixture(async f => {
   await assert.rejects(f.extract(archive(entries, meta))); await f.clean();
 }));
@@ -171,13 +170,22 @@ function peImage() {
 }
 for (const [format, bytes] of [
   ['ELF', Buffer.from('7f454c46020101000000000000000000' + '00'.repeat(48), 'hex')],
-  ['WebAssembly', Buffer.from('0061736d01000000', 'hex')],
   ...['feedface', 'cefaedfe', 'feedfacf', 'cffaedfe', 'cafebabe', 'bebafeca', 'cafebabf', 'bfbafeca']
     .map(magic => ['Mach-O ' + magic, Buffer.from(magic + '00'.repeat(60), 'hex')]),
   ['PE', peImage()],
 ]) test(`reject extensionless ${format} payload`, async () => fixture(async f => {
   await assert.rejects(f.extract(archive([entry('package/payload', bytes)])), { code: 'ERR_OHOS_PLUGIN_UNSUPPORTED' });
   await f.clean();
+}));
+test('portable WebAssembly is retained while native addons stay rejected', async () => fixture(async f => {
+  const wasm = Buffer.from('0061736d01000000', 'hex');
+  const result = await f.extract(archive([
+    entry('package/vendor/onnx/ort-wasm-simd-threaded.wasm', wasm),
+    entry('package/payload', wasm),
+  ]));
+  assert.deepEqual(await readFile(join(result.directory, 'vendor', 'onnx', 'ort-wasm-simd-threaded.wasm')), wasm);
+  assert.deepEqual(await readFile(join(result.directory, 'payload')), wasm);
+  assert.equal(result.manifest.name, manifest.name);
 }));
 test('ordinary MZ text and invalid PE offsets are retained as data', async () => fixture(async f => {
   const text = 'MZ is ordinary text, not a native image.\n';

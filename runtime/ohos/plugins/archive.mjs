@@ -48,14 +48,19 @@ function entryPath(header) {
   const parts = relative.split('/');
   if (parts.some(part => part === '' || part === '.' || part === '..')) throw invalid('插件归档路径无效。');
   if (parts.includes('node_modules')) throw unsupported('插件归档内置 node_modules，无法核对锁定依赖；请发布不含内置依赖的纯 JS 包。');
-  if (parts.some(part => part.endsWith('.node') || part.endsWith('.wasm') || part === 'binding.gyp')) {
-    throw unsupported('插件包含原生 addon、binding.gyp 或 WebAssembly；鸿蒙本机仅支持纯 JS 包。');
+  // Portable WebAssembly is bytecode for the V8 inside the HAP, not a host ABI:
+  // onnxruntime-web and friends ship .wasm precisely because it runs on any host.
+  // Native addons stay refused - nothing in the HAP links Node's addon ABI.
+  if (parts.some(part => part.endsWith('.node') || part === 'binding.gyp')) {
+    throw unsupported('插件包含原生 addon（.node / binding.gyp）；鸿蒙本机没有 Node 原生 ABI，只支持纯 JS 与 WebAssembly 包。');
   }
   return relative;
 }
 
+// WebAssembly is deliberately absent: V8 in the HAP executes it as bytecode, so
+// it carries no host ABI. The formats below are native images Node cannot load.
 const binaryMagic = new Set([
-  '7f454c46', '0061736d', // ELF and WebAssembly.
+  '7f454c46', // ELF.
   'feedface', 'cefaedfe', 'feedfacf', 'cffaedfe', // Mach-O, both byte orders.
   'cafebabe', 'bebafeca', 'cafebabf', 'bfbafeca', // Universal Mach-O (32/64).
 ]);
@@ -76,7 +81,7 @@ async function rejectBinary(file, size) {
         offset + 24 + optionalBytes + sections * 40 <= size;
     }
   }
-  if (binary) throw unsupported('插件文件包含 ELF、Mach-O、PE 或 WebAssembly 二进制；鸿蒙本机仅支持纯 JS 包。');
+  if (binary) throw unsupported('插件文件包含 ELF、Mach-O 或 PE 原生二进制；鸿蒙本机无法加载这些格式。');
 }
 
 /** Extract one locked package into a newly owned directory; never publish or execute it. */
