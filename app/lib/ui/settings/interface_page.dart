@@ -127,6 +127,12 @@ class InterfacePage extends ConsumerWidget {
               value: settings.hardwareEnterSends,
               onChanged: (v) => unawaited(ref.read(settingsProvider.notifier).setHardwareEnterSends(v)),
             ),
+            SettingsSwitchTile(
+              spot: Spots.translateReasoning,
+              subtitle: l10n.hubTranslateReasoningHint,
+              value: settings.translateReasoning,
+              onChanged: (v) => unawaited(ref.read(settingsProvider.notifier).setTranslateReasoning(v)),
+            ),
           ],
         ),
         SettingsSection(

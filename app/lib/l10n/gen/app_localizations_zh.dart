@@ -8998,6 +8998,12 @@ class L10nZh extends L10n {
   String get hubSettingsChatTextSize => '对话字号';
 
   @override
+  String get hubTranslateReasoning => '默认翻译思考过程';
+
+  @override
+  String get hubTranslateReasoningHint => '展开思考时直接翻成界面语言，不用先点「翻译」；仍可点「查看原文」切回。';
+
+  @override
   String get hubSettingsCollapseSteps => '完成后收起过程';
 
   @override

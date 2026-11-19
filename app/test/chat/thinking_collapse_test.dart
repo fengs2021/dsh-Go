@@ -12,6 +12,7 @@ import 'dart:ui' as ui;
 import 'package:dsh_app/links/app_links.dart';
 import 'package:dsh_app/links/page_links.dart';
 import 'package:dsh_app/state/cot_translation_state.dart';
+import 'package:dsh_app/state/settings_state.dart';
 import 'package:dsh_app/state/sessions_state.dart';
 import 'package:dsh_app/ui/chat/render/markdown_body.dart';
 import 'package:dsh_app/ui/chat/widgets/thinking_pill.dart';
@@ -33,6 +34,11 @@ const _limits = CotTranslationLimits(
   targetLanguage: 'auto',
   availableProviders: ['bing', 'google'],
 );
+
+class _ManualTranslation extends SettingsController {
+  @override
+  AppSettings build() => const AppSettings(loaded: true, translateReasoning: false);
+}
 
 Widget _app(ThinkingPill pill) => testApp(
   Scaffold(
@@ -182,6 +188,8 @@ void main() {
           currentSessionProvider.overrideWith(() => FixedSession('s1')),
           cotTranslationProvider.overrideWith((ref) async => _limits),
           reasoningTranslatorProvider.overrideWithValue((text, {required limits, sessionId}) async => _translated),
+          // 自动翻译关掉:这个用例测的是点胶囊切换。
+          settingsProvider.overrideWith(_ManualTranslation.new),
         ],
       ),
     );

@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../l10n/l10n.dart';
 import '../../../state/cot_translation_state.dart';
+import '../../../state/settings_state.dart';
 import '../../../state/sessions_state.dart';
 import '../../common/expand_reveal.dart';
 import '../../common/pressable.dart';
@@ -668,7 +669,8 @@ class _TranslationHolder {
 }
 
 /// 展开后的全文 + 翻译工具条。插件没开、当前模型的思考本来就是中文、或者
-/// 没连上引擎时,只有全文。
+/// 没连上引擎时,只有全文。默认(设置里的「默认翻译思考过程」)一展开就翻,
+/// 工具条直接给「查看原文」;关掉后回到点「翻译」才翻。
 class _TranslatableReasoning extends ConsumerStatefulWidget {
   const _TranslatableReasoning({
     required this.text,
@@ -690,6 +692,9 @@ class _TranslatableReasoning extends ConsumerStatefulWidget {
 
 class _TranslatableReasoningState extends ConsumerState<_TranslatableReasoning> {
   ReasoningTranslation? _listening;
+
+  /// 自动翻译每块思考只发起一次;用户切回原文(controller 已存在)不会再被拉回。
+  bool _autoStarted = false;
 
   @override
   void initState() {
@@ -747,6 +752,17 @@ class _TranslatableReasoningState extends ConsumerState<_TranslatableReasoning> 
         limits != null &&
         translator != null &&
         reasoningNeedsTranslation(widget.text, limits.targetFor(reasoningUiLanguage));
+    final autoTranslate = ref.watch(settingsProvider.select((settings) => settings.translateReasoning));
+    if (autoTranslate && controller == null && offered && !_autoStarted) {
+      _autoStarted = true;
+      final startLimits = limits;
+      final startTranslator = translator;
+      // 先把这一帧画出来(胶囊/正文),下一帧再发请求,免得首帧等待 RPC。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || widget.holder.controller != null) return;
+        _start(startLimits, startTranslator);
+      });
+    }
     final failed = controller?.failed ?? false;
     final showing = holder.showTranslation && controller != null && !failed;
     final body = _CollapsibleReasoningBody(

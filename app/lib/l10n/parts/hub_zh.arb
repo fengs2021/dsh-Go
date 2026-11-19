@@ -51,6 +51,8 @@
   "hubSettingsPreferences": "个人偏好",
   "hubSettingsAppearance": "外观",
   "hubSettingsChatTextSize": "对话字号",
+  "hubTranslateReasoning": "默认翻译思考过程",
+  "hubTranslateReasoningHint": "展开思考时直接翻成界面语言，不用先点「翻译」；仍可点「查看原文」切回。",
   "hubSettingsCollapseSteps": "完成后收起过程",
   "hubSettingsCollapseStepsHint": "思考与工具调用收成一行",
   "hubSettingsWebPhoneLayout": "网页版手机布局",
