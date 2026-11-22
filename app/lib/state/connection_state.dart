@@ -25,13 +25,15 @@ import 'settings_state.dart';
 class HostConnection {
   const HostConnection({
     required this.client,
-    this._label,
+    String? label,
     required this.isLocal,
     this.kind = HostKind.local,
     this.hostId,
     this.name,
     this.workingDirectory,
-  });
+    // A test may pin the header text; production reads it through the getter.
+    // ignore: prefer_initializing_formals
+  }) : _label = label;
 
   final DshClient client;
 
