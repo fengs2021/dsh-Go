@@ -881,6 +881,13 @@ class ChatController extends Notifier<ChatState> {
             if (event is ConnectionStateEvent && event.state != DshConnectionState.connected) {
               _markSyncing();
             }
+            // Anything else arriving is itself proof the follow is alive again.
+            // A banner from the previous socket must not outlive the reconnect:
+            // it also drives the header's 连接已断开 and the stuck progress ring.
+            if (state.streamLost && event is! ConnectionStateEvent && event is! SessionSyncEvent) {
+              _synchronized = true;
+              state = state.copyWith(streamLost: false, syncing: false, clearSyncError: true, clearError: true);
+            }
             if (event is SessionSnapshotEvent) {
               if (!identical(event.followEpoch, _followEpoch) || !(event.followEpoch?.isCurrent ?? true)) return;
               // Recheck at delivery, not only when watch() emitted the frame.
