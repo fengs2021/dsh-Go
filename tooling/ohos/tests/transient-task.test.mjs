@@ -9,7 +9,7 @@ const directory=await fs.mkdtemp(path.join(os.tmpdir(),'transient-owner-'));
 const source=new URL('../../../app/ohos/entry/src/main/ets/runtime/TransientTaskOwner.ets',import.meta.url);
 const text=(await fs.readFile(source,'utf8')).replace(/^import .+;\n/gm,'');
 const continuousText=(await fs.readFile(new URL('../../../app/ohos/entry/src/main/ets/runtime/ContinuousTaskOwner.ets',import.meta.url),'utf8')).replace(/^import .+;\n/gm,'');
-await fs.writeFile(path.join(directory,'continuous.mts'),`import {backgroundTaskManager,backgroundComputePermission,wantAgent,setTimeout} from '${new URL('./transient-task-fixture.mjs',import.meta.url)}';\n`+continuousText);
+await fs.writeFile(path.join(directory,'continuous.mts'),`import {backgroundTaskManager,backgroundComputePermission,continuousTaskModes,wantAgent,setTimeout,hilog} from '${new URL('./transient-task-fixture.mjs',import.meta.url)}';\n`+continuousText);
 await fs.writeFile(path.join(directory,'owner.mts'),`import {ContinuousTaskOwner} from './continuous.mts';\nimport {backgroundTaskManager,setTimeout,clearTimeout} from '${new URL('./transient-task-fixture.mjs',import.meta.url)}';\n`+text);
 const {TransientTaskOwner}=await import(pathToFileURL(path.join(directory,'owner.mts')));after(()=>fs.rm(directory,{recursive:true,force:true}));
 function setup(t,context,enabled=context!==undefined){

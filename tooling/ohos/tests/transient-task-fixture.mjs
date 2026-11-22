@@ -4,11 +4,17 @@ export const clearTimeout=id=>timers.delete(id);
 export const osTask={requests:[],cancels:[],failCancel:false,callbackNow:false,duration:30000};
 export const backgroundTaskManager={requestSuspendDelay(reason,callback){const id=next++;osTask.requests.push({id,reason,callback});if(osTask.callbackNow)callback();return{requestId:id,actualDelayTime:osTask.duration};},cancelSuspendDelay(id){osTask.cancels.push(id);if(osTask.failCancel)throw Error('OS cancel unavailable');}};
 export const continuous={allowed:true,requests:[],stops:[],listeners:new Set(),startError:null,startDeferred:null};
-backgroundTaskManager.BackgroundTaskMode={MODE_TASK_KEEPING:9};
+backgroundTaskManager.BackgroundTaskMode={MODE_TASK_KEEPING:9,MODE_DATA_TRANSFER:7};
+backgroundTaskManager.BackgroundTaskSubmode={SUBMODE_LIVE_VIEW_NOTIFICATION:1};
+backgroundTaskManager.updateBackgroundRunning=async()=>{};
 backgroundTaskManager.ContinuousTaskRequest=class {};
 backgroundTaskManager.on=(type,fn)=>{fn.eventType=type;continuous.listeners.add(fn);};
 backgroundTaskManager.off=(_type,fn)=>continuous.listeners.delete(fn);
 backgroundTaskManager.startBackgroundRunning=async(context,request)=>{continuous.requests.push({context,request});if(continuous.startError)throw continuous.startError;return continuous.startDeferred?await continuous.startDeferred.promise:{continuousTaskId:73,notificationId:74};};
 backgroundTaskManager.stopBackgroundRunning=async(context,id)=>{continuous.stops.push({context,id});if(continuous.stopError)throw continuous.stopError;};
 export const backgroundComputePermission=()=>continuous.allowed?'granted':'denied';
+// The ported owner keeps a data-transfer task alive with live-view progress and logs
+// through hilog; both are stubbed so the synthetic module can run outside the OS.
+export const hilog={info(){},warn(){},error(){}};
+export const continuousTaskModes=()=>[backgroundTaskManager.BackgroundTaskMode.MODE_TASK_KEEPING];
 export const wantAgent={OperationType:{START_ABILITY:0},WantAgentFlags:{CONSTANT_FLAG:0},async getWantAgent(options){return options;}};
