@@ -111,10 +111,13 @@ test('public eligibility query distinguishes prerequisite denial from unsupporte
   reset(); assert.equal(backgroundComputePermission(42), 'granted');
   assert.deepEqual(permission.last, { id: 42, name: 'ohos.permission.KEEP_BACKGROUND_RUNNING_SYSTEM' });
   assert.equal(permission.grants, 2);
-  assert.deepEqual(permission.requestedModes, [9]); assert.equal(permission.modes, 1);
-  reset(); permission.systemStatus = -1; assert.equal(backgroundComputePermission(42), 'denied'); assert.equal(permission.modes, 0);
+  // The port asks about both modes, keeping first: the last request is the fallback.
+  assert.deepEqual(permission.requestedModes, [7]); assert.equal(permission.modes, 2);
+  // Without the restricted ACL TASK_KEEPING is gone, but the data-transfer fallback
+  // still holds a real lease, so the legacy getter keeps saying granted.
+  reset(); permission.systemStatus = -1; assert.equal(backgroundComputePermission(42), 'granted'); assert.equal(permission.modes, 2);
   reset(); permission.status = -1; assert.equal(backgroundComputePermission(42), 'denied'); assert.equal(permission.modes, 0);
-  reset(); permission.supported = false; assert.equal(backgroundComputePermission(42), 'denied');
+  reset(); permission.supported = false; assert.equal(backgroundComputePermission(42), 'granted');
   reset(); permission.backgroundCapability = false; assert.equal(backgroundComputePermission(42), 'unknown');
   reset(); permission.accessCapability = false; assert.equal(backgroundComputePermission(42), 'unknown'); assert.equal(permission.grants, 0);
   reset(); permission.error = Object.assign(new Error('ACL/mode/config'), { code: 9800005 });
@@ -134,7 +137,8 @@ test('background protection distinguishes real prerequisite failures from user c
   reset(); permission.systemStatus = -1; const acl = backgroundComputeStatus(42);
   assert.equal(acl.get('permissionStatus'), 'eligibility_required');
   assert.equal(acl.get('actionRequired'), 'obtain_task_keeping_acl_and_install_entitled_build');
-  assert.equal(permission.modes, 0);
+  // Both modes are still probed: the fallback decides whether a lease exists at all.
+  assert.equal(permission.modes, 2);
   reset(); permission.systemStatus = 999; assert.equal(backgroundComputeStatus(42).get('permissionStatus'), 'unknown');
   reset(); permission.supported = false; assert.equal(backgroundComputeStatus(42).get('permissionStatus'), 'mode_unsupported');
   reset(); permission.supported = 'unexpected'; assert.equal(backgroundComputeStatus(42).get('permissionStatus'), 'unknown');

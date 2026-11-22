@@ -27,11 +27,15 @@ export const abilityAccessCtrl = {
   } }; },
 };
 export const backgroundTaskManager = {
-  BackgroundTaskMode: { MODE_TASK_KEEPING: 9 },
+  BackgroundTaskMode: { MODE_TASK_KEEPING: 9, MODE_DATA_TRANSFER: 7 },
+  BackgroundTaskSubmode: { SUBMODE_LIVE_VIEW_NOTIFICATION: 1 },
   ContinuousTaskRequest: class {
     isModeSupported() {
       permission.modes++; permission.requestedModes = this.backgroundTaskModes;
-      return permission.supported;
+      // The port asks about both modes; `supported` is still the TASK_KEEPING verdict
+      // the original fixture used, and the fallback is judged on its own.
+      const mode = (this.backgroundTaskModes ?? [])[0];
+      return mode === 7 ? permission.dataTransferSupported !== false : permission.supported;
     }
   },
 };

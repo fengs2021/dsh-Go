@@ -14,22 +14,27 @@ function computeStatus(supported: boolean, permission: string, status: string, e
     ['permissionStatus', status], ['error', error], ['actionRequired', action]]);
 }
 
+// true / false / null: null means the OS answered something that is neither, which is
+// an unreadable device rather than a denial.
 function modeSupported(mode: backgroundTaskManager.BackgroundTaskMode,
-  submodes: backgroundTaskManager.BackgroundTaskSubmode[]): boolean {
+  submodes: backgroundTaskManager.BackgroundTaskSubmode[]): boolean | null {
   const request = new backgroundTaskManager.ContinuousTaskRequest();
   request.backgroundTaskModes = [mode];
   if (submodes.length > 0) request.backgroundTaskSubmodes = submodes;
-  return request.isModeSupported();
+  const verdict = request.isModeSupported();
+  return verdict === true ? true : verdict === false ? false : null;
 }
 
-function systemAclGranted(accessTokenId: number): boolean {
+// true / false / null: a missing restricted declaration fails the query, which denies
+// this mode alone; any other unreadable answer is unknown.
+function systemAclGranted(accessTokenId: number): boolean | null {
   try {
-    return abilityAccessCtrl.createAtManager().checkAccessTokenSync(
-      accessTokenId, 'ohos.permission.KEEP_BACKGROUND_RUNNING_SYSTEM') ===
-      abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED;
+    const grant = abilityAccessCtrl.createAtManager().checkAccessTokenSync(
+      accessTokenId, 'ohos.permission.KEEP_BACKGROUND_RUNNING_SYSTEM');
+    if (grant === abilityAccessCtrl.GrantStatus.PERMISSION_GRANTED) return true;
+    if (grant === abilityAccessCtrl.GrantStatus.PERMISSION_DENIED) return false;
+    return null;
   } catch (_) {
-    // A missing restricted declaration fails the query; that is a denial of this
-    // mode alone, never an unobservable device.
     return false;
   }
 }
@@ -40,12 +45,12 @@ function systemAclGranted(accessTokenId: number): boolean {
 // progress fresh so the system does not cancel it.
 export function continuousTaskModes(accessTokenId: number): backgroundTaskManager.BackgroundTaskMode[] {
   const modes: backgroundTaskManager.BackgroundTaskMode[] = [];
-  if (systemAclGranted(accessTokenId) &&
-      modeSupported(backgroundTaskManager.BackgroundTaskMode.MODE_TASK_KEEPING, [])) {
+  if (systemAclGranted(accessTokenId) === true &&
+      modeSupported(backgroundTaskManager.BackgroundTaskMode.MODE_TASK_KEEPING, []) === true) {
     modes.push(backgroundTaskManager.BackgroundTaskMode.MODE_TASK_KEEPING);
   }
   if (modeSupported(backgroundTaskManager.BackgroundTaskMode.MODE_DATA_TRANSFER,
-    [backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_LIVE_VIEW_NOTIFICATION])) {
+    [backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_LIVE_VIEW_NOTIFICATION]) === true) {
     modes.push(backgroundTaskManager.BackgroundTaskMode.MODE_DATA_TRANSFER);
   }
   return modes;
@@ -67,16 +72,25 @@ export function backgroundComputeStatus(accessTokenId: number): Map<string, Obje
     }
     if (!supported) return computeStatus(false, 'unknown', 'unsupported', 'ohos_background_unsupported', 'keep_app_foreground_or_use_remote_host');
     // A data-transfer task needs only the public permission, so a build without the
-    // restricted ACL is still eligible: TASK_KEEPING is skipped, not the whole grant.
-    if (continuousTaskModes(accessTokenId).length > 0) {
-      return computeStatus(true, 'granted', 'eligible', null, null);
+    // restricted ACL can still hold a lease: `computePermission` below means "some
+    // continuous mode is available", while the status still names what TASK_KEEPING lacks.
+    const acl = systemAclGranted(accessTokenId);
+    const keepingMode = modeSupported(backgroundTaskManager.BackgroundTaskMode.MODE_TASK_KEEPING, []);
+    const transferMode = modeSupported(backgroundTaskManager.BackgroundTaskMode.MODE_DATA_TRANSFER,
+      [backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_LIVE_VIEW_NOTIFICATION]);
+    if (acl === null || keepingMode === null || transferMode === null) {
+      return computeStatus(supported, 'unknown', 'unknown', 'ohos_background_permission_unknown', 'retry_permission_check');
     }
-    if (!systemAclGranted(accessTokenId)) {
-      // TASK_KEEPING needs a restricted entitlement in the signed distribution,
-      // not a runtime permission dialog that the user can approve here.
-      return computeStatus(true, 'denied', 'eligibility_required', 'ohos_background_eligibility_required', 'obtain_task_keeping_acl_and_install_entitled_build');
-    }
-    return computeStatus(true, 'denied', 'mode_unsupported', 'ohos_background_mode_unsupported', 'verify_task_keeping_acl_and_ability_configuration');
+    const keeping = acl && keepingMode;
+    const transfer = transferMode;
+    const permission = keeping || transfer ? 'granted' : 'denied';
+    if (keeping) return computeStatus(true, permission, 'eligible', null, null);
+    // Only the fallback is available (or neither mode is): the lease may be real, the
+    // unattended mode is not. TASK_KEEPING needs a restricted entitlement in the signed
+    // distribution, not a runtime dialog the user can approve here.
+    return acl
+      ? computeStatus(true, permission, 'mode_unsupported', 'ohos_background_mode_unsupported', 'verify_task_keeping_acl_and_ability_configuration')
+      : computeStatus(true, permission, 'eligibility_required', 'ohos_background_eligibility_required', 'obtain_task_keeping_acl_and_install_entitled_build');
   } catch (_) {
     // 9800005 combines mode/ACL/configuration failures; it is not a user denial.
   }
