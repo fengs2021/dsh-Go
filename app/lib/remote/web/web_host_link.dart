@@ -233,25 +233,45 @@ class WebHostLink implements HostLink {
   void _watchMux(DshClient client) {
     unawaited(_muxSub?.cancel());
     _muxSub = client.mux.states.listen((state) {
-      if (state != DshConnectionState.unauthorized || !identical(client, _client)) return;
-      _lost(HostLinkError(HostLinkErrorKind.authFailed, appL10n.remoteDshHostErrSignInExpired, retryable: true));
+      if (!identical(client, _client)) return;
+      switch (state) {
+        case DshConnectionState.unauthorized:
+          _lost(HostLinkError(HostLinkErrorKind.authFailed, appL10n.remoteDshHostErrSignInExpired, retryable: true));
+        case DshConnectionState.closed:
+          // The mux gave up on its own carrier; nothing here can revive it, only
+          // a fresh client can.
+          _lost(HostLinkError(HostLinkErrorKind.unreachable, appL10n.remoteDshHostErrUnreachable, retryable: true));
+        case DshConnectionState.idle ||
+            DshConnectionState.connecting ||
+            DshConnectionState.connected ||
+            DshConnectionState.reconnecting:
+          break;
+      }
     });
   }
 
-  /// Is the Host still answering? Only the network changed case asks.
+  /// Is the Host still answering? Asks on resume and on a network change, which
+  /// is exactly when the system may have frozen the socket behind our back.
   Future<void> _probe() async {
     final client = _client;
     if (client == null || !_status.isConnected) return;
-    final DshHealth health;
+    DshHealth health;
     try {
       health = await client.connection.checkHealth(timeout: probeTimeout);
     } on Object {
-      return;
+      // A suspended socket surfaces as an exception, not as a status code. It
+      // is as dead as a refused connection: rebuild instead of staying quiet.
+      health = DshHealth.unreachable;
     }
     if (!identical(client, _client)) return;
     switch (health) {
       case DshHealth.ok:
-        return;
+        // The HTTP side answers, but the chat stream rides the mux: a socket
+        // that died while the App was in the background never fires an error,
+        // so a mux that is not connected means a client that must be rebuilt.
+        if (client.mux.state == DshConnectionState.connected) return;
+        _backoff.reset();
+        _lost(HostLinkError(HostLinkErrorKind.unreachable, appL10n.remoteDshHostErrUnreachable, retryable: true));
       case DshHealth.unauthorized:
         _backoff.reset();
         _lost(HostLinkError(HostLinkErrorKind.authFailed, appL10n.remoteDshHostErrSignInExpired, retryable: true));

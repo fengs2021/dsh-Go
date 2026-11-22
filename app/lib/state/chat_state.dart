@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:dsh_client/dsh_client.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleListener;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../diagnostics/app_error_log.dart';
@@ -611,6 +612,21 @@ class ChatController extends Notifier<ChatState> {
     ref.onCancel(releaseLater);
     ref.onResume(() => release?.cancel());
     final client = ref.watch(activeConnectionProvider.select((c) => c.value?.client));
+    // A stream can die while the App is in the background without ever firing an
+    // error: the socket is frozen, not closed. Coming back to the foreground is
+    // the moment to retry once instead of waiting for a tap. Only the lifecycle
+    // is observed here — the connectivity plugin has no implementation in tests,
+    // and the host link already re-checks on network changes.
+    AppLifecycleListener? onResume;
+    try {
+      onResume = AppLifecycleListener(onResume: () {
+        if (!ref.mounted || !state.streamLost || state.resyncing) return;
+        unawaited(resync());
+      });
+    } catch (_) {
+      // No widgets binding (plain unit tests): resume cannot be observed.
+    }
+    ref.onDispose(() => onResume?.dispose());
     ref.onDispose(() {
       // Invalidation runs before a lazy rebuild replaces the still-mounted Ref.
       _modelChange = null;

@@ -65,6 +65,23 @@ void main() {
     expect(underTest.currentClient, isNotNull);
   });
 
+  test('a kick that cannot reach the Host rebuilds the client', () async {
+    final underTest = link(secrets: const WebHostSecrets(password: 'hunter2'));
+    addTearDown(underTest.close);
+    await underTest.open();
+    expect(underTest.status.phase, HostLinkPhase.connected);
+    expect(recorder.connects, hasLength(1));
+
+    // The fake client points at 127.0.0.1:9, so the health check cannot connect.
+    // A socket frozen while the App was backgrounded looks the same from here:
+    // an exception, not a status code. The link must rebuild, not stay quiet.
+    underTest.kick();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+
+    expect(recorder.connects.length, greaterThan(1));
+    expect(underTest.status.phase, HostLinkPhase.connected);
+  });
+
   test('a wrong password fails as an auth error that a retry cannot fix', () async {
     recorder.throwOnLogin = const DshHttpException(401, 'bridge rejected the access password');
     final underTest = link(secrets: const WebHostSecrets(password: 'nope'));
