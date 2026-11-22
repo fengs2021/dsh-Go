@@ -400,6 +400,22 @@ class RemoteConnectionController extends AsyncNotifier<HostConnection?> {
 final remoteConnectionProvider = AsyncNotifierProvider.autoDispose
     .family<RemoteConnectionController, HostConnection?, HostRef>(RemoteConnectionController.new);
 
+/// Dials [host] again from scratch.
+///
+/// A stalled session stream is usually a dead client, not a dead server: the
+/// socket was frozen while the App was in the background, so only a new client
+/// can carry the stream. Rebuilding the link (and the connection above it)
+/// replaces the client exactly once.
+void reloadHostConnection(Ref ref, HostRef host) {
+  switch (host.kind) {
+    case HostKind.local:
+      ref.invalidate(localConnectionProvider);
+    case HostKind.ssh || HostKind.relay || HostKind.web:
+      ref.invalidate(remoteConnectionProvider(host));
+      ref.invalidate(hostLinkProvider(host));
+  }
+}
+
 /// Passive observations of the active connection. Exported values contain
 /// enum names, booleans and numbers, never host identifiers or raw errors.
 /// Reading a snapshot does not observe or rebuild any connection provider.

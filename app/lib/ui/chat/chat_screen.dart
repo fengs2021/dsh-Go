@@ -2077,7 +2077,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
                                                   : (
                                                       label: l10n.stateChatSyncRetry,
                                                       onPressed: () {
-                                                        unawaited(ref.read(chatProvider(sessionId).notifier).resync());
+                                                        unawaited(ref.read(chatProvider(sessionId).notifier).recoverSync());
                                                       },
                                                     ),
                                             ),

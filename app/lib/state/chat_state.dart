@@ -531,6 +531,10 @@ class ChatController extends Notifier<ChatState> {
 
   DshClient? get _client => ref.read(activeConnectionProvider).value?.client;
 
+  /// One recovery ladder at a time, and one host rebuild per broken stream.
+  bool _recoveringSync = false;
+  bool _hostReloadTried = false;
+
   bool get _canControl =>
       _synchronized && (_followEpoch?.isCurrent ?? true) && identical(_snapshotGeneration, _client?.mux.generation);
 
@@ -621,7 +625,7 @@ class ChatController extends Notifier<ChatState> {
     try {
       onResume = AppLifecycleListener(onResume: () {
         if (!ref.mounted || !state.streamLost || state.resyncing) return;
-        unawaited(resync());
+        unawaited(recoverSync());
       });
     } catch (_) {
       // No widgets binding (plain unit tests): resume cannot be observed.
@@ -762,6 +766,31 @@ class ChatController extends Notifier<ChatState> {
     if (ready && _canControl) return true;
     state = state.copyWith(notice: appL10n.stateChatSyncRequired);
     return false;
+  }
+
+  /// Retries the stream; when the client itself is gone (frozen socket, replaced
+  /// engine) it dials the host again first and then syncs once more.
+  ///
+  /// Guarded: one ladder at a time, and the host is rebuilt at most once per
+  /// broken stream — a fresh client resets the flag when its snapshot lands.
+  Future<void> recoverSync() async {
+    if (_recoveringSync) return;
+    _recoveringSync = true;
+    try {
+      if (await resync()) return;
+      if (!ref.mounted || _hostReloadTried) return;
+      final host = ref.read(activeHostProvider);
+      if (host.kind == HostKind.local) return;
+      _hostReloadTried = true;
+      reloadHostConnection(ref, host);
+      // Give the new link a moment to open; a late resync on the old client
+      // would just time out again.
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      if (!ref.mounted || _client == null) return;
+      await resync();
+    } finally {
+      _recoveringSync = false;
+    }
   }
 
   /// Reopens the actual follow, even when the mux itself never disconnected.
@@ -923,6 +952,7 @@ class ChatController extends Notifier<ChatState> {
               _lookupKey = null;
               _snapshotGeneration = client.mux.generation;
               _synchronized = true;
+              _hostReloadTried = false;
               // One publication: no ready state containing the old inbox.
               _publish(freshSnapshot: true);
               if (!_syncReady.isCompleted) _syncReady.complete(true);
