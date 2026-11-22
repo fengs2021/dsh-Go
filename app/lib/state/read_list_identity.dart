@@ -245,5 +245,12 @@ final readListIdentityProvider = Provider<ReadListIdentity?>((ref) {
         host.harnessVersion,
         epoch,
       ]);
+    case HostKind.web:
+      final hosts = ref.watch(hostsProvider);
+      final host = hosts.webById(selected.id);
+      if (!hosts.loaded || host == null || host.connectionKey.length > 4096) return null;
+      // No pinned secret: the address names the Host, and [epoch] moves when a
+      // password or token is written.
+      return ReadListIdentity.of(['web', host.id, host.connectionKey, epoch]);
   }
 });

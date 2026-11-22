@@ -43,6 +43,9 @@ bool islandHostAllowed(
   bool override = false,
 }) => switch (kind) {
   HostKind.relay => false,
+  // A DSH reached over plain HTTP serves its own pages; the app's island
+  // bridge would have to live in that page, which this link cannot inject.
+  HostKind.web => false,
   HostKind.ssh => true,
   HostKind.local => override || (reported == true && probed == RouteGuard.present),
 };
@@ -143,6 +146,7 @@ final islandHostUrlProvider = Provider.autoDispose.family<Uri?, HostRef>((ref, h
       if (port == null || token == null) return null;
       return islandLaunchUri('http://127.0.0.1:$port', token);
     case HostKind.relay:
+    case HostKind.web:
       return null;
   }
 });

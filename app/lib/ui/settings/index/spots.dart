@@ -1160,6 +1160,12 @@ abstract final class Spots {
     title: (l) => l.remoteAddSshHost,
     keywords: (l) => l.searchKwAddSshHost,
   );
+  static final addDshHost = SettingSpot(
+    'add-dsh-host',
+    page: SettingsPageId.remote,
+    title: (l) => l.remoteDshHostAdd,
+    keywords: (l) => l.searchKwAddDshHost,
+  );
   static final remoteAutoConnect = SettingSpot(
     'remote-auto-connect',
     page: SettingsPageId.remote,
@@ -1307,6 +1313,7 @@ final _rows = <SettingSpot>[
   Spots.engineReset,
   Spots.engineUninstall,
   Spots.addSshHost,
+  Spots.addDshHost,
   Spots.remoteAutoConnect,
   Spots.remoteCompactHistory,
   Spots.remoteSessionBackup,

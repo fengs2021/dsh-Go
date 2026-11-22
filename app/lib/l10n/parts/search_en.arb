@@ -91,6 +91,7 @@
   "searchKwCommandTimeout": "timeout,time limit",
   "searchKwWebSearchKey": "search key,web search key",
   "searchKwChatLogUpload": "privacy,logs,upload logs,telemetry",
+  "searchKwAddDshHost": "remote,dsh,add host,bridge,lan,password,token",
   "searchKwAddSshHost": "ssh,add host,connect computer",
   "searchKwRemoteAutoConnect": "auto connect,on launch",
   "searchKwPermissionCurrent": "allow for this chat,this chat",

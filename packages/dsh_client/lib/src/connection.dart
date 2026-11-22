@@ -273,6 +273,10 @@ class DshConnection {
   /// Authority the Host sees, which is also what the cookie is bound to.
   String get authority => hostHeader ?? _authorityOf(baseUri);
 
+  /// The `host:port` a [DshCookie] must name to be accepted for [uri]: the
+  /// `Host` header this client would send, with the default port omitted.
+  static String authorityOf(Uri uri) => _authorityOf(uri);
+
   bool get hasCookie => cookie != null;
 
   Uri resolve(String path, [Map<String, String>? query]) {
@@ -328,7 +332,7 @@ class DshConnection {
       throw DshHttpException(response.statusCode, 'unexpected login response', body: response.text);
     }
     final minted = response.setCookies
-        .map((raw) => _parseSetCookie(raw, authority))
+        .map((raw) => parseSetCookie(raw, authority))
         .whereType<DshCookie>()
         .where((c) => c.name.startsWith('dsh-auth-'))
         .firstOrNull;
@@ -706,34 +710,39 @@ class DshConnection {
     final defaultPort = uri.scheme == 'https' ? 443 : 80;
     return uri.port == defaultPort ? host : '$host:${uri.port}';
   }
+}
 
-  static DshCookie? _parseSetCookie(String raw, String authority) {
-    final parts = raw.split(';');
-    final first = parts.first;
-    final eq = first.indexOf('=');
-    if (eq <= 0) return null;
-    final name = first.substring(0, eq).trim();
-    final value = first.substring(eq + 1).trim();
-    DateTime? expiresAt;
-    for (final attribute in parts.skip(1)) {
-      final at = attribute.indexOf('=');
-      final key = (at < 0 ? attribute : attribute.substring(0, at)).trim().toLowerCase();
-      final attrValue = at < 0 ? '' : attribute.substring(at + 1).trim();
-      if (key == 'max-age') {
-        final seconds = int.tryParse(attrValue);
-        if (seconds != null) {
-          expiresAt = DateTime.now().add(Duration(seconds: seconds));
-        }
-      } else if (key == 'expires' && expiresAt == null) {
-        try {
-          expiresAt = HttpDate.parse(attrValue);
-        } on Object {
-          // Keep the cookie without an expiry rather than failing login.
-        }
+/// Parses one `Set-Cookie` header value into a [DshCookie] bound to
+/// [authority]; `null` when the value carries no `name=value` pair.
+///
+/// `Max-Age` wins over `Expires`; an unparseable date leaves the cookie
+/// without an expiry rather than failing the login that produced it.
+DshCookie? parseSetCookie(String raw, String authority) {
+  final parts = raw.split(';');
+  final first = parts.first;
+  final eq = first.indexOf('=');
+  if (eq <= 0) return null;
+  final name = first.substring(0, eq).trim();
+  final value = first.substring(eq + 1).trim();
+  DateTime? expiresAt;
+  for (final attribute in parts.skip(1)) {
+    final at = attribute.indexOf('=');
+    final key = (at < 0 ? attribute : attribute.substring(0, at)).trim().toLowerCase();
+    final attrValue = at < 0 ? '' : attribute.substring(at + 1).trim();
+    if (key == 'max-age') {
+      final seconds = int.tryParse(attrValue);
+      if (seconds != null) {
+        expiresAt = DateTime.now().add(Duration(seconds: seconds));
+      }
+    } else if (key == 'expires' && expiresAt == null) {
+      try {
+        expiresAt = HttpDate.parse(attrValue);
+      } on Object {
+        // Keep the cookie without an expiry rather than failing login.
       }
     }
-    return DshCookie(name: name, value: value, authority: authority, expiresAt: expiresAt);
   }
+  return DshCookie(name: name, value: value, authority: authority, expiresAt: expiresAt);
 }
 
 /// One response owns its reader and cancellation for the complete body

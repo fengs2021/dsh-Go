@@ -18,6 +18,7 @@ import '../theme/app_icons.dart';
 import '../theme/theme.dart';
 import 'host_key_dialog.dart';
 import 'host_status.dart';
+import 'web_host_form.dart';
 
 /// Drawer-header chip: `● 本机 · 运行中 ⌄` / `● 电脑 · 已连接 ⌄`. Opens the
 /// host sheet.
@@ -84,8 +85,10 @@ class HostSheet extends ConsumerWidget {
     final l10n = context.l10n;
     final active = ref.watch(activeHostProvider);
     final ssh = ref.watch(hostsProvider.select((s) => s.ssh));
+    final web = ref.watch(hostsProvider.select((s) => s.web));
     final account = ref.watch(relayAccountProvider).value;
     final relayHosts = account?.signedIn == true ? account!.hosts : const <RelayHost>[];
+    final noRemoteHosts = ssh.isEmpty && relayHosts.isEmpty && web.isEmpty;
 
     Future<void> pick(HostRef host) async {
       if (host == active) {
@@ -137,6 +140,14 @@ class HostSheet extends ConsumerWidget {
                       active: active == HostRef.ssh(h.id),
                       onTap: () => pick(HostRef.ssh(h.id)),
                     ),
+                  for (final h in web)
+                    _HostRow(
+                      host: HostRef.web(h.id),
+                      title: h.name,
+                      subtitle: '${l10n.remoteDshHostTitle} · ${Uri.parse(h.baseUrl).authority}',
+                      active: active == HostRef.web(h.id),
+                      onTap: () => pick(HostRef.web(h.id)),
+                    ),
                   for (final h in relayHosts)
                     _HostRow(
                       host: HostRef.relay(h.id, name: h.name),
@@ -173,13 +184,26 @@ class HostSheet extends ConsumerWidget {
                     },
                   ),
                   SettingsTile(
-                    icon: ssh.isEmpty && relayHosts.isEmpty ? AppIcons.add : AppIcons.configure,
+                    icon: noRemoteHosts ? AppIcons.add : AppIcons.configure,
                     tinted: false,
-                    title: ssh.isEmpty && relayHosts.isEmpty ? l10n.remoteConnectComputer : l10n.remoteManageHosts,
-                    subtitle: ssh.isEmpty && relayHosts.isEmpty ? l10n.remoteConnectionMethods : null,
+                    title: noRemoteHosts ? l10n.remoteConnectComputer : l10n.remoteManageHosts,
+                    subtitle: noRemoteHosts ? l10n.remoteConnectionMethods : null,
                     onTap: () {
                       Navigator.of(context).pop();
                       onManage();
+                    },
+                  ),
+                  SettingsTile(
+                    icon: AppIcons.webConsole,
+                    tinted: false,
+                    title: l10n.remoteDshHostAdd,
+                    subtitle: l10n.remoteDshHostAddHelp,
+                    onTap: () {
+                      final navigator = Navigator.of(context);
+                      navigator.pop();
+                      unawaited(
+                        navigator.push(MaterialPageRoute<void>(builder: (_) => const WebHostFormPage())),
+                      );
                     },
                   ),
                 ],

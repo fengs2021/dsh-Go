@@ -1,0 +1,57 @@
+{
+  "remoteDshHostTitle": "远程 DSH",
+  "remoteDshHostLabel": "{name} · 远程 DSH",
+  "remoteDshHostAdd": "添加远程 DSH",
+  "remoteDshHostAddHelp": "填地址和访问密码或启动令牌",
+  "remoteDshHostIntro": "手机和电脑在同一网络，或电脑挂在一个公网可用的隧道域名后面，就能直接连它上面的 DSH。",
+  "remoteDshHostSectionHelp": "dsh-bridge 后面的 DSH（访问密码），或同一网络里已经跑起来的 dsh web（启动令牌）。",
+  "remoteDshHostAddress": "地址",
+  "remoteDshHostAddressHint": "http://192.168.2.230:3080",
+  "remoteDshHostAddressRequired": "请填写地址",
+  "remoteDshHostAddressInvalid": "地址要以 http:// 或 https:// 开头，并带主机名",
+  "remoteDshHostCredential": "登录方式",
+  "remoteDshHostPassword": "访问密码",
+  "remoteDshHostToken": "启动令牌",
+  "remoteDshHostPasswordHelp": "dsh-bridge 的访问密码，不是启动令牌。",
+  "remoteDshHostTokenHelp": "dsh web 启动时打印在 ?token= 后面的那串。",
+  "remoteDshHostStorageHelp": "密码和令牌存在系统安全存储里，不写进普通设置。",
+  "remoteDshHostPasswordRequired": "请填写访问密码",
+  "remoteDshHostTokenRequired": "请填写启动令牌",
+  "remoteDshHostScan": "扫描局域网",
+  "remoteDshHostScanning": "正在扫描局域网…",
+  "remoteDshHostScanEmpty": "这个网段里没找到 DSH",
+  "remoteDshHostScanHint": "点一条就填好地址",
+  "remoteDshHostScanBridge": "dsh-bridge",
+  "remoteDshHostScanDsh": "dsh web",
+  "remoteDshHostErrPassword": "密码不对或已失效",
+  "remoteDshHostErrToken": "启动令牌不对或已过期",
+  "remoteDshHostErrUnreachable": "连不上这台 DSH，检查地址和网络",
+  "remoteDshHostErrConnect": "没能连上远程 DSH",
+  "remoteDshHostErrSignInExpired": "远程 DSH 的登录已失效，正在重新登录",
+  "remoteDshHostErrNoCredential": "这台主机没有可用的登录凭证",
+  "remoteDshHostConnected": "已连上，工作区 {count} 个",
+  "remoteDshHostConnectedAt": "已连接 · {address}",
+  "remoteDshHostConnectedNoCount": "已连上",
+  "remoteDshHostSelfWeb": "这台主机本身就是 DSH 网页版",
+  "@remoteDshHostLabel": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "@remoteDshHostConnectedAt": {
+    "placeholders": {
+      "address": {
+        "type": "String"
+      }
+    }
+  },
+  "@remoteDshHostConnected": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
+}

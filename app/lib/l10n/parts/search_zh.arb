@@ -91,6 +91,7 @@
   "searchKwCommandTimeout": "超时,命令超时,时间限制",
   "searchKwWebSearchKey": "搜索 Key,联网 Key",
   "searchKwChatLogUpload": "隐私,日志,上传日志,对话日志",
+  "searchKwAddDshHost": "远程,DSH,添加主机,bridge,局域网,访问密码,启动令牌",
   "searchKwAddSshHost": "SSH,添加主机,连接电脑",
   "searchKwRemoteAutoConnect": "自动连接,启动时连接",
   "searchKwPermissionCurrent": "本对话都允许,这个对话,当前权限",

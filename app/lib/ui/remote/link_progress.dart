@@ -10,10 +10,14 @@ import '../theme/theme.dart';
 /// 建立隧道 → 登录, each done / running / failed / waiting, with the error
 /// (and its technical detail, copyable) under the step that failed.
 class LinkProgressCard extends StatelessWidget {
-  const LinkProgressCard({super.key, required this.status, this.onRetry});
+  const LinkProgressCard({super.key, required this.status, this.onRetry, this.steps = HostLinkStep.values});
 
   final HostLinkStatus status;
   final VoidCallback? onRetry;
+
+  /// The stages this kind of host goes through; SSH walks all of them, a
+  /// 远程 DSH only connects and signs in.
+  final List<HostLinkStep> steps;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +34,7 @@ class LinkProgressCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (final step in HostLinkStep.values)
+          for (final step in steps)
             _StepRow(
               label: step.label,
               state: done || status.completed.contains(step)

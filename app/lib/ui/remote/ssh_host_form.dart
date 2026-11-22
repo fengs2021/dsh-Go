@@ -22,6 +22,7 @@ import '../theme/theme.dart';
 import 'host_key_dialog.dart';
 import 'link_progress.dart';
 import '../common/discard_guard.dart';
+import '../common/form_bar.dart';
 import '../common/smooth_size.dart';
 import '../common/brief_notice.dart';
 
@@ -799,7 +800,7 @@ class _SshHostFormPageState extends ConsumerState<SshHostFormPage> with FieldPas
                   label: Text(l10n.remoteDeleteHost),
                 ),
               ),
-            const SizedBox(height: _FormBar.height),
+            const SizedBox(height: FormBar.height),
           ],
         ),
       ],
@@ -815,7 +816,7 @@ class _SshHostFormPageState extends ConsumerState<SshHostFormPage> with FieldPas
             left: 0,
             right: 0,
             bottom: MediaQuery.viewInsetsOf(context).bottom,
-            child: _FormBar(
+            child: FormBar(
               children: [
                 Expanded(
                   child: FilledButton.tonalIcon(
@@ -862,48 +863,6 @@ class _SmallTextButton extends StatelessWidget {
       ),
       onPressed: onPressed,
       child: Text(label),
-    );
-  }
-}
-
-/// The form page's bottom bar: the actions stay put above the page (and above
-/// the keyboard), over a soft fade of the page background.
-class _FormBar extends StatelessWidget {
-  const _FormBar({required this.children});
-
-  final List<Widget> children;
-
-  /// Room to leave at the end of the page so nothing hides under the bar.
-  static const height = 88.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom > 0 ? 0.0 : MediaQuery.viewPaddingOf(context).bottom;
-    final base = DshSurfaces.of(context).backdropBottom;
-    // The page fades out above the keys; under them the bar is solid, so
-    // nothing scrolls through a tonal or disabled fill.
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [base.withValues(alpha: 0), base],
-            ),
-          ),
-          child: const SizedBox(height: 24),
-        ),
-        ColoredBox(
-          color: base,
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 12 + bottom),
-            child: Row(children: children),
-          ),
-        ),
-      ],
     );
   }
 }

@@ -32138,6 +32138,12 @@ abstract class L10n {
   /// **'隐私,日志,上传日志,对话日志'**
   String get searchKwChatLogUpload;
 
+  /// No description provided for @searchKwAddDshHost.
+  ///
+  /// In zh, this message translates to:
+  /// **'远程,DSH,添加主机,bridge,局域网,访问密码,启动令牌'**
+  String get searchKwAddDshHost;
+
   /// No description provided for @searchKwAddSshHost.
   ///
   /// In zh, this message translates to:
@@ -48757,6 +48763,210 @@ abstract class L10n {
   /// In zh, this message translates to:
   /// **'还没连上「{name}」，连上后再打开网页版'**
   String webConnectHostFirst(String name);
+
+  /// No description provided for @remoteDshHostTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'远程 DSH'**
+  String get remoteDshHostTitle;
+
+  /// No description provided for @remoteDshHostLabel.
+  ///
+  /// In zh, this message translates to:
+  /// **'{name} · 远程 DSH'**
+  String remoteDshHostLabel(String name);
+
+  /// No description provided for @remoteDshHostAdd.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加远程 DSH'**
+  String get remoteDshHostAdd;
+
+  /// No description provided for @remoteDshHostAddHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'填地址和访问密码或启动令牌'**
+  String get remoteDshHostAddHelp;
+
+  /// No description provided for @remoteDshHostIntro.
+  ///
+  /// In zh, this message translates to:
+  /// **'手机和电脑在同一网络，或电脑挂在一个公网可用的隧道域名后面，就能直接连它上面的 DSH。'**
+  String get remoteDshHostIntro;
+
+  /// No description provided for @remoteDshHostSectionHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'dsh-bridge 后面的 DSH（访问密码），或同一网络里已经跑起来的 dsh web（启动令牌）。'**
+  String get remoteDshHostSectionHelp;
+
+  /// No description provided for @remoteDshHostAddress.
+  ///
+  /// In zh, this message translates to:
+  /// **'地址'**
+  String get remoteDshHostAddress;
+
+  /// No description provided for @remoteDshHostAddressHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'http://192.168.2.230:3080'**
+  String get remoteDshHostAddressHint;
+
+  /// No description provided for @remoteDshHostAddressRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写地址'**
+  String get remoteDshHostAddressRequired;
+
+  /// No description provided for @remoteDshHostAddressInvalid.
+  ///
+  /// In zh, this message translates to:
+  /// **'地址要以 http:// 或 https:// 开头，并带主机名'**
+  String get remoteDshHostAddressInvalid;
+
+  /// No description provided for @remoteDshHostCredential.
+  ///
+  /// In zh, this message translates to:
+  /// **'登录方式'**
+  String get remoteDshHostCredential;
+
+  /// No description provided for @remoteDshHostPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'访问密码'**
+  String get remoteDshHostPassword;
+
+  /// No description provided for @remoteDshHostToken.
+  ///
+  /// In zh, this message translates to:
+  /// **'启动令牌'**
+  String get remoteDshHostToken;
+
+  /// No description provided for @remoteDshHostPasswordHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'dsh-bridge 的访问密码，不是启动令牌。'**
+  String get remoteDshHostPasswordHelp;
+
+  /// No description provided for @remoteDshHostTokenHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'dsh web 启动时打印在 ?token= 后面的那串。'**
+  String get remoteDshHostTokenHelp;
+
+  /// No description provided for @remoteDshHostStorageHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码和令牌存在系统安全存储里，不写进普通设置。'**
+  String get remoteDshHostStorageHelp;
+
+  /// No description provided for @remoteDshHostPasswordRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写访问密码'**
+  String get remoteDshHostPasswordRequired;
+
+  /// No description provided for @remoteDshHostTokenRequired.
+  ///
+  /// In zh, this message translates to:
+  /// **'请填写启动令牌'**
+  String get remoteDshHostTokenRequired;
+
+  /// No description provided for @remoteDshHostScan.
+  ///
+  /// In zh, this message translates to:
+  /// **'扫描局域网'**
+  String get remoteDshHostScan;
+
+  /// No description provided for @remoteDshHostScanning.
+  ///
+  /// In zh, this message translates to:
+  /// **'正在扫描局域网…'**
+  String get remoteDshHostScanning;
+
+  /// No description provided for @remoteDshHostScanEmpty.
+  ///
+  /// In zh, this message translates to:
+  /// **'这个网段里没找到 DSH'**
+  String get remoteDshHostScanEmpty;
+
+  /// No description provided for @remoteDshHostScanHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'点一条就填好地址'**
+  String get remoteDshHostScanHint;
+
+  /// No description provided for @remoteDshHostScanBridge.
+  ///
+  /// In zh, this message translates to:
+  /// **'dsh-bridge'**
+  String get remoteDshHostScanBridge;
+
+  /// No description provided for @remoteDshHostScanDsh.
+  ///
+  /// In zh, this message translates to:
+  /// **'dsh web'**
+  String get remoteDshHostScanDsh;
+
+  /// No description provided for @remoteDshHostErrPassword.
+  ///
+  /// In zh, this message translates to:
+  /// **'密码不对或已失效'**
+  String get remoteDshHostErrPassword;
+
+  /// No description provided for @remoteDshHostErrToken.
+  ///
+  /// In zh, this message translates to:
+  /// **'启动令牌不对或已过期'**
+  String get remoteDshHostErrToken;
+
+  /// No description provided for @remoteDshHostErrUnreachable.
+  ///
+  /// In zh, this message translates to:
+  /// **'连不上这台 DSH，检查地址和网络'**
+  String get remoteDshHostErrUnreachable;
+
+  /// No description provided for @remoteDshHostErrConnect.
+  ///
+  /// In zh, this message translates to:
+  /// **'没能连上远程 DSH'**
+  String get remoteDshHostErrConnect;
+
+  /// No description provided for @remoteDshHostErrSignInExpired.
+  ///
+  /// In zh, this message translates to:
+  /// **'远程 DSH 的登录已失效，正在重新登录'**
+  String get remoteDshHostErrSignInExpired;
+
+  /// No description provided for @remoteDshHostErrNoCredential.
+  ///
+  /// In zh, this message translates to:
+  /// **'这台主机没有可用的登录凭证'**
+  String get remoteDshHostErrNoCredential;
+
+  /// No description provided for @remoteDshHostConnected.
+  ///
+  /// In zh, this message translates to:
+  /// **'已连上，工作区 {count} 个'**
+  String remoteDshHostConnected(int count);
+
+  /// No description provided for @remoteDshHostConnectedAt.
+  ///
+  /// In zh, this message translates to:
+  /// **'已连接 · {address}'**
+  String remoteDshHostConnectedAt(String address);
+
+  /// No description provided for @remoteDshHostConnectedNoCount.
+  ///
+  /// In zh, this message translates to:
+  /// **'已连上'**
+  String get remoteDshHostConnectedNoCount;
+
+  /// No description provided for @remoteDshHostSelfWeb.
+  ///
+  /// In zh, this message translates to:
+  /// **'这台主机本身就是 DSH 网页版'**
+  String get remoteDshHostSelfWeb;
 
   /// No description provided for @workshopTitle.
   ///

@@ -17477,6 +17477,9 @@ class L10nZh extends L10n {
   String get searchKwChatLogUpload => '隐私,日志,上传日志,对话日志';
 
   @override
+  String get searchKwAddDshHost => '远程,DSH,添加主机,bridge,局域网,访问密码,启动令牌';
+
+  @override
   String get searchKwAddSshHost => 'SSH,添加主机,连接电脑';
 
   @override
@@ -26712,6 +26715,114 @@ class L10nZh extends L10n {
   String webConnectHostFirst(String name) {
     return '还没连上「$name」，连上后再打开网页版';
   }
+
+  @override
+  String get remoteDshHostTitle => '远程 DSH';
+
+  @override
+  String remoteDshHostLabel(String name) {
+    return '$name · 远程 DSH';
+  }
+
+  @override
+  String get remoteDshHostAdd => '添加远程 DSH';
+
+  @override
+  String get remoteDshHostAddHelp => '填地址和访问密码或启动令牌';
+
+  @override
+  String get remoteDshHostIntro => '手机和电脑在同一网络，或电脑挂在一个公网可用的隧道域名后面，就能直接连它上面的 DSH。';
+
+  @override
+  String get remoteDshHostSectionHelp => 'dsh-bridge 后面的 DSH（访问密码），或同一网络里已经跑起来的 dsh web（启动令牌）。';
+
+  @override
+  String get remoteDshHostAddress => '地址';
+
+  @override
+  String get remoteDshHostAddressHint => 'http://192.168.2.230:3080';
+
+  @override
+  String get remoteDshHostAddressRequired => '请填写地址';
+
+  @override
+  String get remoteDshHostAddressInvalid => '地址要以 http:// 或 https:// 开头，并带主机名';
+
+  @override
+  String get remoteDshHostCredential => '登录方式';
+
+  @override
+  String get remoteDshHostPassword => '访问密码';
+
+  @override
+  String get remoteDshHostToken => '启动令牌';
+
+  @override
+  String get remoteDshHostPasswordHelp => 'dsh-bridge 的访问密码，不是启动令牌。';
+
+  @override
+  String get remoteDshHostTokenHelp => 'dsh web 启动时打印在 ?token= 后面的那串。';
+
+  @override
+  String get remoteDshHostStorageHelp => '密码和令牌存在系统安全存储里，不写进普通设置。';
+
+  @override
+  String get remoteDshHostPasswordRequired => '请填写访问密码';
+
+  @override
+  String get remoteDshHostTokenRequired => '请填写启动令牌';
+
+  @override
+  String get remoteDshHostScan => '扫描局域网';
+
+  @override
+  String get remoteDshHostScanning => '正在扫描局域网…';
+
+  @override
+  String get remoteDshHostScanEmpty => '这个网段里没找到 DSH';
+
+  @override
+  String get remoteDshHostScanHint => '点一条就填好地址';
+
+  @override
+  String get remoteDshHostScanBridge => 'dsh-bridge';
+
+  @override
+  String get remoteDshHostScanDsh => 'dsh web';
+
+  @override
+  String get remoteDshHostErrPassword => '密码不对或已失效';
+
+  @override
+  String get remoteDshHostErrToken => '启动令牌不对或已过期';
+
+  @override
+  String get remoteDshHostErrUnreachable => '连不上这台 DSH，检查地址和网络';
+
+  @override
+  String get remoteDshHostErrConnect => '没能连上远程 DSH';
+
+  @override
+  String get remoteDshHostErrSignInExpired => '远程 DSH 的登录已失效，正在重新登录';
+
+  @override
+  String get remoteDshHostErrNoCredential => '这台主机没有可用的登录凭证';
+
+  @override
+  String remoteDshHostConnected(int count) {
+    return '已连上，工作区 $count 个';
+  }
+
+  @override
+  String remoteDshHostConnectedAt(String address) {
+    return '已连接 · $address';
+  }
+
+  @override
+  String get remoteDshHostConnectedNoCount => '已连上';
+
+  @override
+  String get remoteDshHostSelfWeb => '这台主机本身就是 DSH 网页版';
 
   @override
   String get workshopTitle => '创意工坊';

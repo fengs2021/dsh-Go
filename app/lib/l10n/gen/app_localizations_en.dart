@@ -18403,6 +18403,9 @@ class L10nEn extends L10n {
   String get searchKwChatLogUpload => 'privacy,logs,upload logs,telemetry';
 
   @override
+  String get searchKwAddDshHost => 'remote,dsh,add host,bridge,lan,password,token';
+
+  @override
   String get searchKwAddSshHost => 'ssh,add host,connect computer';
 
   @override
@@ -28158,6 +28161,117 @@ class L10nEn extends L10n {
   String webConnectHostFirst(String name) {
     return 'Connect to “$name” to open DSH Web';
   }
+
+  @override
+  String get remoteDshHostTitle => 'Remote DSH';
+
+  @override
+  String remoteDshHostLabel(String name) {
+    return '$name · Remote DSH';
+  }
+
+  @override
+  String get remoteDshHostAdd => 'Add a remote DSH';
+
+  @override
+  String get remoteDshHostAddHelp => 'Enter the address and its password or launch token';
+
+  @override
+  String get remoteDshHostIntro =>
+      'When this phone and a computer share a network — or the computer sits behind a tunnel name reachable from here — the DSH on it can be used directly.';
+
+  @override
+  String get remoteDshHostSectionHelp =>
+      'A DSH behind dsh-bridge (access password), or a dsh web already running on this network (launch token).';
+
+  @override
+  String get remoteDshHostAddress => 'Address';
+
+  @override
+  String get remoteDshHostAddressHint => 'http://192.168.2.230:3080';
+
+  @override
+  String get remoteDshHostAddressRequired => 'Enter the address';
+
+  @override
+  String get remoteDshHostAddressInvalid => 'The address needs http:// or https:// and a host name';
+
+  @override
+  String get remoteDshHostCredential => 'How to sign in';
+
+  @override
+  String get remoteDshHostPassword => 'Access password';
+
+  @override
+  String get remoteDshHostToken => 'Launch token';
+
+  @override
+  String get remoteDshHostPasswordHelp => 'The dsh-bridge access password, not a launch token.';
+
+  @override
+  String get remoteDshHostTokenHelp => 'The ?token= value dsh web printed when it started.';
+
+  @override
+  String get remoteDshHostStorageHelp =>
+      'The password or token is kept in system secure storage, not in plain settings.';
+
+  @override
+  String get remoteDshHostPasswordRequired => 'Enter the access password';
+
+  @override
+  String get remoteDshHostTokenRequired => 'Enter the launch token';
+
+  @override
+  String get remoteDshHostScan => 'Scan this network';
+
+  @override
+  String get remoteDshHostScanning => 'Scanning this network…';
+
+  @override
+  String get remoteDshHostScanEmpty => 'No DSH found on this network';
+
+  @override
+  String get remoteDshHostScanHint => 'Tap one to fill in the address';
+
+  @override
+  String get remoteDshHostScanBridge => 'dsh-bridge';
+
+  @override
+  String get remoteDshHostScanDsh => 'dsh web';
+
+  @override
+  String get remoteDshHostErrPassword => 'The password is wrong or no longer valid';
+
+  @override
+  String get remoteDshHostErrToken => 'The launch token is wrong or expired';
+
+  @override
+  String get remoteDshHostErrUnreachable => 'Couldn’t reach this DSH. Check the address and the network';
+
+  @override
+  String get remoteDshHostErrConnect => 'Couldn’t connect to the remote DSH';
+
+  @override
+  String get remoteDshHostErrSignInExpired => 'The remote DSH signed this session out; signing in again';
+
+  @override
+  String get remoteDshHostErrNoCredential => 'This host has no usable credential';
+
+  @override
+  String remoteDshHostConnected(int count) {
+    return 'Connected — $count workspaces';
+  }
+
+  @override
+  String remoteDshHostConnectedAt(String address) {
+    return 'Connected · $address';
+  }
+
+  @override
+  String get remoteDshHostConnectedNoCount => 'Connected';
+
+  @override
+  String get remoteDshHostSelfWeb => 'This host is DSH Web itself';
 
   @override
   String get workshopTitle => 'Workshop';

@@ -31,6 +31,7 @@ import 'relay_credit.dart';
 import 'relay_login_sheet.dart';
 import 'ssh_host_form.dart';
 import 'session_backup_page.dart';
+import 'web_host_form.dart';
 
 /// 远程主机 (a list page): the computers and servers this phone can drive.
 ///
@@ -130,10 +131,20 @@ class _RemoteScreenState extends ConsumerState<RemoteScreen> {
     if (nothingHere && ref.read(activeHostProvider).isLocal) await _use(HostRef.ssh(saved.id));
   }
 
+  /// Same shortcut for a 远程 DSH added on a phone with nothing to run.
+  Future<void> _addWeb() async {
+    final saved = await Navigator.of(context)
+        .push<WebHostConfig>(MaterialPageRoute(builder: (_) => const WebHostFormPage()));
+    if (saved == null || !mounted) return;
+    final nothingHere = ref.read(localRuntimeProvider).status.runtimeMissing;
+    if (nothingHere && ref.read(activeHostProvider).isLocal) await _use(HostRef.web(saved.id));
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final ssh = ref.watch(hostsProvider.select((s) => s.ssh));
+    final web = ref.watch(hostsProvider.select((s) => s.web));
     final active = ref.watch(activeHostProvider);
     final (signedIn, refreshing) = ref.watch(
       relayAccountProvider.select((a) => (a.value?.signedIn ?? false, a.value?.refreshing ?? false)),
@@ -176,10 +187,30 @@ class _RemoteScreenState extends ConsumerState<RemoteScreen> {
           ],
         ),
         SettingsSection(
+          title: l10n.remoteDshHostTitle,
+          footer: Text(l10n.remoteDshHostSectionHelp),
+          children: [
+            for (final h in web)
+              _WebRow(
+                config: h,
+                active: active == HostRef.web(h.id),
+                onTap: () => unawaited(_use(HostRef.web(h.id))),
+                onEdit: () => push(WebHostFormPage(existing: h)),
+              ),
+            SettingsTile(
+              icon: AppIcons.add,
+              tinted: false,
+              spot: Spots.addDshHost,
+              subtitle: l10n.remoteDshHostAddHelp,
+              onTap: () => unawaited(_addWeb()),
+            ),
+          ],
+        ),
+        SettingsSection(
           title: l10n.remoteConnectionSettings,
           children: [
             // Only meaningful once there is a host to come back to.
-            if (ssh.isNotEmpty || signedIn)
+            if (ssh.isNotEmpty || web.isNotEmpty || signedIn)
               SettingsSwitchTile(
                 key: const ValueKey('remote-auto-connect'),
                 spot: Spots.remoteAutoConnect,
@@ -309,11 +340,12 @@ class _ActiveCard extends ConsumerWidget {
     final view = HostStatusView.ofLink(status);
     final name = ref.watch(hostNameProvider(active)) ?? l10n.commonRemoteHost;
     final ssh = active.kind == HostKind.ssh ? ref.watch(hostsProvider).sshById(active.id) : null;
+    final web = active.kind == HostKind.web ? ref.watch(hostsProvider).webById(active.id) : null;
     final error = status.error;
     // Errors a retry can't fix go to the host's settings (SSH) or the trust
     // check (relay) instead.
     final needsLogin = active.kind == HostKind.relay && error?.kind == HostLinkErrorKind.notLoggedIn;
-    final needsSettings = ssh != null && error != null && !error.retryable;
+    final needsSettings = (ssh != null || web != null) && error != null && !error.retryable;
     final needsTrust =
         active.kind == HostKind.relay &&
         (error?.kind == HostLinkErrorKind.hostKeyMismatch || error?.kind == HostLinkErrorKind.hostKeyUnverified);
@@ -333,7 +365,11 @@ class _ActiveCard extends ConsumerWidget {
             AnimatedStatusDot(tone: view.tone, size: 7),
             const SizedBox(width: 6),
             Flexible(
-              child: Text(_statusLine(status, view, ssh?.address), maxLines: 1, overflow: TextOverflow.ellipsis),
+              child: Text(
+                _statusLine(status, view, sshAddress: ssh?.address, webAddress: web?.baseUrl),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             if (active.kind == HostKind.relay && status.isConnected) ...[
               const SizedBox(width: 6),
@@ -378,9 +414,13 @@ class _ActiveCard extends ConsumerWidget {
                     : needsSettings
                     ? (
                         l10n.remoteHostSettings,
-                        () =>
-                            Navigator.of(context)
-                                .push(MaterialPageRoute<void>(builder: (_) => SshHostFormPage(existing: ssh))),
+                        () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => ssh != null
+                                ? SshHostFormPage(existing: ssh)
+                                : WebHostFormPage(existing: web),
+                          ),
+                        ),
                       )
                     : needsTrust
                     ? (
@@ -398,13 +438,14 @@ class _ActiveCard extends ConsumerWidget {
     );
   }
 
-  static String _statusLine(HostLinkStatus status, HostStatusView view, String? address) {
+  static String _statusLine(HostLinkStatus status, HostStatusView view, {String? sshAddress, String? webAddress}) {
     if (status.phase == HostLinkPhase.reconnecting) {
       final why = status.error?.message;
       return why == null ? appL10n.remoteReconnectingEllipsis : appL10n.remoteReconnectReason(why);
     }
     if (status.phase == HostLinkPhase.connected) {
-      if (address != null) return appL10n.remoteConnectedSsh(address);
+      if (sshAddress != null) return appL10n.remoteConnectedSsh(sshAddress);
+      if (webAddress != null) return appL10n.remoteDshHostConnectedAt(webAddress);
       final path = status.network?.path ?? status.path;
       return path == null ? appL10n.remoteConnectedEncrypted : appL10n.remoteConnectedVia(path.label);
     }
@@ -503,6 +544,40 @@ class _SshRow extends ConsumerWidget {
         tinted: false,
         title: config.name,
         subtitle: config.address,
+        onTap: onTap,
+        value: view == null ? null : _HostState(view),
+        trailing: _EdgeIconButton(
+          icon: const Icon(AppIcons.configure, size: 20),
+          tooltip: l10n.commonEdit,
+          onPressed: onEdit,
+        ),
+      ),
+    );
+  }
+}
+
+/// One saved 远程 DSH: dsh-bridge or a `dsh web` on this network.
+class _WebRow extends ConsumerWidget {
+  const _WebRow({required this.config, required this.active, required this.onTap, required this.onEdit});
+
+  final WebHostConfig config;
+  final bool active;
+  final VoidCallback onTap;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = context.l10n;
+    final view = active ? watchHostStatus(ref, HostRef.web(config.id)) : null;
+    return Semantics(
+      key: ValueKey('remote-web-${config.id}'),
+      selected: active,
+      inMutuallyExclusiveGroup: true,
+      child: SettingsTile(
+        icon: hostKindIcon(HostKind.web),
+        tinted: false,
+        title: config.name,
+        subtitle: Uri.parse(config.baseUrl).authority,
         onTap: onTap,
         value: view == null ? null : _HostState(view),
         trailing: _EdgeIconButton(
