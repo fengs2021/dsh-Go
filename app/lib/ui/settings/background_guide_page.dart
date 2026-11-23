@@ -342,6 +342,31 @@ class _SuspendedPageState extends ConsumerState<_SuspendedPage> {
     });
   }
 
+  /// 实验入口（只在鸿蒙出现）。放在两个分支里都有：protection 支持与否都会显示，
+  /// 避免「装上了却找不到按钮」。
+  Widget _experimentsSection(BuildContext context) {
+    final l10n = context.l10n;
+    return SettingsSection(
+      title: l10n.harmonyKeepAwakeTitle,
+      footer: Text(l10n.harmonyKeepAwakeFooter),
+      children: [
+        SettingsTile(
+          key: const ValueKey('keep-awake-experiment'),
+          title: l10n.harmonyKeepAwakeToggle,
+          subtitle: _keepAwakeResult ?? l10n.harmonyKeepAwakeHint,
+          value: Text(_keepAwake ? l10n.accessStateOn : l10n.accessStateOff),
+          onTap: _keepAwakeBusy ? null : () => unawaited(_setKeepAwake(!_keepAwake)),
+        ),
+        SettingsTile(
+          key: const ValueKey('probe-task-keeping'),
+          title: l10n.harmonyProbeTaskKeeping,
+          subtitle: _probeResult ?? l10n.harmonyProbeTaskKeepingHint,
+          onTap: _probing ? null : () => unawaited(_probeTaskKeeping()),
+        ),
+      ],
+    );
+  }
+
   Widget _protectionPage(BackgroundProtection protection, {required bool readFailed, required bool ios}) {
     final l10n = context.l10n;
     final settingsNeeded =
@@ -387,28 +412,7 @@ class _SuspendedPageState extends ConsumerState<_SuspendedPage> {
             ),
           ],
         ),
-        if (!ios)
-          SettingsSection(
-            title: l10n.harmonyKeepAwakeTitle,
-            footer: Text(l10n.harmonyKeepAwakeFooter),
-            children: [
-              // 用行 + 点击切换而不是第二个开关：这一页的契约是「鸿蒙只有一个开关」，
-              // 实验入口不应改变那个语义；状态直接写在副标题里。
-              SettingsTile(
-                key: const ValueKey('keep-awake-experiment'),
-                title: l10n.harmonyKeepAwakeToggle,
-                subtitle: _keepAwakeResult ?? l10n.harmonyKeepAwakeHint,
-                value: Text(_keepAwake ? l10n.accessStateOn : l10n.accessStateOff),
-                onTap: _keepAwakeBusy ? null : () => unawaited(_setKeepAwake(!_keepAwake)),
-              ),
-              SettingsTile(
-                key: const ValueKey('probe-task-keeping'),
-                title: l10n.harmonyProbeTaskKeeping,
-                subtitle: _probeResult ?? l10n.harmonyProbeTaskKeepingHint,
-                onTap: _probing ? null : () => unawaited(_probeTaskKeeping()),
-              ),
-            ],
-          ),
+        if (!ios) _experimentsSection(context),
       ],
     );
   }
@@ -447,6 +451,7 @@ class _SuspendedPageState extends ConsumerState<_SuspendedPage> {
             SettingsTile(title: l10n.harmonyBackgroundUseRemote),
           ],
         ),
+        _experimentsSection(context),
         SettingsSection(
           footer: Text(l10n.harmonyNotifyWhy),
           children: [
