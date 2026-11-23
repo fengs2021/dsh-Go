@@ -1,3 +1,6 @@
+import workScheduler from '@ohos.resourceschedule.workScheduler';
+import hilog from '@ohos.hilog';
+import common from '@ohos.app.ability.common';
 import PastePlugin from '../plugins/PastePlugin';
 import AppLinksPlugin from '../plugins/AppLinksPlugin';
 import SecretsPlugin from '../plugins/SecretsPlugin';
@@ -41,9 +44,60 @@ export default class EntryAbility extends FlutterAbility {
   private keyboardLog: OhosKeyboardLog = new OhosKeyboardLog();
 
   onCreate(want: Want, launch: AbilityConstant.LaunchParam): void {
+    hilog.warn(0x3F10, 'DshWake', 'entry onCreate entered');
     HmsShareInbox.receive(this.context, want, launch);
     ShortcutsPlugin.receive(want, launch);
+    // 熄屏状态下启动不会有 onForeground，这里也要注册一次（幂等）。
+    EntryAbility.ensureWakeWork(this.context);
     super.onCreate(want, launch);
+  }
+
+  /// 注册系统延迟任务：应用被冻结/锁屏后，由 WorkScheduler 每 20 分钟拉起一次
+  /// EngineWakeAbility（记录唤醒并尝试把主 Ability 带到前台），让到期的定时回合
+  /// 有机会继续跑。重复注册是幂等的：同 workId 覆盖。
+  private static ensureWakeWork(context: common.UIAbilityContext): void {
+    const work: workScheduler.WorkInfo = {
+      workId: 1001,
+      bundleName: 'ccchimneyyy.dsh.go',
+      abilityName: 'EngineWakeAbility',
+      isRepeat: true,
+      repeatCycleTime: 20 * 60 * 1000,
+      isPersisted: true,
+      networkType: workScheduler.NetworkType.NETWORK_TYPE_ANY
+    };
+    // 参数要能更新：同 workId 已存在时 startWork 只会报「already added」，
+    // 先按同一 workId 结束，再注册本次的条件。
+    try {
+      workScheduler.stopWork(work, true);
+    } catch (_) {
+      // 没有已注册的 work 时 stopWork 会抛，忽略。
+    }
+    try {
+      workScheduler.startWork(work);
+      hilog.warn(0x3F10, 'DshWake', 'wake work registered');
+    } catch (error) {
+      hilog.warn(0x3F10, 'DshWake', 'wake work rejected: %{public}s', (error as Error).message);
+    }
+    // 诊断用一次性 work：只带网络条件，系统应立即满足；用来验证扩展到底会不会被拉起。
+    const probe: workScheduler.WorkInfo = {
+      workId: 1002,
+      bundleName: 'ccchimneyyy.dsh.go',
+      abilityName: 'EngineWakeAbility',
+      isRepeat: false,
+      isPersisted: false,
+      networkType: workScheduler.NetworkType.NETWORK_TYPE_ANY
+    };
+    try {
+      workScheduler.stopWork(probe, true);
+    } catch (_) {
+      // 没有就是没有。
+    }
+    try {
+      workScheduler.startWork(probe);
+      hilog.warn(0x3F10, 'DshWake', 'probe work 1002 registered');
+    } catch (error) {
+      hilog.warn(0x3F10, 'DshWake', 'probe work rejected: %{public}s', (error as Error).message);
+    }
   }
 
   onNewWant(want: Want, launch: AbilityConstant.LaunchParam): void {
@@ -64,6 +118,7 @@ export default class EntryAbility extends FlutterAbility {
   }
 
   onForeground(): void {
+    EntryAbility.ensureWakeWork(this.context);
     this.keyboardLog.setForeground(true);
     PastePlugin.onForeground(this);
     AppLinksPlugin.onForeground(this);

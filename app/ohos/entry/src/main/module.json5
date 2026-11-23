@@ -121,6 +121,13 @@
     ],
     "extensionAbilities": [
       {
+        "name": "EngineWakeAbility",
+        "srcEntry": "./ets/extension/EngineWakeAbility.ets",
+        "label": "$string:EntryAbility_label",
+        "description": "$string:module_desc",
+        "type": "workScheduler"
+      },
+      {
         "name": "CompanionFormAbility",
         "srcEntry": "./ets/formability/CompanionFormAbility.ets",
         "label": "$string:companion_widget_label",
