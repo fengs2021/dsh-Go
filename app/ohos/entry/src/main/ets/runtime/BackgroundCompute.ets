@@ -78,19 +78,23 @@ export function backgroundComputeStatus(accessTokenId: number): Map<string, Obje
     const keepingMode = modeSupported(backgroundTaskManager.BackgroundTaskMode.MODE_TASK_KEEPING, []);
     const transferMode = modeSupported(backgroundTaskManager.BackgroundTaskMode.MODE_DATA_TRANSFER,
       [backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_LIVE_VIEW_NOTIFICATION]);
+    // 一个模式读不懂（null）不该把整条资格判死：data-transfer 只要公开权限，
+    // 它能用就说明这台机器可以持有长时任务，TASK_KEEPING 单独缺 ACL 而已。
+    const keeping = acl === true && keepingMode === true;
+    const transfer = transferMode === true;
+    if (keeping) return computeStatus(true, 'granted', 'eligible', null, null);
+    if (transfer) {
+      return acl === true
+        ? computeStatus(true, 'granted', 'mode_unsupported', 'ohos_background_mode_unsupported', 'verify_task_keeping_acl_and_ability_configuration')
+        : computeStatus(true, 'granted', 'eligibility_required', 'ohos_background_eligibility_required', 'obtain_task_keeping_acl_and_install_entitled_build');
+    }
     if (acl === null || keepingMode === null || transferMode === null) {
       return computeStatus(supported, 'unknown', 'unknown', 'ohos_background_permission_unknown', 'retry_permission_check');
     }
-    const keeping = acl && keepingMode;
-    const transfer = transferMode;
-    const permission = keeping || transfer ? 'granted' : 'denied';
-    if (keeping) return computeStatus(true, permission, 'eligible', null, null);
-    // Only the fallback is available (or neither mode is): the lease may be real, the
-    // unattended mode is not. TASK_KEEPING needs a restricted entitlement in the signed
-    // distribution, not a runtime dialog the user can approve here.
+    // 两种模式都明确不可用：任务保留资格仍按 ACL 是否可知来措辞。
     return acl
-      ? computeStatus(true, permission, 'mode_unsupported', 'ohos_background_mode_unsupported', 'verify_task_keeping_acl_and_ability_configuration')
-      : computeStatus(true, permission, 'eligibility_required', 'ohos_background_eligibility_required', 'obtain_task_keeping_acl_and_install_entitled_build');
+      ? computeStatus(true, 'denied', 'mode_unsupported', 'ohos_background_mode_unsupported', 'verify_task_keeping_acl_and_ability_configuration')
+      : computeStatus(true, 'denied', 'eligibility_required', 'ohos_background_eligibility_required', 'obtain_task_keeping_acl_and_install_entitled_build');
   } catch (_) {
     // 9800005 combines mode/ACL/configuration failures; it is not a user denial.
   }

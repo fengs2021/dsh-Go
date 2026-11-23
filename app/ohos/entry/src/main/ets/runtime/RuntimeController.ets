@@ -625,7 +625,9 @@ export class RuntimeController {
 
   /// 实验：整夜保持运行（DATA_TRANSFER + 4 分钟进度刷新），只用于真机测量。
   async holdAwake(enabled: boolean): Promise<string> {
-    KeepAwake.configure(this.context);
+    const ability = RuntimeController.ability;
+    if (ability === null) return 'denied:no-ability';
+    KeepAwake.configure(ability.context);
     return enabled ? await KeepAwake.start() : await KeepAwake.stop();
   }
 
@@ -635,7 +637,9 @@ export class RuntimeController {
 
   /// 实验：单独试探 MODE_TASK_KEEPING 是否被系统接受，只记录错误码。
   async probeTaskKeeping(): Promise<string> {
-    KeepAwake.configure(this.context);
+    const ability = RuntimeController.ability;
+    if (ability === null) return 'no-ability';
+    KeepAwake.configure(ability.context);
     return await KeepAwake.probeTaskKeeping();
   }
 

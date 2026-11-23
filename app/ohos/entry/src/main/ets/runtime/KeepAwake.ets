@@ -22,8 +22,10 @@ export class KeepAwake {
   private static timer: number = -1;
   private static listening: boolean = false;
 
-  static configure(context: common.Context): void {
-    KeepAwake.context = context as common.UIAbilityContext;
+  /// 只接受 UIAbilityContext：长时任务 API 对 Context 类型做校验，
+  /// 传应用上下文会报 401「The context cannot be null and its type must be Context」。
+  static configure(context: common.UIAbilityContext): void {
+    KeepAwake.context = context;
   }
 
   /// 申请整夜保持。返回状态码：'granted:<id>' / 'denied:<message>'。

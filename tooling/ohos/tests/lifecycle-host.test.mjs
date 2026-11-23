@@ -139,9 +139,14 @@ test('background protection distinguishes real prerequisite failures from user c
   assert.equal(acl.get('actionRequired'), 'obtain_task_keeping_acl_and_install_entitled_build');
   // Both modes are still probed: the fallback decides whether a lease exists at all.
   assert.equal(permission.modes, 2);
-  reset(); permission.systemStatus = 999; assert.equal(backgroundComputeStatus(42).get('permissionStatus'), 'unknown');
+  // ACL 读不懂（999）时 data-transfer 仍可用：报「缺 ACL」，而不是整条 unknown。
+  reset(); permission.systemStatus = 999;
+  assert.equal(backgroundComputeStatus(42).get('permissionStatus'), 'eligibility_required');
   reset(); permission.supported = false; assert.equal(backgroundComputeStatus(42).get('permissionStatus'), 'mode_unsupported');
-  reset(); permission.supported = 'unexpected'; assert.equal(backgroundComputeStatus(42).get('permissionStatus'), 'unknown');
+  // TASK_KEEPING 的探测读不懂（'unexpected'）但 ACL 是好的：data-transfer 可用，
+  // 报「模式不支持」，而不是把整条判成 unknown。
+  reset(); permission.supported = 'unexpected';
+  assert.equal(backgroundComputeStatus(42).get('permissionStatus'), 'mode_unsupported');
   reset(); permission.backgroundCapability = false; assert.equal(backgroundComputeStatus(42).get('supported'), false);
   reset(); permission.error = Object.assign(new Error('ACL/config details'), { code: 9800005 });
   const unknown = backgroundComputeStatus(42); assert.equal(unknown.get('permissionStatus'), 'unknown');
