@@ -154,3 +154,30 @@ $H shell "bm dump -n ccchimneyyy.dsh.go | grep -A3 EngineWakeAbility"  # 扩展�
 3. 另做一次 `TASK_KEEPING` 试探（不改默认路径）：单独一个调试按钮，记录 `startBackgroundRunning` 的错误码。
 4. 两个实验跑完再决定：若 `DATA_TRANSFER` 过夜存活 → 用它；若被 `LOW_SPEED` 取消 → 转「外部触发」
    （PC/云端 cron 打手机鉴权接口）或「提醒 + 用户点开」。
+
+## 8. 测量工具用法（v83 起）
+
+入口：**设置 → 后台保护**（鸿蒙机型才出现，页面底部「实验：整夜保持运行」）。
+
+| 控件 | 行为 | 日志 |
+|---|---|---|
+| 「保持运行（实验）」行（点一下切换） | 申请 `MODE_DATA_TRANSFER` + `SUBMODE_LIVE_VIEW_NOTIFICATION`，每 4 分钟 `updateBackgroundRunning`；再点一下释放 | `DshKeepAwake hold start ok id=…` / `progress refreshed id=…` |
+| 「测试 TASK_KEEPING 资格」行 | 单独试 `MODE_TASK_KEEPING`，成功会立刻停掉，失败只记错误码 | `taskkeeping probe accepted id=…` / `refused code=…` |
+
+被系统取消/暂停时（这是判据）：
+
+```bash
+hdc shell "hilog -x | grep -i DshKeepAwake | tail -20"
+# cancel id=… reason=<数字> detail=<数字>
+# suspend id=… state=true reason=<数字>
+```
+
+数字含义见 `ContinuousTaskCancelReason` / `ContinuousTaskSuspendReason`：
+`4 = DATA_TRANSFER_LOW_SPEED`、`12 = DATA_TRANSFER_NOT_UPDATE`、`1/2/3 = 用户取消/系统取消/用户删通知`。
+
+过夜判据：
+
+1. 早上第一条 `cancel` 的 `reason` 是 4 → 低速被判定，`DATA_TRANSFER` 这条路不通；
+2. 是 12 → 进度刷新没生效（我们每 4 分钟刷，按理不该出现）；
+3. 没有任何 cancel、`suspend` 也很少 → 长时任务扛住了，方案成立；
+4. `probeTaskKeeping` 返回 `accepted` → 说明本机 debug 签名意外带了 ACL，优先用 TASK_KEEPING。
