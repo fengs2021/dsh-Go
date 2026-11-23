@@ -4,6 +4,8 @@
 // 真正的引擎启动仍由 EntryAbility 负责；这里不复制启动流程，也不假装能跑定时任务。
 import workScheduler from '@ohos.resourceschedule.workScheduler';
 import fs from '@ohos.file.fs';
+import http from '@ohos.net.http';
+import notificationManager from '@ohos.notificationManager';
 import hilog from '@ohos.hilog';
 import WorkSchedulerExtensionAbility from '@ohos.WorkSchedulerExtensionAbility';
 
@@ -32,9 +34,44 @@ export default class EngineWakeAbility extends WorkSchedulerExtensionAbility {
       // 记录失败不影响唤醒本身。
     }
     hilog.warn(DOMAIN, 'DshWake', 'workScheduler woke the app at %{public}s', stamp);
-    // 扩展上下文没有 startAbility：这里只记录唤醒事实，不假装能把主 Ability 拉起。
-    // 真正的引擎启动路径仍在 EntryAbility；下一步是在扩展里直接跑引擎（待验证）。
+    // 扩展上下文没有 startAbility，也不能调用 backgroundTaskManager，2 分钟就会被回收：
+    // 所以这里只探活。引擎在 → 静默返回；引擎不在 → 发一条诚实的通知。
+    this.probeEngine().catch((error: Error): void => {
+      hilog.warn(DOMAIN, 'DshWake', 'probe failed: %{public}s', error.message);
+    });
+  }
 
+  private async probeEngine(): Promise<void> {
+    const request = http.createHttp();
+    try {
+      const response = await request.request('http://127.0.0.1:3080/__dsh_bridge__/auth-status',
+        { method: http.RequestMethod.GET, connectTimeout: 3000, readTimeout: 3000 });
+      if (response.responseCode === 200) {
+        hilog.warn(DOMAIN, 'DshWake', 'engine is up on loopback; nothing to report');
+        return;
+      }
+      hilog.warn(DOMAIN, 'DshWake', 'engine answered %{public}d', response.responseCode);
+    } catch (_) {
+      hilog.warn(DOMAIN, 'DshWake', 'engine is not reachable on loopback');
+    } finally {
+      request.destroy();
+    }
+    try {
+      await notificationManager.publish({
+        id: 4101,
+        content: {
+          notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
+          normal: {
+            title: 'DSH 后台提醒',
+            text: '本机引擎当前没有运行，睡前那段时间的定时任务可能没有执行。',
+            additionalText: '打开 DSH 可继续'
+          }
+        }
+      });
+      hilog.warn(DOMAIN, 'DshWake', 'notification published');
+    } catch (error) {
+      hilog.warn(DOMAIN, 'DshWake', 'notification rejected: %{public}s', (error as Error).message);
+    }
   }
 
   onWorkStop(work: workScheduler.WorkInfo): void {

@@ -52,16 +52,18 @@ export default class EntryAbility extends FlutterAbility {
     super.onCreate(want, launch);
   }
 
-  /// 注册系统延迟任务：应用被冻结/锁屏后，由 WorkScheduler 每 20 分钟拉起一次
-  /// EngineWakeAbility（记录唤醒并尝试把主 Ability 带到前台），让到期的定时回合
-  /// 有机会继续跑。重复注册是幂等的：同 workId 覆盖。
+  /// 注册系统延迟任务：系统会在满足条件时拉起 EngineWakeAbility 做一次「探活」。
+  ///
+  /// 频率按官方约束：活跃应用最小间隔 2 小时（常用 24 小时、极少使用 48 小时），
+  /// 单次回调最长 2 分钟，扩展里禁止 backgroundTaskManager —— 所以它只做兜底：
+  /// 引擎不在时发一条通知，不假装能跑定时回合。重复注册幂等：先 stopWork 再 startWork。
   private static ensureWakeWork(context: common.UIAbilityContext): void {
     const work: workScheduler.WorkInfo = {
       workId: 1001,
       bundleName: 'ccchimneyyy.dsh.go',
       abilityName: 'EngineWakeAbility',
       isRepeat: true,
-      repeatCycleTime: 20 * 60 * 1000,
+      repeatCycleTime: 2 * 60 * 60 * 1000,
       isPersisted: true,
       networkType: workScheduler.NetworkType.NETWORK_TYPE_ANY
     };
@@ -77,26 +79,6 @@ export default class EntryAbility extends FlutterAbility {
       hilog.warn(0x3F10, 'DshWake', 'wake work registered');
     } catch (error) {
       hilog.warn(0x3F10, 'DshWake', 'wake work rejected: %{public}s', (error as Error).message);
-    }
-    // 诊断用一次性 work：只带网络条件，系统应立即满足；用来验证扩展到底会不会被拉起。
-    const probe: workScheduler.WorkInfo = {
-      workId: 1002,
-      bundleName: 'ccchimneyyy.dsh.go',
-      abilityName: 'EngineWakeAbility',
-      isRepeat: false,
-      isPersisted: false,
-      networkType: workScheduler.NetworkType.NETWORK_TYPE_ANY
-    };
-    try {
-      workScheduler.stopWork(probe, true);
-    } catch (_) {
-      // 没有就是没有。
-    }
-    try {
-      workScheduler.startWork(probe);
-      hilog.warn(0x3F10, 'DshWake', 'probe work 1002 registered');
-    } catch (error) {
-      hilog.warn(0x3F10, 'DshWake', 'probe work rejected: %{public}s', (error as Error).message);
     }
   }
 
