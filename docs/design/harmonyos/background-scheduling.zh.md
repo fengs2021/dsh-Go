@@ -181,3 +181,34 @@ hdc shell "hilog -x | grep -i DshKeepAwake | tail -20"
 2. 是 12 → 进度刷新没生效（我们每 4 分钟刷，按理不该出现）；
 3. 没有任何 cancel、`suspend` 也很少 → 长时任务扛住了，方案成立；
 4. `probeTaskKeeping` 返回 `accepted` → 说明本机 debug 签名意外带了 ACL，优先用 TASK_KEEPING。
+
+## 9. 真机结果（2026-11-23 晚，v84 测量版）
+
+### 9.1 已经确定的
+
+| 项 | 结果 | 证据 |
+|---|---|---|
+| WorkScheduler 扩展会被拉起 | **会** | 兜底日志 `files/wake-log.txt`：`2026-11-23T05:31:04Z wake workId=1001`、`09:31:06Z wake workId=1002`（北京时间 13:31 / 17:31，正是 2 小时/一次性探针） |
+| 扩展里能不能起引擎 | 不能走常规路 | 扩展上下文没有 `startAbility`、禁止 `backgroundTaskManager`、单次 2 分钟 |
+| `MODE_TASK_KEEPING` 是否可用 | **不可用** | 按钮返回 `refused:9800005`（Continuous Task verification failed）＝本机没有 `KEEP_BACKGROUND_RUNNING_SYSTEM` ACL |
+| `DATA_TRANSFER` 能否申请 | **能** | 按钮返回 `granted:358`，通知栏出现常驻通知 |
+| 锁屏后 JS 定时器还跑不跑 | **不跑** | 21:09:11 锁屏、21:14:30 解锁，`files/keepawake.log` 只有 `hold start id=358`，**没有** 4 分钟一次的 `progress refreshed` |
+
+### 9.2 关键结论
+
+`DATA_TRANSFER` 长时任务能让系统保留进程/通知，但**不能让 Dart/ArkTS 的 JS 定时器在锁屏期间继续执行**。
+而 `DATA_TRANSFER` 的续命恰恰依赖「10 分钟内更新一次进度」——两者互相矛盾。
+
+所以「靠长时任务 + 定时刷新进度，把手机当 7×24 小服务器」这条路，在**没有 `KEEP_BACKGROUND_RUNNING_SYSTEM` ACL** 的第三方应用上不成立。
+
+### 9.3 剩下的可行方向
+
+1. **WorkScheduler 扩展里跑一次「短促的引擎」**：扩展每次被拉起有 2 分钟，若能在扩展进程里启动 Node 引擎、把到期的定时回合触发后立刻退出，就能利用系统每 2 小时的唤醒。风险：扩展进程能否加载 `libdsh_host`/`libnode`、以及与前台进程抢同一个 `dshHome` 锁，未验证。
+2. **外部触发**：PC/云端 cron 打手机上的鉴权入口（需要 App 暴露一个局域网/隧道可访问的小接口，或用系统推送唤醒）。
+3. **提醒 + 人工**：代理提醒准点弹通知（已验证可用），点开由人决定是否跑。
+4. **前台常亮**：睡前把 App 放前台+充电+屏幕常亮，最简单但耗电、且不能锁屏。
+
+### 9.4 已修复的附带问题
+
+- `backgroundProtection()` 原先因为 TASK_KEEPING 探测返回 null 就把整条资格判成 `unknown`（页面显示「保护暂不可用」）；现在 data-transfer 可用即报 `granted`。
+- 长时任务 API 需要 **UIAbilityContext**，之前传应用上下文报 `401 The context cannot be null and its type must be Context`；已改为 `RuntimeController.ability.context`。
