@@ -90,6 +90,26 @@ void main() {
     expect(underTest.status.phase, HostLinkPhase.connected);
   });
 
+  test('an https Host unreachable on 443 is retried on 8443 and 2053', () async {
+    final attempts = <Uri>[];
+    final underTest = WebHostLink(
+      config: const WebHostConfig(id: 'web-1', name: '家里', baseUrl: 'https://dsh.example.com'),
+      loadSecrets: () async => const WebHostSecrets(token: 'tok-9'),
+      login: recorder.login,
+      connectClient: ({required baseUri, cookie, token, httpClient, httpClientFactory}) async {
+        attempts.add(baseUri);
+        if (baseUri.port != 2053) throw const DshTransportException('edge drops this port');
+        return DshClient(DshConnection(Uri.parse('http://127.0.0.1:9')));
+      },
+    );
+    addTearDown(underTest.close);
+
+    await underTest.open();
+
+    expect(attempts.map((u) => u.port), [443, 8443, 2053]);
+    expect(underTest.status.phase, HostLinkPhase.connected);
+  });
+
   test('a wrong password fails as an auth error that a retry cannot fix', () async {
     recorder.throwOnLogin = const DshHttpException(401, 'bridge rejected the access password');
     final underTest = link(secrets: const WebHostSecrets(password: 'nope'));

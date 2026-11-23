@@ -182,8 +182,36 @@ class WebHostLink implements HostLink {
 
   /// One full attempt: read the stored credential, sign in to the bridge when
   /// that is the credential, connect, publish the client.
+  /// One attempt, trying the saved address first and then Cloudflare's
+  /// alternative HTTPS ports. A company firewall often drops 443 to the edge
+  /// while 8443/2053 still reach it; the name (and the bridge cookie) follow
+  /// whatever port actually answered.
+  static const _alternateHttpsPorts = [8443, 2053];
+
   Future<DshClient> _connectOnce() async {
-    var step = _status.withStep(HostLinkStep.connect, detail: _config.baseUrl);
+    final base = _config.baseUri;
+    final attempts = <Uri>[base];
+    if (base.scheme == 'https' && base.port == 443) {
+      for (final port in _alternateHttpsPorts) {
+        attempts.add(base.replace(port: port));
+      }
+    }
+    HostLinkError? last;
+    for (final uri in attempts) {
+      try {
+        return await _connectAt(uri);
+      } on HostLinkError catch (e) {
+        last = e;
+        // A refused password or a 4xx is the person's answer, not the port's.
+        if (e.kind != HostLinkErrorKind.unreachable && e.kind != HostLinkErrorKind.dshTimeout) rethrow;
+        if (identical(uri, attempts.last)) rethrow;
+      }
+    }
+    throw last ?? HostLinkError(HostLinkErrorKind.unreachable, appL10n.remoteDshHostErrUnreachable);
+  }
+
+  Future<DshClient> _connectAt(Uri base) async {
+    var step = _status.withStep(HostLinkStep.connect, detail: base.toString());
     void at(HostLinkStep s, {String? detail}) {
       step = step.withStep(s, detail: detail);
       _emit(step);
@@ -196,7 +224,6 @@ class WebHostLink implements HostLink {
     final httpClient = _openHttp();
     final password = secrets.passwordOrNull;
     final token = secrets.tokenOrNull;
-    final base = _config.baseUri;
     DshCookie? cookie;
     if (password != null) {
       at(HostLinkStep.login);
@@ -259,7 +286,7 @@ class WebHostLink implements HostLink {
       _clients.add(client);
       unawaited(previous.close().catchError((_) {}));
     }
-    _emit(HostLinkStatus(HostLinkPhase.connected, completed: HostLinkStep.values.toSet(), detail: _config.baseUrl));
+    _emit(HostLinkStatus(HostLinkPhase.connected, completed: HostLinkStep.values.toSet(), detail: base.toString()));
     return client;
   }
 
