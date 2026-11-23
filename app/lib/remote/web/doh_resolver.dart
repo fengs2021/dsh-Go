@@ -55,16 +55,29 @@ class DohResolver {
     if (proxyHost != null) {
       // This client never configures a proxy; honour the platform resolver if a
       // future caller does, rather than dialing the origin behind its back.
-      return _defaultConnect(uri.host, uri.port);
+      return _dial(proxyHost, proxyPort ?? uri.port, uri);
     }
     final address = await lookup(uri.host);
-    if (address == null) return _defaultConnect(uri.host, uri.port);
-    final socket = await Socket.connect(address.address, uri.port, timeout: timeout);
-    return ConnectionTask.fromSocket(Future<Socket>.value(socket), () => socket.destroy());
+    if (address == null) return _dial(uri.host, uri.port, uri);
+    return _dial(address.address, uri.port, uri);
   }
 
-  Future<ConnectionTask<Socket>> _defaultConnect(String host, int port) async =>
-      Socket.startConnect(host, port);
+  /// Connects to [host] (a literal or a name) and, for `https`, completes the
+  /// TLS handshake here: [HttpClient.connectionFactory] hands the socket
+  /// straight to the protocol layer, so a plain socket would send the request
+  /// in clear text (the origin answers "plain HTTP request sent to HTTPS
+  /// port"). SNI and the certificate check stay on [uri]'s host name.
+  Future<ConnectionTask<Socket>> _dial(String host, int port, Uri uri) async {
+    final socket = await Socket.connect(host, port, timeout: timeout);
+    if (uri.scheme != 'https') {
+      return ConnectionTask.fromSocket(Future<Socket>.value(socket), () => socket.destroy());
+    }
+    final secure = await SecureSocket.secure(socket, host: uri.host);
+    return ConnectionTask.fromSocket(Future<Socket>.value(secure), () {
+      secure.destroy();
+      socket.destroy();
+    });
+  }
 
   Future<InternetAddress?> _query4(String host) async {
     final uri = endpoint.replace(queryParameters: {
