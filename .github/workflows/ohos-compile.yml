@@ -21,11 +21,12 @@ permissions:
 
 concurrency:
   group: ohos-compile-${{ github.ref }}
-  cancel-in-progress: true
+  # 排队时不再互相顶掉：macOS 机位紧张时，取消会让每一轮都白等。
+  cancel-in-progress: false
 
 jobs:
   compile:
-    runs-on: macos-latest
+    runs-on: macos-14
     timeout-minutes: 45
     env:
       FLUTTER_OHOS_TAG: 3.47.9-ohos-1.0.0
