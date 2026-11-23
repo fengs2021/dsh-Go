@@ -96,7 +96,7 @@ DshClient.connect({
 
 - 主机切换器（`host_switcher.dart`）与远程页（`remote_screen.dart`）里加「添加远程 DSH」入口；
 - 表单（新文件 `web_host_form.dart`，参照 `ssh_host_form.dart` 的结构与错误展示）：
-  - 名称（可空）、地址（必填，接受 `http://192.168.2.230:3080`、`https://dsh-pc.example.com`，
+  - 名称（可空）、地址（必填，接受 `http://192.168.1.10:3080`、`https://dsh-pc.example.com`，
     也接受带 `?token=` 的完整 URL —— 解析出 token 后从地址里去掉）；
   - 凭证：二选一 ——「访问密码（dsh-bridge）」或「启动令牌（dsh web）」；
   - 「扫描局域网」按钮 → 列表，点一条就填好地址（bridge 的自动选密码模式）；

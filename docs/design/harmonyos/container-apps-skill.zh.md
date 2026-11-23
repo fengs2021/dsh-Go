@@ -58,6 +58,6 @@
 ## 6. 验证状态与剩余未知
 
 - **正文事实来源**：用户手机上的《卓易通应用启动命令.md》（2026-11-13 写于设备，2026-11-18 导出到工作区）。这是本次唯一的一手证据；技能正文已与它逐条对齐（启动公式、`-a` 必填、`bm dump` 判断无效、找 Activity 的两条路、锁屏限制、速查表四行）。
-- **仍未在本次真机复跑**：设备当时离线（`hdc list targets` 为空、`192.168.2.102` 100% 丢包）。回网后应至少复跑一条：`aa start -b com.qidian.QDReader -a com.qidian.QDReader.ui.activity.SplashActivity`，再截图确认前台。
+- **仍未在本次真机复跑**：设备当时离线（`hdc list targets` 为空、`192.168.1.10` 100% 丢包）。回网后应至少复跑一条：`aa start -b com.qidian.QDReader -a com.qidian.QDReader.ui.activity.SplashActivity`，再截图确认前台。
 - **ANCO 版本相关性未知**：速查表里的 Activity 名来自那台设备当时的 anco 版本；容器或 App 升级后可能变。技能 §3 给了反推方法，但没有「表过期」的自动检测。
 - 手机上原有的 `…/workspace/DSH-Go/卓易通应用启动命令.md` 与本技能内容现已一致（技能里引用了同一张表）；后续任何实测结论都应回写到设备上的这份文档与 `$DSH_HOME/container-launch.md` 两处。

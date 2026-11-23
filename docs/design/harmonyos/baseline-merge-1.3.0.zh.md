@@ -161,7 +161,7 @@ $ node --test tooling/ohos/tests/transient-task.test.mjs → # pass 36 # fail 0
 | `hap-build/dsh-ohos-v74-unsigned.hap` | 163,426,345 B | `607b91cd47ac4e3d9103625ebf456011` |
 | `hap-build/dsh-ohos-v74-signed.hap` | 163,515,134 B | `aac9682cbbed0f85ceeb0aa090f6c670` |
 
-装机：`bash scripts/install-v74.sh 192.168.2.115:45957` → `install bundle successfully`、
+装机：`bash scripts/install-v74.sh 192.168.1.10:45957` → `install bundle successfully`、
 `aa start ability successfully`；设备侧 `versionName 1.3.0`、`versionCode 1`、
 `updateTime 2026-11-22 13:22:07`，进程在跑。
 
