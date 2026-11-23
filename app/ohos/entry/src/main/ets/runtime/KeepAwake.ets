@@ -12,6 +12,8 @@ import hilog from '@ohos.hilog';
 const DOMAIN: number = 0x3F10;
 const TAG: string = 'DshKeepAwake';
 const REFRESH_MS: number = 4 * 60 * 1000;
+// 传进来的是 common.Context（应用上下文），没有 abilityInfo；mainElement 固定为 EntryAbility。
+const ABILITY_NAME: string = 'EntryAbility';
 
 export class KeepAwake {
   private static context: common.UIAbilityContext | null = null;
@@ -31,7 +33,7 @@ export class KeepAwake {
     KeepAwake.listen();
     try {
       const agent = await wantAgent.getWantAgent({
-        wants: [{ bundleName: context.abilityInfo.bundleName, abilityName: context.abilityInfo.name }],
+        wants: [{ bundleName: context.applicationInfo.name, abilityName: ABILITY_NAME }],
         actionType: wantAgent.OperationType.START_ABILITY,
         requestCode: 2001,
         actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
@@ -81,7 +83,7 @@ export class KeepAwake {
     if (context === null) return 'no-context';
     try {
       const agent = await wantAgent.getWantAgent({
-        wants: [{ bundleName: context.abilityInfo.bundleName, abilityName: context.abilityInfo.name }],
+        wants: [{ bundleName: context.applicationInfo.name, abilityName: ABILITY_NAME }],
         actionType: wantAgent.OperationType.START_ABILITY,
         requestCode: 2002,
         actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
