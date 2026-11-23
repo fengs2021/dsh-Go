@@ -16364,6 +16364,42 @@ abstract class L10n {
   /// **'这台设备不能听你开口'**
   String get harmonyPluginVoiceUnavailable;
 
+  /// No description provided for @harmonyKeepAwakeTitle.
+  ///
+  /// In zh, this message translates to:
+  /// **'实验：整夜保持运行'**
+  String get harmonyKeepAwakeTitle;
+
+  /// No description provided for @harmonyKeepAwakeToggle.
+  ///
+  /// In zh, this message translates to:
+  /// **'保持运行（实验）'**
+  String get harmonyKeepAwakeToggle;
+
+  /// No description provided for @harmonyKeepAwakeHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'申请数据传输长时任务并每 4 分钟刷新进度；只用于真机测量，不代表一定能过夜。'**
+  String get harmonyKeepAwakeHint;
+
+  /// No description provided for @harmonyKeepAwakeFooter.
+  ///
+  /// In zh, this message translates to:
+  /// **'系统会在通知栏显示常驻通知；删掉通知会立刻结束该任务。'**
+  String get harmonyKeepAwakeFooter;
+
+  /// No description provided for @harmonyProbeTaskKeeping.
+  ///
+  /// In zh, this message translates to:
+  /// **'测试 TASK_KEEPING 资格'**
+  String get harmonyProbeTaskKeeping;
+
+  /// No description provided for @harmonyProbeTaskKeepingHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'单独尝试计算任务长时任务，只记录系统答复，不改变默认路径。'**
+  String get harmonyProbeTaskKeepingHint;
+
   /// No description provided for @hostDetailsConnectionType.
   ///
   /// In zh, this message translates to:

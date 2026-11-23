@@ -186,6 +186,12 @@ class _SuspendedPage extends ConsumerStatefulWidget {
 class _SuspendedPageState extends ConsumerState<_SuspendedPage> {
   late final AppLifecycleListener _lifecycle;
   bool _updating = false;
+  // 实验：整夜保持运行 / TASK_KEEPING 试探，只用于真机测量，不改默认行为。
+  bool _keepAwake = false;
+  bool _keepAwakeBusy = false;
+  String? _keepAwakeResult;
+  bool _probing = false;
+  String? _probeResult;
 
   @override
   void initState() {
@@ -297,6 +303,45 @@ class _SuspendedPageState extends ConsumerState<_SuspendedPage> {
             : l10n.backgroundProtectionOff);
   }
 
+  Future<void> _setKeepAwake(bool enabled) async {
+    if (_keepAwakeBusy) return;
+    setState(() {
+      _keepAwakeBusy = true;
+      _keepAwakeResult = null;
+    });
+    String result;
+    try {
+      result = await ref.read(runtimeBridgeProvider).holdAwake(enabled);
+    } catch (error) {
+      result = 'error: $error';
+    }
+    if (!mounted) return;
+    setState(() {
+      _keepAwakeBusy = false;
+      _keepAwake = enabled && result.startsWith('granted');
+      _keepAwakeResult = result;
+    });
+  }
+
+  Future<void> _probeTaskKeeping() async {
+    if (_probing) return;
+    setState(() {
+      _probing = true;
+      _probeResult = null;
+    });
+    String result;
+    try {
+      result = await ref.read(runtimeBridgeProvider).probeTaskKeeping();
+    } catch (error) {
+      result = 'error: $error';
+    }
+    if (!mounted) return;
+    setState(() {
+      _probing = false;
+      _probeResult = result;
+    });
+  }
+
   Widget _protectionPage(BackgroundProtection protection, {required bool readFailed, required bool ios}) {
     final l10n = context.l10n;
     final settingsNeeded =
@@ -342,6 +387,28 @@ class _SuspendedPageState extends ConsumerState<_SuspendedPage> {
             ),
           ],
         ),
+        if (!ios)
+          SettingsSection(
+            title: l10n.harmonyKeepAwakeTitle,
+            footer: Text(l10n.harmonyKeepAwakeFooter),
+            children: [
+              // 用行 + 点击切换而不是第二个开关：这一页的契约是「鸿蒙只有一个开关」，
+              // 实验入口不应改变那个语义；状态直接写在副标题里。
+              SettingsTile(
+                key: const ValueKey('keep-awake-experiment'),
+                title: l10n.harmonyKeepAwakeToggle,
+                subtitle: _keepAwakeResult ?? l10n.harmonyKeepAwakeHint,
+                value: Text(_keepAwake ? l10n.accessStateOn : l10n.accessStateOff),
+                onTap: _keepAwakeBusy ? null : () => unawaited(_setKeepAwake(!_keepAwake)),
+              ),
+              SettingsTile(
+                key: const ValueKey('probe-task-keeping'),
+                title: l10n.harmonyProbeTaskKeeping,
+                subtitle: _probeResult ?? l10n.harmonyProbeTaskKeepingHint,
+                onTap: _probing ? null : () => unawaited(_probeTaskKeeping()),
+              ),
+            ],
+          ),
       ],
     );
   }

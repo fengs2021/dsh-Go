@@ -116,12 +116,24 @@
   "harmonySafeReopenNote": "进行中的回复会中断，App 会重新打开。",
   "harmonyRestoredReopening": "已恢复上次正常的配置，App 正在重新打开",
   "harmonySafeRepairPrompt": "我的 DSH 正常模式出了问题（{what}）。现在是安全模式，用的是随包的默认配置，我原来的配置没有动。请帮我找原因，动手改之前先告诉我要改什么。",
-  "@harmonySafeRepairPrompt": {"placeholders": {"what": {"type": "String"}}},
+  "@harmonySafeRepairPrompt": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
   "harmonyRemindersTitle": "闹钟和计时器",
   "harmonyRemindersCanHint": "到点由系统提醒，引擎不会因此运行。系统也可能不接受，AI 会告诉你",
   "harmonyRemindersNoBuild": "这个版本没有开通系统提醒",
   "harmonyRemindersNoDevice": "这台设备没有系统提醒",
   "harmonyReminderSet": "已设提醒",
   "harmonyReminderRefused": "系统没有接受提醒，没有设置。",
-  "harmonyPluginVoiceUnavailable": "这台设备不能听你开口"
+  "harmonyPluginVoiceUnavailable": "这台设备不能听你开口",
+  "harmonyKeepAwakeTitle": "实验：整夜保持运行",
+  "harmonyKeepAwakeToggle": "保持运行（实验）",
+  "harmonyKeepAwakeHint": "申请数据传输长时任务并每 4 分钟刷新进度；只用于真机测量，不代表一定能过夜。",
+  "harmonyKeepAwakeFooter": "系统会在通知栏显示常驻通知；删掉通知会立刻结束该任务。",
+  "harmonyProbeTaskKeeping": "测试 TASK_KEEPING 资格",
+  "harmonyProbeTaskKeepingHint": "单独尝试计算任务长时任务，只记录系统答复，不改变默认路径。"
 }

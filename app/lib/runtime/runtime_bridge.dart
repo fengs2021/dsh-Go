@@ -668,6 +668,17 @@ class RuntimeBridge {
   /// `denied` or `unsupported`.
   Future<String?> reminderAccess() => _methods.invokeMethod<String>('reminderAccess');
 
+  /// 实验：整夜保持运行（DATA_TRANSFER + 4 分钟进度刷新）。返回 `granted:<id>` / `denied:<msg>`。
+  Future<String> holdAwake(bool enabled) async =>
+      await _methods.invokeMethod<String>('holdAwake', {'enabled': enabled}) ?? 'unsupported';
+
+  Future<String> holdAwakeState() async =>
+      await _methods.invokeMethod<String>('holdAwakeState') ?? 'unknown';
+
+  /// 实验：单独试探 MODE_TASK_KEEPING 是否被系统接受（只记录错误码）。
+  Future<String> probeTaskKeeping() async =>
+      await _methods.invokeMethod<String>('probeTaskKeeping') ?? 'unsupported';
+
   /// HarmonyOS 界面操作（调试通道）的授权状态：ArkTS 读引擎写的 dsh-app/hdc-status.json。
   /// null 表示没有原生侧（安卓）或引擎还没写过，页面按「还没检测」显示。
   Future<Map<Object?, Object?>?> hdcChannelStatus() async {

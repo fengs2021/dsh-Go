@@ -9331,6 +9331,27 @@ class L10nEn extends L10n {
   String get harmonyPluginVoiceUnavailable => 'This device can\'t listen for you';
 
   @override
+  String get harmonyKeepAwakeTitle => 'Experiment: run overnight';
+
+  @override
+  String get harmonyKeepAwakeToggle => 'Hold awake (experiment)';
+
+  @override
+  String get harmonyKeepAwakeHint =>
+      'Requests a data-transfer continuous task and refreshes progress every 4 minutes; a measurement tool, not a promise it survives the night.';
+
+  @override
+  String get harmonyKeepAwakeFooter =>
+      'The system shows a persistent notification; deleting it stops the task immediately.';
+
+  @override
+  String get harmonyProbeTaskKeeping => 'Probe TASK_KEEPING eligibility';
+
+  @override
+  String get harmonyProbeTaskKeepingHint =>
+      'Tries the compute continuous task once and records the system\'s answer without changing the default path.';
+
+  @override
   String get hostDetailsConnectionType => 'Connection type';
 
   @override

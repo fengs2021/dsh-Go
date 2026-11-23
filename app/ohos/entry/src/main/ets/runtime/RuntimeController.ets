@@ -1,4 +1,5 @@
 // 未经 HarmonyOS SDK 编译、未在真机核实。Node 停止的 Linux 证据不替代 OH NAPI 验证。
+import { KeepAwake } from './KeepAwake';
 import hilog from '@ohos.hilog';
 import common from '@ohos.app.ability.common';
 import util from '@ohos.util';
@@ -615,6 +616,22 @@ export class RuntimeController {
   }
 
   reminderAccess(): string { return agentReminderAccess(this.context.applicationInfo.accessTokenId); }
+
+  /// 实验：整夜保持运行（DATA_TRANSFER + 4 分钟进度刷新），只用于真机测量。
+  async holdAwake(enabled: boolean): Promise<string> {
+    KeepAwake.configure(this.context);
+    return enabled ? await KeepAwake.start() : await KeepAwake.stop();
+  }
+
+  holdAwakeState(): string {
+    return KeepAwake.state();
+  }
+
+  /// 实验：单独试探 MODE_TASK_KEEPING 是否被系统接受，只记录错误码。
+  async probeTaskKeeping(): Promise<string> {
+    KeepAwake.configure(this.context);
+    return await KeepAwake.probeTaskKeeping();
+  }
 
   // For the log. Notices reach the person as they are, and these name the engine's
   // internals; what they need to know the app says itself, in their language.

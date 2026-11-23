@@ -269,6 +269,10 @@ export class RuntimePlugin implements FlutterPlugin, MethodCallHandler, StreamHa
       case 'storageStatus':
         result.success(new Map<string, Object | null>([['granted', false], ['permission', false], ['legacy', false], ['guestPath', '']])); return;
       case 'networkMetered': result.success(await controller.networkMetered()); return;
+      case 'holdAwake':
+        result.success(await controller.holdAwake(call.argument('enabled') === true)); return;
+      case 'holdAwakeState': result.success(controller.holdAwakeState()); return;
+      case 'probeTaskKeeping': result.success(await controller.probeTaskKeeping()); return;
       case 'publishDiagnostics':
         const markdown: Any = call.argument('markdown');
         if (typeof markdown !== 'string') result.success(null);

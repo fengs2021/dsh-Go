@@ -116,12 +116,24 @@
   "harmonySafeReopenNote": "Replies in progress stop, and the app reopens.",
   "harmonyRestoredReopening": "Restored the last good configuration. The app is reopening",
   "harmonySafeRepairPrompt": "My DSH has a problem in normal mode ({what}). It's in Safe mode now, on the default configuration that comes with the app, and my own configuration is untouched. Find the cause, and tell me what you'd change before changing it.",
-  "@harmonySafeRepairPrompt": {"placeholders": {"what": {"type": "String"}}},
+  "@harmonySafeRepairPrompt": {
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
   "harmonyRemindersTitle": "Alarms and timers",
   "harmonyRemindersCanHint": "The system reminds you when it's time; the engine doesn't run for it. The system can still say no, and the AI is told",
   "harmonyRemindersNoBuild": "This version doesn't have system reminders",
   "harmonyRemindersNoDevice": "This device doesn't have system reminders",
   "harmonyReminderSet": "Reminder set",
   "harmonyReminderRefused": "The system didn't accept the reminder, so nothing was set. It may be at its limit, or this version may not have the service.",
-  "harmonyPluginVoiceUnavailable": "This device can't listen for you"
+  "harmonyPluginVoiceUnavailable": "This device can't listen for you",
+  "harmonyKeepAwakeTitle": "Experiment: run overnight",
+  "harmonyKeepAwakeToggle": "Hold awake (experiment)",
+  "harmonyKeepAwakeHint": "Requests a data-transfer continuous task and refreshes progress every 4 minutes; a measurement tool, not a promise it survives the night.",
+  "harmonyKeepAwakeFooter": "The system shows a persistent notification; deleting it stops the task immediately.",
+  "harmonyProbeTaskKeeping": "Probe TASK_KEEPING eligibility",
+  "harmonyProbeTaskKeepingHint": "Tries the compute continuous task once and records the system's answer without changing the default path."
 }

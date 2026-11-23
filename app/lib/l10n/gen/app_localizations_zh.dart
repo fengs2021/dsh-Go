@@ -8836,6 +8836,24 @@ class L10nZh extends L10n {
   String get harmonyPluginVoiceUnavailable => '这台设备不能听你开口';
 
   @override
+  String get harmonyKeepAwakeTitle => '实验：整夜保持运行';
+
+  @override
+  String get harmonyKeepAwakeToggle => '保持运行（实验）';
+
+  @override
+  String get harmonyKeepAwakeHint => '申请数据传输长时任务并每 4 分钟刷新进度；只用于真机测量，不代表一定能过夜。';
+
+  @override
+  String get harmonyKeepAwakeFooter => '系统会在通知栏显示常驻通知；删掉通知会立刻结束该任务。';
+
+  @override
+  String get harmonyProbeTaskKeeping => '测试 TASK_KEEPING 资格';
+
+  @override
+  String get harmonyProbeTaskKeepingHint => '单独尝试计算任务长时任务，只记录系统答复，不改变默认路径。';
+
+  @override
   String get hostDetailsConnectionType => '连接方式';
 
   @override
