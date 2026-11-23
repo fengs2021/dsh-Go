@@ -33,8 +33,9 @@ void main() {
           return WebHostLink(
             config: config,
             loadSecrets: () async => const WebHostSecrets(),
-            login: (baseUri, password) => throw StateError('never opens in this test'),
-            connectClient: ({required baseUri, cookie, token}) => throw StateError('never opens in this test'),
+            login: (baseUri, password, {httpClient}) => throw StateError('never opens in this test'),
+            connectClient: ({required baseUri, cookie, token, httpClient, httpClientFactory}) =>
+                throw StateError('never opens in this test'),
           );
         }),
       ],
@@ -51,41 +52,41 @@ void main() {
 
   group('WebAddress', () {
     test('fills in the scheme, keeps the port, drops path and query', () {
-      expect(WebAddress.tryParse('192.168.2.230:3080')?.baseUrl, 'http://192.168.2.230:3080');
+      expect(WebAddress.tryParse('192.168.1.10:3080')?.baseUrl, 'http://192.168.1.10:3080');
       expect(WebAddress.tryParse('https://dsh-pc.example.com')?.baseUrl, 'https://dsh-pc.example.com');
       expect(WebAddress.tryParse('  http://10.0.0.5:3080/chat?x=1#top ')?.baseUrl, 'http://10.0.0.5:3080');
     });
 
     test('takes the launch token out of a pasted URL', () {
-      final address = WebAddress.tryParse('http://192.168.2.230:3080/?token=abc123');
-      expect(address?.baseUrl, 'http://192.168.2.230:3080');
+      final address = WebAddress.tryParse('http://192.168.1.10:3080/?token=abc123');
+      expect(address?.baseUrl, 'http://192.168.1.10:3080');
       expect(address?.token, 'abc123');
-      expect(WebAddress.tryParse('http://192.168.2.230:3080/?token=')?.token, isNull);
+      expect(WebAddress.tryParse('http://192.168.1.10:3080/?token=')?.token, isNull);
     });
 
     test('rejects what has no host', () {
       expect(WebAddress.tryParse(''), isNull);
       expect(WebAddress.tryParse('   '), isNull);
-      expect(WebAddress.tryParse('ftp://192.168.2.230'), isNull);
+      expect(WebAddress.tryParse('ftp://192.168.1.10'), isNull);
       expect(WebAddress.tryParse('http://user:pw@host:80'), isNull);
     });
   });
 
   group('WebHostConfig', () {
     test('json round-trip keeps the address and names the host when unnamed', () {
-      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.2.230:3080');
+      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.1.10:3080');
       expect(WebHostConfig.fromJson(jsonDecode(jsonEncode(config.toJson()))), config);
       final unnamed = WebHostConfig.fromJson({'id': 'web-2', 'baseUrl': 'http://10.0.0.5:3080'})!;
       expect(unnamed.name, '10.0.0.5:3080');
-      expect(WebHostConfig.fromJson({'id': 'web-3', 'baseUrl': 'ftp://192.168.2.230'}), isNull);
+      expect(WebHostConfig.fromJson({'id': 'web-3', 'baseUrl': 'ftp://192.168.1.10'}), isNull);
       expect(WebHostConfig.fromJson({'baseUrl': 'http://x'}), isNull);
       expect(WebHostConfig.newId(), matches(RegExp(r'^web-[0-9a-f]{16}$')));
     });
 
     test('a rename keeps the connection; a new address does not', () {
-      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.2.230:3080');
+      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.1.10:3080');
       expect(config.copyWith(name: '书房').connectionKey, config.connectionKey);
-      expect(config.copyWith(baseUrl: 'http://192.168.2.231:3080').connectionKey, isNot(config.connectionKey));
+      expect(config.copyWith(baseUrl: 'http://192.168.1.11:3080').connectionKey, isNot(config.connectionKey));
     });
   });
 
@@ -106,14 +107,14 @@ void main() {
     test('stores the config in prefs and the credential in the secret store', () async {
       final c = container();
       await c.read(hostsProvider.notifier).ready;
-      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.2.230:3080');
+      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.1.10:3080');
 
       expect(await c.read(hostsProvider.notifier).saveWeb(config, secrets: const WebHostSecrets(password: 'hunter2')), isTrue);
       expect(c.read(hostsProvider).webById('web-1'), config);
 
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(HostsController.webPrefsKey)!;
-      expect(raw, contains('192.168.2.230:3080'));
+      expect(raw, contains('192.168.1.10:3080'));
       expect(raw, isNot(contains('hunter2')));
 
       final loaded = await c.read(hostsProvider.notifier).loadWebSecrets('web-1');
@@ -130,7 +131,7 @@ void main() {
     test('a saved host survives a reload', () async {
       final first = container();
       await first.read(hostsProvider.notifier).ready;
-      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.2.230:3080');
+      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.1.10:3080');
       await first.read(hostsProvider.notifier).saveWeb(config, secrets: const WebHostSecrets(token: 'tok-9'));
 
       final second = container();
@@ -142,7 +143,7 @@ void main() {
     test('removing the host drops its secrets and forgets it as active', () async {
       final c = container();
       await c.read(hostsProvider.notifier).ready;
-      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.2.230:3080');
+      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.1.10:3080');
       await c.read(hostsProvider.notifier).saveWeb(config, secrets: const WebHostSecrets(password: 'hunter2'));
       c.read(activeHostProvider.notifier).select(const HostRef.web('web-1'));
       expect(c.read(activeHostProvider), const HostRef.web('web-1'));
@@ -156,7 +157,7 @@ void main() {
     test('the link for a saved host is built from its config', () async {
       final c = container();
       await c.read(hostsProvider.notifier).ready;
-      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.2.230:3080');
+      const config = WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.1.10:3080');
       await c.read(hostsProvider.notifier).saveWeb(config);
 
       final link = c.read(hostLinkProvider(const HostRef.web('web-1')));

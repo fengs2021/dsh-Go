@@ -199,10 +199,12 @@ class DshConnection {
     this.hostHeader,
     this.cookie,
     HttpClient? httpClient,
+    HttpClient Function()? httpClientFactory,
     this.connectTimeout = const Duration(seconds: 10),
     this.requestTimeout = const Duration(seconds: 120),
     DshTracer? tracer,
   }) : baseUri = _normalizeBase(baseUri),
+       _newClient = httpClientFactory,
        _http = httpClient ?? HttpClient(),
        _ownsClient = httpClient == null,
        _usesDefaultHttp = httpClient == null && HttpOverrides.current == null,
@@ -267,6 +269,10 @@ class DshConnection {
   DshCookie? cookie;
 
   final HttpClient _http;
+
+  /// Builds the isolated client used for bounded GETs (a caller that needs its
+  /// own resolver, e.g. custom DNS, supplies one).
+  final HttpClient Function()? _newClient;
   final bool _ownsClient;
   final bool _usesDefaultHttp;
 
@@ -475,9 +481,12 @@ class DshConnection {
     required Duration timeout,
   }) async {
     if (maxBytes < 1) throw ArgumentError.value(maxBytes, 'maxBytes');
-    final http = HttpClient()
+    final http = _newClient?.call() ?? HttpClient();
+    http
       ..connectionTimeout = connectTimeout
       ..autoUncompress = autoUncompress;
+    // Keep a caller-supplied resolver (custom DNS) for this separate client too.
+
     var timedOut = false;
     // One deadline for connecting, headers and body: closing the client
     // fails whichever await is pending.

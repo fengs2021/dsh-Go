@@ -6,7 +6,7 @@
   "remoteDshHostIntro": "手机和电脑在同一网络，或电脑挂在一个公网可用的隧道域名后面，就能直接连它上面的 DSH。",
   "remoteDshHostSectionHelp": "dsh-bridge 后面的 DSH（访问密码），或同一网络里已经跑起来的 dsh web（启动令牌）。",
   "remoteDshHostAddress": "地址",
-  "remoteDshHostAddressHint": "http://192.168.2.230:3080",
+  "remoteDshHostAddressHint": "http://192.168.1.10:3080",
   "remoteDshHostAddressRequired": "请填写地址",
   "remoteDshHostAddressInvalid": "地址要以 http:// 或 https:// 开头，并带主机名",
   "remoteDshHostCredential": "登录方式",
@@ -53,5 +53,7 @@
         "type": "int"
       }
     }
-  }
+  },
+  "remoteDshHostDoh": "域名解析走 App 自带 DoH",
+  "remoteDshHostDohHelp": "公司或路由器 DNS 解析不了这个域名时打开：App 用 DoH（HTTPS）自己查地址，TLS 与 Host 仍按域名走，隧道和证书校验不变。"
 }

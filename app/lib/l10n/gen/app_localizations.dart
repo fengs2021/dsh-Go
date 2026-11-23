@@ -48809,7 +48809,7 @@ abstract class L10n {
   /// No description provided for @remoteDshHostAddressHint.
   ///
   /// In zh, this message translates to:
-  /// **'http://192.168.2.230:3080'**
+  /// **'http://192.168.1.10:3080'**
   String get remoteDshHostAddressHint;
 
   /// No description provided for @remoteDshHostAddressRequired.
@@ -48967,6 +48967,18 @@ abstract class L10n {
   /// In zh, this message translates to:
   /// **'这台主机本身就是 DSH 网页版'**
   String get remoteDshHostSelfWeb;
+
+  /// No description provided for @remoteDshHostDoh.
+  ///
+  /// In zh, this message translates to:
+  /// **'域名解析走 App 自带 DoH'**
+  String get remoteDshHostDoh;
+
+  /// No description provided for @remoteDshHostDohHelp.
+  ///
+  /// In zh, this message translates to:
+  /// **'公司或路由器 DNS 解析不了这个域名时打开：App 用 DoH（HTTPS）自己查地址，TLS 与 Host 仍按域名走，隧道和证书校验不变。'**
+  String get remoteDshHostDohHelp;
 
   /// No description provided for @workshopTitle.
   ///

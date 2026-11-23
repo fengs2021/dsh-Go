@@ -28188,7 +28188,7 @@ class L10nEn extends L10n {
   String get remoteDshHostAddress => 'Address';
 
   @override
-  String get remoteDshHostAddressHint => 'http://192.168.2.230:3080';
+  String get remoteDshHostAddressHint => 'http://192.168.1.10:3080';
 
   @override
   String get remoteDshHostAddressRequired => 'Enter the address';
@@ -28272,6 +28272,13 @@ class L10nEn extends L10n {
 
   @override
   String get remoteDshHostSelfWeb => 'This host is DSH Web itself';
+
+  @override
+  String get remoteDshHostDoh => 'Resolve the name with the app\'s DoH';
+
+  @override
+  String get remoteDshHostDohHelp =>
+      'Turn on when the local DNS refuses this domain: the app looks it up over HTTPS (DoH); TLS and Host stay name-based, so the tunnel and certificate checks are unchanged.';
 
   @override
   String get workshopTitle => 'Workshop';

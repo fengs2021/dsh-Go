@@ -47,7 +47,7 @@ void main() {
 
     final fields = find.byType(TextField);
     await tester.enterText(fields.at(0), '客厅');
-    await tester.enterText(fields.at(1), '192.168.2.230:3080');
+    await tester.enterText(fields.at(1), '192.168.1.10:3080');
     final password = find.byWidgetPredicate(
       (widget) => widget is TextField && widget.keyboardType == TextInputType.visiblePassword,
     );
@@ -58,10 +58,10 @@ void main() {
 
     final saved = container.read(hostsProvider).web.single;
     expect(saved.name, '客厅');
-    expect(saved.baseUrl, 'http://192.168.2.230:3080');
+    expect(saved.baseUrl, 'http://192.168.1.10:3080');
     expect((await container.read(hostsProvider.notifier).loadWebSecrets(saved.id)).password, 'hunter2');
     final raw = (await SharedPreferences.getInstance()).getString(HostsController.webPrefsKey)!;
-    expect(raw, contains('192.168.2.230:3080'));
+    expect(raw, contains('192.168.1.10:3080'));
     expect(raw, isNot(contains('hunter2')));
   });
 
@@ -69,14 +69,14 @@ void main() {
     final container = await open(tester);
 
     final fields = find.byType(TextField);
-    await tester.enterText(fields.at(1), 'http://192.168.2.230:3080/?token=tok-9');
+    await tester.enterText(fields.at(1), 'http://192.168.1.10:3080/?token=tok-9');
     await tester.tap(find.widgetWithText(FilledButton, '保存'));
     await tester.pumpAndSettle();
 
     final saved = container.read(hostsProvider).web.single;
-    expect(saved.baseUrl, 'http://192.168.2.230:3080');
+    expect(saved.baseUrl, 'http://192.168.1.10:3080');
     // No name typed: the authority names it.
-    expect(saved.name, '192.168.2.230:3080');
+    expect(saved.name, '192.168.1.10:3080');
     final secrets = await container.read(hostsProvider.notifier).loadWebSecrets(saved.id);
     expect(secrets.token, 'tok-9');
     expect(secrets.password, isNull);
@@ -86,7 +86,7 @@ void main() {
     final container = await open(tester);
 
     final fields = find.byType(TextField);
-    await tester.enterText(fields.at(1), 'ftp://192.168.2.230');
+    await tester.enterText(fields.at(1), 'ftp://192.168.1.10');
     await tester.tap(find.widgetWithText(FilledButton, '保存'));
     await tester.pumpAndSettle();
     expect(find.text('地址要以 http:// 或 https:// 开头，并带主机名'), findsOneWidget);

@@ -26740,7 +26740,7 @@ class L10nZh extends L10n {
   String get remoteDshHostAddress => '地址';
 
   @override
-  String get remoteDshHostAddressHint => 'http://192.168.2.230:3080';
+  String get remoteDshHostAddressHint => 'http://192.168.1.10:3080';
 
   @override
   String get remoteDshHostAddressRequired => '请填写地址';
@@ -26823,6 +26823,12 @@ class L10nZh extends L10n {
 
   @override
   String get remoteDshHostSelfWeb => '这台主机本身就是 DSH 网页版';
+
+  @override
+  String get remoteDshHostDoh => '域名解析走 App 自带 DoH';
+
+  @override
+  String get remoteDshHostDohHelp => '公司或路由器 DNS 解析不了这个域名时打开：App 用 DoH（HTTPS）自己查地址，TLS 与 Host 仍按域名走，隧道和证书校验不变。';
 
   @override
   String get workshopTitle => '创意工坊';

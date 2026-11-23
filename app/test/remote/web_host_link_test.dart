@@ -1,6 +1,8 @@
 // WebHostLink: which credential it uses, how a refused password maps to an
 // auth failure, and that a launch token never touches the bridge login.
 
+import 'dart:io';
+
 import 'package:dsh_app/remote/link_status.dart';
 import 'package:dsh_app/remote/web/web_host_config.dart';
 import 'package:dsh_app/remote/web/web_host_link.dart';
@@ -15,13 +17,19 @@ class _Recorder {
   Object? throwOnLogin;
   Object? throwOnConnect;
 
-  Future<DshCookie> login(Uri baseUri, String password) async {
+  Future<DshCookie> login(Uri baseUri, String password, {HttpClient? httpClient}) async {
     logins.add((baseUri, password));
     if (throwOnLogin case final error?) throw error;
     return DshCookie(name: 'dsh_bridge_auth', value: 'sess-1', authority: DshConnection.authorityOf(baseUri));
   }
 
-  Future<DshClient> connect({required Uri baseUri, DshCookie? cookie, String? token}) async {
+  Future<DshClient> connect({
+    required Uri baseUri,
+    DshCookie? cookie,
+    String? token,
+    HttpClient? httpClient,
+    HttpClient Function()? httpClientFactory,
+  }) async {
     connects.add((baseUri: baseUri, cookie: cookie, token: token));
     if (throwOnConnect case final error?) throw error;
     return DshClient(DshConnection(Uri.parse('http://127.0.0.1:9')));
@@ -34,7 +42,7 @@ void main() {
   setUp(() => recorder = _Recorder());
 
   WebHostLink link({required WebHostSecrets secrets, bool retryFirstOpen = false}) => WebHostLink(
-    config: const WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.2.230:3080'),
+    config: const WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.1.10:3080'),
     loadSecrets: () async => secrets,
     login: recorder.login,
     connectClient: recorder.connect,
@@ -57,7 +65,7 @@ void main() {
 
     await underTest.open();
 
-    expect(recorder.logins, [(Uri.parse('http://192.168.2.230:3080'), 'hunter2')]);
+    expect(recorder.logins, [(Uri.parse('http://192.168.1.10:3080'), 'hunter2')]);
     expect(recorder.connects, hasLength(1));
     expect(recorder.connects.single.cookie?.header, 'dsh_bridge_auth=sess-1');
     expect(recorder.connects.single.token, isNull);
@@ -137,12 +145,12 @@ void main() {
   test('an unreachable Host is retried with the shared backoff', () async {
     var failures = 1;
     final underTest = WebHostLink(
-      config: const WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.2.230:3080'),
+      config: const WebHostConfig(id: 'web-1', name: '客厅', baseUrl: 'http://192.168.1.10:3080'),
       loadSecrets: () async => const WebHostSecrets(token: 'tok-9'),
       login: recorder.login,
-      connectClient: ({required baseUri, cookie, token}) {
+      connectClient: ({required baseUri, cookie, token, httpClient, httpClientFactory}) {
         if (failures-- > 0) return Future.error(const DshTransportException('connection refused'));
-        return recorder.connect(baseUri: baseUri, cookie: cookie, token: token);
+        return recorder.connect(baseUri: baseUri, cookie: cookie, token: token, httpClient: httpClient);
       },
       backoff: Backoff(initial: const Duration(milliseconds: 5), maxAttempts: 3),
     );

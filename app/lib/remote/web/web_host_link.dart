@@ -1,31 +1,50 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dsh_client/dsh_client.dart';
 
 import '../../l10n/l10n.dart';
 import '../link_status.dart';
+import 'doh_resolver.dart';
 import 'web_host_config.dart';
 
 /// Opens a [DshClient] for one 远程 DSH. Injectable so tests can assert which
 /// credential was used without a server.
-typedef WebClientConnector =
-    Future<DshClient> Function({required Uri baseUri, DshCookie? cookie, String? token});
+typedef WebClientConnector = Future<DshClient> Function({
+  required Uri baseUri,
+  DshCookie? cookie,
+  String? token,
+  HttpClient? httpClient,
+  HttpClient Function()? httpClientFactory,
+});
 
 /// Signs in to `dsh-bridge`; injectable for the same reason.
-typedef BridgeLogin = Future<DshCookie> Function(Uri baseUri, String password);
+typedef BridgeLogin = Future<DshCookie> Function(Uri baseUri, String password, {HttpClient? httpClient});
 
-Future<DshClient> _defaultConnector({required Uri baseUri, DshCookie? cookie, String? token}) {
+Future<DshClient> _defaultConnector({
+  required Uri baseUri,
+  DshCookie? cookie,
+  String? token,
+  HttpClient? httpClient,
+  HttpClient Function()? httpClientFactory,
+}) {
   if (cookie == null && token == null) {
     // A bare `dsh web` that asks for no credential. It is only reachable on a
     // loopback the phone itself trusts, so there is nothing to log in with.
-    final connection = DshConnection(baseUri);
+    final connection = DshConnection(baseUri, httpClient: httpClient);
     final client = DshClient(connection);
     return client.mux.ready().then((_) => client, onError: (Object error, StackTrace stack) async {
       await client.close().catchError((_) {});
       Error.throwWithStackTrace(error, stack);
     });
   }
-  return DshClient.connect(baseUri: baseUri, cookie: cookie, token: cookie == null ? token : null);
+  return DshClient.connect(
+    baseUri: baseUri,
+    cookie: cookie,
+    token: cookie == null ? token : null,
+    httpClient: httpClient,
+    httpClientFactory: httpClientFactory,
+  );
 }
 
 /// A DSH reached over plain HTTP: `dsh-bridge` behind an access password, or a
@@ -44,10 +63,12 @@ class WebHostLink implements HostLink {
     WebClientConnector? connectClient,
     Stream<void>? kicks,
     Backoff? backoff,
+    DohResolver? resolver,
     this.retryFirstOpen = true,
     this.probeTimeout = const Duration(seconds: 5),
   }) : _login = login ?? loginDshBridge,
        _connectClient = connectClient ?? _defaultConnector,
+       _resolver = resolver ?? DohResolver(),
        _backoff = backoff ?? Backoff() {
     _kickSub = kicks?.listen((_) => kick());
   }
@@ -56,7 +77,25 @@ class WebHostLink implements HostLink {
   final Future<WebHostSecrets> Function() _loadSecrets;
   final BridgeLogin _login;
   final WebClientConnector _connectClient;
+  final DohResolver _resolver;
   final Backoff _backoff;
+
+  /// The DoH-backed client of the current attempt; closed when it is replaced
+  /// or the link closes, since [DshConnection] does not own an injected client.
+  HttpClient? _dohHttp;
+
+  /// A fresh client for one attempt, or null when the platform resolver is
+  /// fine. Previous attempt's client is closed first: it holds its own sockets.
+  HttpClient? _openHttp() {
+    _dohHttp?.close(force: true);
+    _dohHttp = null;
+    if (!_config.doh) return null;
+    return _dohHttp = _resolver.client();
+  }
+
+  /// The same resolver for the client's isolated bounded GETs; those close the
+  /// client they were given, so each call gets its own.
+  HttpClient Function()? get _httpFactory => _config.doh ? _resolver.client : null;
 
   /// Bounds the health check a network change triggers.
   final Duration probeTimeout;
@@ -153,6 +192,8 @@ class WebHostLink implements HostLink {
     at(HostLinkStep.connect, detail: _config.baseUrl);
     final secrets = await _loadSecrets();
     _checkOpen();
+    // One DoH-backed client per attempt; null keeps the platform resolver.
+    final httpClient = _openHttp();
     final password = secrets.passwordOrNull;
     final token = secrets.tokenOrNull;
     final base = _config.baseUri;
@@ -160,7 +201,7 @@ class WebHostLink implements HostLink {
     if (password != null) {
       at(HostLinkStep.login);
       try {
-        cookie = await _login(base, password);
+        cookie = await _login(base, password, httpClient: httpClient);
       } on DshHttpException catch (e) {
         throw _httpError(e, password: true);
       } on DshTransportException catch (e) {
@@ -186,7 +227,13 @@ class WebHostLink implements HostLink {
     at(HostLinkStep.login);
     final DshClient client;
     try {
-      client = await _connectClient(baseUri: base, cookie: cookie, token: cookie == null ? token : null);
+      client = await _connectClient(
+        baseUri: base,
+        cookie: cookie,
+        token: cookie == null ? token : null,
+        httpClient: httpClient,
+        httpClientFactory: _httpFactory,
+      );
     } on DshHttpException catch (e) {
       throw _httpError(e, password: password != null);
     } on DshTransportException catch (e) {
@@ -375,6 +422,8 @@ class WebHostLink implements HostLink {
     _delay.cancel();
     await _kickSub?.cancel();
     await _muxSub?.cancel();
+    _dohHttp?.close(force: true);
+    _dohHttp = null;
     final client = _client;
     _client = null;
     if (client != null) await client.close().catchError((_) {});

@@ -6,7 +6,7 @@
   "remoteDshHostIntro": "When this phone and a computer share a network — or the computer sits behind a tunnel name reachable from here — the DSH on it can be used directly.",
   "remoteDshHostSectionHelp": "A DSH behind dsh-bridge (access password), or a dsh web already running on this network (launch token).",
   "remoteDshHostAddress": "Address",
-  "remoteDshHostAddressHint": "http://192.168.2.230:3080",
+  "remoteDshHostAddressHint": "http://192.168.1.10:3080",
   "remoteDshHostAddressRequired": "Enter the address",
   "remoteDshHostAddressInvalid": "The address needs http:// or https:// and a host name",
   "remoteDshHostCredential": "How to sign in",
@@ -32,5 +32,7 @@
   "remoteDshHostConnected": "Connected — {count} workspaces",
   "remoteDshHostConnectedAt": "Connected · {address}",
   "remoteDshHostConnectedNoCount": "Connected",
-  "remoteDshHostSelfWeb": "This host is DSH Web itself"
+  "remoteDshHostSelfWeb": "This host is DSH Web itself",
+  "remoteDshHostDoh": "Resolve the name with the app's DoH",
+  "remoteDshHostDohHelp": "Turn on when the local DNS refuses this domain: the app looks it up over HTTPS (DoH); TLS and Host stay name-based, so the tunnel and certificate checks are unchanged."
 }

@@ -3,6 +3,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show HttpClient;
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -200,6 +201,8 @@ class DshClient {
     String? launchUrl,
     DshCookie? cookie,
     String? hostHeader,
+    HttpClient? httpClient,
+    HttpClient Function()? httpClientFactory,
     MuxOptions muxOptions = const MuxOptions(),
     DshTracer? tracer,
     bool backgroundSessionLists = false,
@@ -216,7 +219,8 @@ class DshClient {
       launchToken ??= parsed.token;
     }
     if (base == null) throw ArgumentError('baseUri or launchUrl is required');
-    final connection = DshConnection(base, hostHeader: hostHeader, cookie: cookie, tracer: tracer);
+    final connection = DshConnection(base, hostHeader: hostHeader, cookie: cookie, tracer: tracer,
+      httpClient: httpClient, httpClientFactory: httpClientFactory);
     final client = DshClient(
       connection,
       muxOptions: muxOptions,

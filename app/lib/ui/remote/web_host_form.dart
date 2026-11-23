@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dsh_client/dsh_client.dart' show WorkspaceBaseline;
 import 'package:flutter/material.dart';
@@ -38,6 +39,7 @@ class WebHostFormPage extends ConsumerStatefulWidget {
 
 class _WebHostFormPageState extends ConsumerState<WebHostFormPage> {
   late final String _id = widget.existing?.id ?? WebHostConfig.newId();
+  late bool _doh = widget.existing?.doh ?? false;
   late final _name = TextEditingController(text: widget.existing?.name ?? '');
   late final _address = TextEditingController(text: widget.existing?.baseUrl ?? '');
   final _password = TextEditingController();
@@ -63,6 +65,12 @@ class _WebHostFormPageState extends ConsumerState<WebHostFormPage> {
 
   bool get _editing => widget.existing != null;
 
+  /// An IP literal needs no resolver; the switch is pointless there.
+  static bool _isIpLiteral(String baseUrl) {
+    final host = Uri.tryParse(baseUrl)?.host ?? '';
+    return InternetAddress.tryParse(host) != null;
+  }
+
   late String _clean = _signature();
   late final Listenable _edits = Listenable.merge([_name, _address, _password, _token]);
 
@@ -72,6 +80,7 @@ class _WebHostFormPageState extends ConsumerState<WebHostFormPage> {
     _password.text,
     _token.text,
     _mode.name,
+    _doh ? 'doh' : '',
   ].join('\u0000');
 
   @override
@@ -149,6 +158,7 @@ class _WebHostFormPageState extends ConsumerState<WebHostFormPage> {
         id: _id,
         name: _name.text.trim().isEmpty ? WebAddress.hostOf(baseUri) : _name.text.trim(),
         baseUrl: baseUri,
+        doh: _doh && !_isIpLiteral(baseUri),
       ),
       secrets: _secrets,
     );
@@ -342,6 +352,17 @@ class _WebHostFormPageState extends ConsumerState<WebHostFormPage> {
                       ),
                     ),
                   ],
+                ),
+                SettingsSwitchTile(
+                  icon: AppIcons.search,
+                  tinted: false,
+                  title: l10n.remoteDshHostDoh,
+                  subtitle: l10n.remoteDshHostDohHelp,
+                  value: _doh,
+                  onChanged: (v) => setState(() {
+                    _doh = v;
+                    _testStatus = null;
+                  }),
                 ),
               ],
             ),

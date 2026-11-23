@@ -8,7 +8,12 @@ import 'dart:math' as math;
 /// token lives in the [SecretStore] under [WebHostSecrets] keys, exactly like
 /// an SSH host's password.
 class WebHostConfig {
-  const WebHostConfig({required this.id, required this.name, required this.baseUrl});
+  const WebHostConfig({
+    required this.id,
+    required this.name,
+    required this.baseUrl,
+    this.doh = false,
+  });
 
   /// Stable id (`web-<hex>`); also the secret-store namespace.
   final String id;
@@ -19,15 +24,29 @@ class WebHostConfig {
   /// `scheme://host[:port]`, no path and no query.
   final String baseUrl;
 
+  /// Resolve the host through the app's DoH client instead of the platform
+  /// resolver. For a network whose DNS refuses the domain while HTTPS to the
+  /// same edge still works.
+  final bool doh;
+
   Uri get baseUri => Uri.parse(baseUrl);
 
   /// Fields that require a new connection when they change (the name does not).
-  String get connectionKey => baseUrl;
+  String get connectionKey => '$baseUrl\u0000$doh';
 
-  WebHostConfig copyWith({String? name, String? baseUrl}) =>
-      WebHostConfig(id: id, name: name ?? this.name, baseUrl: baseUrl ?? this.baseUrl);
+  WebHostConfig copyWith({String? name, String? baseUrl, bool? doh}) => WebHostConfig(
+    id: id,
+    name: name ?? this.name,
+    baseUrl: baseUrl ?? this.baseUrl,
+    doh: doh ?? this.doh,
+  );
 
-  Map<String, Object?> toJson() => {'id': id, 'name': name, 'baseUrl': baseUrl};
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'name': name,
+    'baseUrl': baseUrl,
+    if (doh) 'doh': true,
+  };
 
   static WebHostConfig? fromJson(Object? raw) {
     if (raw is! Map) return null;
@@ -41,6 +60,7 @@ class WebHostConfig {
       id: id,
       name: name is String && name.trim().isNotEmpty ? name.trim() : WebAddress.hostOf(address.baseUrl),
       baseUrl: address.baseUrl,
+      doh: raw['doh'] == true,
     );
   }
 
@@ -52,10 +72,14 @@ class WebHostConfig {
 
   @override
   bool operator ==(Object other) =>
-      other is WebHostConfig && other.id == id && other.name == name && other.baseUrl == baseUrl;
+      other is WebHostConfig &&
+      other.id == id &&
+      other.name == name &&
+      other.baseUrl == baseUrl &&
+      other.doh == doh;
 
   @override
-  int get hashCode => Object.hash(id, name, baseUrl);
+  int get hashCode => Object.hash(id, name, baseUrl, doh);
 }
 
 /// A typed-in address: the base URL to store, plus the launch token a pasted
@@ -66,7 +90,7 @@ class WebAddress {
   final String baseUrl;
   final String? token;
 
-  /// Accepts `192.168.2.230:3080`, `http://host:port`, `https://name` and a
+  /// Accepts `192.168.1.10:3080`, `http://host:port`, `https://name` and a
   /// full `http://host:port/?token=…`; null for anything without a host.
   /// Path, query and fragment are dropped — a saved host is an origin.
   static WebAddress? tryParse(String raw) {
