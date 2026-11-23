@@ -4,7 +4,7 @@
 // and stops installing every later skill in the same batch.
 export const MANAGED_SKILL_NAMES: string[] = [
   'dsh-go-ui', 'dsh-go-plugin', 'dsh-go-guide', 'dsh-go-support',
-  'companion-adapt', 'pet-theme', 'zhuoyitong',
+  'companion-adapt', 'pet-theme', 'zhuoyitong', 'night-run',
 ];
 
 // Pure admission/queue/transaction logic. No launcher and no platform globals.

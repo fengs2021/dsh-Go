@@ -7,6 +7,7 @@
 import backgroundTaskManager from '@ohos.resourceschedule.backgroundTaskManager';
 import wantAgent from '@ohos.app.ability.wantAgent';
 import common from '@ohos.app.ability.common';
+import fs from '@ohos.file.fs';
 import hilog from '@ohos.hilog';
 
 const DOMAIN: number = 0x3F10;
@@ -14,6 +15,8 @@ const TAG: string = 'DshKeepAwake';
 const REFRESH_MS: number = 4 * 60 * 1000;
 // 传进来的是 common.Context（应用上下文），没有 abilityInfo；mainElement 固定为 EntryAbility。
 const ABILITY_NAME: string = 'EntryAbility';
+const LOG_NAME: string = '/keepawake.log';
+const LOG_LIMIT: number = 64 * 1024;
 
 export class KeepAwake {
   private static context: common.UIAbilityContext | null = null;
@@ -21,6 +24,28 @@ export class KeepAwake {
   private static taskId: number | null = null;
   private static timer: number = -1;
   private static listening: boolean = false;
+
+  /// 事件同时落盘：hilog 缓冲区几十分钟就转掉，锁屏实验只能在解锁后读文件。
+  private static note(line: string): void {
+    const context = KeepAwake.context;
+    if (context === null) return;
+    try {
+      const path: string = context.filesDir + LOG_NAME;
+      let kept: string = '';
+      try {
+        const size: number = fs.statSync(path).size;
+        if (size > 0 && size < LOG_LIMIT) kept = fs.readTextSync(path);
+      } catch (_) {
+        kept = '';
+      }
+      const text: string = new Date().toISOString() + ' ' + line + '\n' + kept;
+      const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.WRITE_ONLY | fs.OpenMode.TRUNC);
+      fs.writeSync(file.fd, text.slice(0, LOG_LIMIT));
+      fs.closeSync(file);
+    } catch (_) {
+      // 记录失败不影响任务本身。
+    }
+  }
 
   /// 只接受 UIAbilityContext：长时任务 API 对 Context 类型做校验，
   /// 传应用上下文会报 401「The context cannot be null and its type must be Context」。
@@ -49,6 +74,7 @@ export class KeepAwake {
       KeepAwake.taskId = started.continuousTaskId ?? null;
       if (KeepAwake.taskId !== null) request.continuousTaskId = KeepAwake.taskId;
       hilog.warn(DOMAIN, TAG, 'hold start ok id=%{public}s', String(KeepAwake.taskId));
+      KeepAwake.note('hold start id=' + String(KeepAwake.taskId));
       KeepAwake.arm();
       return 'granted:' + String(KeepAwake.taskId);
     } catch (error) {
@@ -68,6 +94,7 @@ export class KeepAwake {
     try {
       await backgroundTaskManager.stopBackgroundRunning(context, id);
       hilog.warn(DOMAIN, TAG, 'hold stop ok id=%{public}d', id);
+      KeepAwake.note('hold stop id=' + String(id));
       return 'stopped';
     } catch (error) {
       hilog.warn(DOMAIN, TAG, 'hold stop failed: %{public}s', (error as Error).message);
@@ -117,15 +144,18 @@ export class KeepAwake {
         const detail: number | undefined = (info as ContinuousTaskCancelInfoEx).detailedReason;
         hilog.warn(DOMAIN, TAG, 'cancel id=%{public}d reason=%{public}d detail=%{public}s',
           info.id, info.reason, String(detail));
+        KeepAwake.note('cancel id=' + String(info.id) + ' reason=' + String(info.reason) + ' detail=' + String(detail));
         KeepAwake.taskId = null;
         KeepAwake.disarm();
       });
       backgroundTaskManager.on('continuousTaskSuspend', (info: backgroundTaskManager.ContinuousTaskSuspendInfo) => {
         hilog.warn(DOMAIN, TAG, 'suspend id=%{public}d state=%{public}s reason=%{public}d',
           info.continuousTaskId, String(info.suspendState), info.suspendReason);
+        KeepAwake.note('suspend id=' + String(info.continuousTaskId) + ' reason=' + String(info.suspendReason));
       });
       backgroundTaskManager.on('continuousTaskActive', (info: backgroundTaskManager.ContinuousTaskActiveInfo) => {
         hilog.warn(DOMAIN, TAG, 'active id=%{public}d', info.id);
+        KeepAwake.note('active id=' + String(info.id));
       });
     } catch (error) {
       hilog.warn(DOMAIN, TAG, 'listener failed: %{public}s', (error as Error).message);
@@ -140,8 +170,10 @@ export class KeepAwake {
       if (context === null || request === null || KeepAwake.taskId === null) return;
       backgroundTaskManager.updateBackgroundRunning(context, request).then((): void => {
         hilog.warn(DOMAIN, TAG, 'progress refreshed id=%{public}s', String(KeepAwake.taskId));
+        KeepAwake.note('progress refreshed id=' + String(KeepAwake.taskId));
       }).catch((error: Error): void => {
         hilog.warn(DOMAIN, TAG, 'progress refresh failed: %{public}s', error.message);
+        KeepAwake.note('progress refresh failed: ' + error.message);
       });
     }, REFRESH_MS);
   }

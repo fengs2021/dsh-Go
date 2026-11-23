@@ -62,6 +62,11 @@ const petThemeSkillName = 'pet-theme';
 /// and a one-time calibration that caches a replayable `aa start` command.
 const containerSkillName = 'zhuoyitong';
 
+/// Overnight wake-and-run recipe: keep the screen on from an external timer,
+/// launch the app, restore afterwards — plus the system limits that rule out
+/// the "keep a long task alive all night" approaches.
+const nightRunSkillName = 'night-run';
+
 /// The managed line inside SKILL.md's front matter.
 const uiSkillManagedMarker = '# dsh-go:managed';
 
@@ -187,6 +192,7 @@ final extraSkillLoadersProvider = Provider<List<UiSkillBundleLoader>>((ref) {
     () => loadUiSkillBundle(null, companionAdaptSkillName),
     () => loadUiSkillBundle(null, petThemeSkillName),
     () => loadUiSkillBundle(null, containerSkillName),
+    () => loadUiSkillBundle(null, nightRunSkillName),
   ];
 });
 

@@ -49,8 +49,10 @@ export function continuousTaskModes(accessTokenId: number): backgroundTaskManage
       modeSupported(backgroundTaskManager.BackgroundTaskMode.MODE_TASK_KEEPING, []) === true) {
     modes.push(backgroundTaskManager.BackgroundTaskMode.MODE_TASK_KEEPING);
   }
+  // data-transfer 只要公开权限；探测读不懂（null）时也把它列进候选，真失败会在
+  // startBackgroundRunning 里被拒绝，owner 有回退路径。
   if (modeSupported(backgroundTaskManager.BackgroundTaskMode.MODE_DATA_TRANSFER,
-    [backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_LIVE_VIEW_NOTIFICATION]) === true) {
+    [backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_LIVE_VIEW_NOTIFICATION]) !== false) {
     modes.push(backgroundTaskManager.BackgroundTaskMode.MODE_DATA_TRANSFER);
   }
   return modes;
@@ -81,14 +83,14 @@ export function backgroundComputeStatus(accessTokenId: number): Map<string, Obje
     // 一个模式读不懂（null）不该把整条资格判死：data-transfer 只要公开权限，
     // 它能用就说明这台机器可以持有长时任务，TASK_KEEPING 单独缺 ACL 而已。
     const keeping = acl === true && keepingMode === true;
-    const transfer = transferMode === true;
+    const transfer = transferMode !== false;
     if (keeping) return computeStatus(true, 'granted', 'eligible', null, null);
     if (transfer) {
       return acl === true
         ? computeStatus(true, 'granted', 'mode_unsupported', 'ohos_background_mode_unsupported', 'verify_task_keeping_acl_and_ability_configuration')
         : computeStatus(true, 'granted', 'eligibility_required', 'ohos_background_eligibility_required', 'obtain_task_keeping_acl_and_install_entitled_build');
     }
-    if (acl === null || keepingMode === null || transferMode === null) {
+    if (acl === null && keepingMode === null && transferMode === null) {
       return computeStatus(supported, 'unknown', 'unknown', 'ohos_background_permission_unknown', 'retry_permission_check');
     }
     // 两种模式都明确不可用：任务保留资格仍按 ACL 是否可知来措辞。
