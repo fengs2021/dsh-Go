@@ -261,6 +261,12 @@ export class RuntimeController {
       status.set('error', failure);
       status.set('actionRequired', failure === 'ohos_background_storage_failed' ? 'retry_saving_preference' : 'return_to_app_and_retry');
     }
+    // 诊断：这一页为什么显示「保护暂不可用」，需要看到五元组与失败码。
+    const dump: string[] = [];
+    status.forEach((value: Object | null, key: string): void => {
+      dump.push(key + '=' + String(value));
+    });
+    hilog.warn(0x3F10, 'DshBg', 'protection %{public}s', dump.join(','));
     return status;
   }
 
