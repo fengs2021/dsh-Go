@@ -47,3 +47,27 @@ $H shell "bm dump -n ccchimneyyy.dsh.go | grep -A3 EngineWakeAbility"  # 扩展�
 ```
 
 脚本：`scripts/patch-*`（与本问题无关）；本问题没有脚本，结论以本文为准。
+
+## 官方约束（2026-11-23 查证）
+
+来源：`openharmony/docs` 的 `task-management/work-scheduler.md` 与 `continuous-task.md`。
+
+1. **WorkScheduler 有频率上限**，按应用活跃分组：活跃 2 小时 / 经常使用 4 小时 / 常用 24 小时 / 极少使用 48 小时 / 受限或从未使用 **禁止**。→ 我们注册的 20 分钟重复周期根本不可能生效，这解释了 13:28→14:16 没有触发。
+2. **单次回调最多 2 分钟**，超时系统终止扩展进程（特权应用可延长，第三方不行）。
+3. 扩展**单独进程**，且**禁止**在扩展里调用 `backgroundTaskManager` / audio / media 等接口 —— 也就是说扩展里不能申请长时任务，也不能用我们的引擎启动路径（`RuntimeController` 会申请长时任务）。
+4. `WorkSchedulerExtensionContext` 没有 `startAbility`（SDK 类型里没有，实测编译报错）。
+5. 长时任务**只能由 UIAbility 申请**；`dataTransfer` 要求进度更新（首次不得超过 10 分钟，之后也要持续更新），否则长时任务被取消。
+
+## 同类项目的做法
+
+| 项目 | 做法 | 对我们的意义 |
+|---|---|---|
+| [forwardz666/Syncthing-for-HarmonyOS](https://github.com/forwardz666/Syncthing-for-HarmonyOS)（★17） | **真正保活靠长时任务 + 通知**；WorkScheduler 只做「兜底探活」：30 分钟一次，ping 本地 REST，核心不在了就发一条信息通知。扩展里明确不碰 `backgroundTaskManager` | 与我们结论一致：WorkScheduler 不能承载执行，只能做提醒/探活 |
+| [Explore-In-HMOS/how-to-build-background-task-scheduler](https://github.com/Explore-In-HMOS/how-to-build-background-task-scheduler) | 手表上的周期天气同步，用 `WorkSchedulerExtensionAbility` + 周期 work | 可参考工程结构，但手表与手机的频率策略不同 |
+| [Explore-In-HMOS/how-to-use-background-tasks-kit](https://github.com/Explore-In-HMOS/how-to-use-background-tasks-kit) | 延迟任务按系统条件拉取天气 | 同上，属「时效性要求不高」的场景 |
+
+## 修订后的方案
+
+- **能扛过夜的**：睡前在前台点一次「今晚保持运行」→ UIAbility 申请 `dataTransfer` 长时任务 → 每 4 分钟更新一次 live view 进度（现有 `ContinuousTaskOwner` 已实现）→ 通知栏常驻。用户删通知 = 系统停止长时任务，这个必须如实告诉用户。
+- **WorkScheduler 只用于兜底**：2 小时一次（不是 20 分钟），扩展里只做三件事：写唤醒记录、ping 本机引擎、引擎不在时发一条「今晚的定时任务可能没跑」通知。
+- **不要**在扩展里起引擎：2 分钟超时 + 禁止 `backgroundTaskManager` + 单独进程，三点都会让引擎启动失败或被杀。
