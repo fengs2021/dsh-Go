@@ -9,10 +9,10 @@ whenToUse: 用户要在锁屏/夜间/指定时刻让手机上的 DSH 自动跑�
 
 ## 0. 一句话
 
-**手机自己没法在锁屏状态下跑 JS 任务**；能做的是「让屏幕亮着 + App 在前台」。所以方案永远是：
-**在外部（PC/另一台设备）定时把手机叫醒并保持常亮 → 拉起 DSH Go → 跑完还原灭屏时间**。
+**手机锁屏后，外部就连不上了**（不是 WiFi 慢，是新的 hdc 连接被掐断，实测锁屏 75 秒后全网段扫描零候选）。
+所以正确做法只有一条：**睡前先让屏幕保持常亮（不锁屏），到点再从外部拉起任务，跑完还原灭屏时间**。
 
-没有外部设备时，只能用「睡前手动保持前台 + 拉长灭屏时间」这一条。
+顺序不能反：**先常亮，再等时间**；「先锁屏、到点再唤醒」是走不通的。
 
 ## 1. 先认清系统限制（都实测过，别重复试）
 
@@ -34,19 +34,27 @@ whenToUse: 用户要在锁屏/夜间/指定时刻让手机上的 DSH 自动跑�
 
 | 时刻 | 动作 | 命令 |
 | --- | --- | --- |
-| 02:50 | 亮屏 + 解锁 + 拉长灭屏 | `power-shell wakeup` → `uitest uiInput dircFling 2 800 60` → `power-shell timeout -o 3600000` |
-| 03:00 | 拉起 App | `aa start -a EntryAbility -b ccchimneyyy.dsh.go` |
+| 23:30（睡前） | **常亮待命**：亮屏 + 解锁 + 灭屏时间改 12 小时 + 拉起 App | `power-shell timeout -o 43200000` |
+| 02:50 | 再拉起一次并截图为证 | `aa start -a EntryAbility -b ccchimneyyy.dsh.go` |
 | 03:20 | 还原 + 熄屏 | `power-shell timeout -r` → `power-shell suspend` |
+| 07:30 | **兜底还原**（万一 03:20 没跑成，别亮一整天） | 同 03:20 |
 
 现成脚本（PC 上）：`scripts/phone-night.sh`
 
 ```sh
-bash scripts/phone-night.sh wake     # 连接 + 亮屏 + 上滑 + 灭屏改 1 小时
-bash scripts/phone-night.sh open     # aa start 拉起 DSH Go
-bash scripts/phone-night.sh restore  # timeout -r + 熄屏
-bash scripts/phone-night.sh run      # 一条龙：等 RUN_AT_MS → open → 等 HOLD_AFTER_MS → restore
+bash scripts/phone-night.sh prepare  # 睡前：亮屏 + 解锁 + 改灭屏时间 + 拉起（进入常亮待命）
+bash scripts/phone-night.sh run      # 到点：再拉起一次 → 保持 HOLD_AFTER_MS → 还原并熄屏
+bash scripts/phone-night.sh restore  # 只还原 + 熄屏（兜底）
+bash scripts/phone-night.sh probe    # 只探测可达性并截图，不改设置
 bash scripts/phone-night.sh shot     # 截屏到 _shots/
 ```
+
+脚本的硬约束（改脚本时别破坏）：
+
+- **每条命令都校验回显**：`WakeupDevice is called` / `No Error` / `start ability successfully` / `Override screen off time to …`；
+  拿不到就 `FAIL` 并退出，不再“假装成功”。
+- **IP 自动发现**：手机开着「随机 MAC」时 IP 会漂（静态租约失效），脚本对 `/24` 扫调试端口
+  （1.5s 超时、24 并发），并缓存上次成功的地址到 `/root/.phone-night.last`。
 
 可调参数（环境变量）：`TARGET=ip:port`、`HOLD_MS`（常亮时长，默认 3600000）、`RUN_AT_MS`（唤醒后等多久拉起，默认 600000）、`HOLD_AFTER_MS`（拉起后保持，默认 1200000）、`CONNECT_TRIES/CONNECT_WAIT`（夜里重连）。
 
@@ -87,7 +95,8 @@ power-shell suspend      # 熄屏
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
-| `hdc list targets` → `[Empty]` | 手机熄屏后 WiFi 省电 / 无线调试端口变了 | 插 USB；或人工亮屏后 `tconn`；端口变了要重新看手机「无线调试」页 |
+| `hdc list targets` → `[Empty]` | **锁屏掐断新连接**（实测 75 秒即断）/ 端口变了 | 睡前必须先 `prepare` 保持常亮；或插 USB；端口变了要重新看手机「无线调试」页 |
+| 到点 App 没跑 | 手机已被锁屏（常亮没生效） | 检查 23:30 的 `prepare` 是否成功；`power-shell timeout -o` 的回显要能拿到 |
 | `aa start` → `10106102` | 设备锁屏 | 先 `power-shell wakeup` 再上滑解锁 |
 | `power-shell timeout` 无回显 | hdc 通道没通（同第一条） | 同上 |
 | 任务没跑但 App 在前台 | 会话/引擎没连上（本机引擎「未运行」） | 先在 App 里确认「本机引擎 · 运行中」，再谈定时 |
