@@ -83,6 +83,23 @@ power-shell timeout -r           # 还原（回显 Restore screen off time）
    锁屏状态下会报 `10106102 设备已锁屏，无法自动拉起`，这时必须先 `power-shell wakeup` + 解锁。
 4. 无锁屏密码时上滑即可解锁；**有密码时脚本解不开**，只能人工。
 
+## 4.5 两条路并行（2026-11-24 定稿）
+
+权限侧的幻想已经排除，别再试：`atm perm -g` 只能授 user_grant 权限（对照组
+`ohos.permission.MICROPHONE` → Success），受限 ACL（`KEEP_BACKGROUND_RUNNING_SYSTEM`、
+`SYSTEM_FLOAT_WINDOW`）即使写进 `module.json5` 也报 `not requested by the application`；
+`aa` 与 `hidumper -s WorkSchedule` 都没有强制触发 work 的入口，没有 Android
+`cmd jobscheduler run -f` 的等价物。
+
+所以夜间只有两条路，**同时开着**：
+
+| 路 | 触发 | 产物 | 判据 |
+| --- | --- | --- | --- |
+| A 手机侧守望 | `phone-night-watch.timer` 02:45，每 60s 试连、每 5 轮全网扫，守 45 分钟 | `/root/phone-night-watch.log` | 连上 → `wakeup`/上滑/`aa start`/拉长灭屏/保持 20 分钟/还原熄屏 |
+| B PC 侧任务 | `pc-night-task.timer` 03:00，`dsh --profile headless "$(cat /root/night-task/task.md)"` | `/root/night-task/<date>-out.md` + `-run.log` | rc=0 且有输出即成功；凭据从 `/root/.dsh/.credentials.yaml` 取，不回显 |
+
+改任务内容只改 `/root/night-task/task.md`，不用动脚本。
+
 ## 5. 跑完必须收尾
 
 ```sh
