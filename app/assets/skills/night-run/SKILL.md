@@ -100,6 +100,10 @@ power-shell timeout -r           # 还原（回显 Restore screen off time）
 
 改任务内容只改 `/root/night-task/task.md`，不用动脚本。
 
+B 的坑（2026-11-25 首晚踩到）：systemd 的 PATH 里没有 `/opt/node22/bin`，`dsh` 是
+`/usr/bin/env node` 起的，直接 `timeout … dsh` 会 `rc=127 No such file or directory`。
+脚本里必须显式 `export PATH=/opt/node22/bin:…` 并用绝对路径 `$DSH_BIN`。
+
 ## 5. 跑完必须收尾
 
 ```sh
