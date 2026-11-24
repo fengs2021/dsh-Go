@@ -100,6 +100,17 @@ power-shell timeout -r           # 还原（回显 Restore screen off time）
 
 改任务内容只改 `/root/night-task/task.md`，不用动脚本。
 
+### 每日福利自动化（2026-11-25 起）
+
+`scripts/phone-daily-apps.sh` + `phone-daily-apps.timer`（每天 03:00）：
+唤醒并解锁 → **小黑盒**（`com.max.hos.xiaoheihe`，打开后 10 秒内自动签到，用户确认过）
+→ **中国移动**（`com.chinamobile.cmcc`，按「每日签到/立即签到」文字点按）
+→ **起点读书**（卓易通容器：`com.qidian.QDReader` + `…ui.activity.SplashActivity`，福利任务里点「领取/去完成」，**跳过限时任务**）。
+
+点按靠 `scripts/phone-ui.py`（`dump` / `find` / `click <文字> [bottom|top]` / `shot` / `wait`），
+按文字精确匹配优先、其次最短文本，可用 `bottom`/`top` 限定区域避免点到正文。
+每步都截图到 `_shots/daily-<date>/`，日志 `/root/daily-apps/<date>.log`——某一步点不到就记 FAIL 继续下一个 App，不影响其它。
+
 B 的坑（2026-11-25 首晚踩到）：systemd 的 PATH 里没有 `/opt/node22/bin`，`dsh` 是
 `/usr/bin/env node` 起的，直接 `timeout … dsh` 会 `rc=127 No such file or directory`。
 脚本里必须显式 `export PATH=/opt/node22/bin:…` 并用绝对路径 `$DSH_BIN`。
