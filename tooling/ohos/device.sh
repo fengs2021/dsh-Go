@@ -19,7 +19,7 @@
 # it shows in this machine's process list then; signing goes through hap-distribution.py.
 set -euo pipefail
 
-BUNDLE=fengs.dsh.go
+BUNDLE=ccchimneyyy.dsh.go
 # What the engine and the app log about motion, by tag, so app text can't match by accident.
 MOTION='XComFlutterEngine: .*(SetExpectedFrameRateRange|LTPO|VoteTouchValue)|/Dsh(FrameRate|Keyboard): |/LOGLIMIT: '
 MIN_API=26
