@@ -37,6 +37,26 @@ HoKit 自己的落点是 `C:\Users\liqih\AppData\Local\ho-kit\sign\output\<输�
 - **fork 仓库的 Actions 被 GitHub 整体禁用时没有 API 能开**：只能仓库 owner 在
   Actions 页面点「I understand my workflows, go ahead and enable them」。
 
+## 2.5 前置：runtime 是否需要重编（只在 JS/patches 改动时）
+
+AOT 只覆盖 Dart。若上游合入改了 `runtime/patches/`（`series` / `pins.json` / 新 `.diff`），
+HAP 内引擎字节必须按新 pins 重编，否则与 pins 不一致。`fullhapNN.sh` 用 v93 起的
+runtime 搜索首位 `build/composeNN/dsh-runtime-rawfile.zip`，没有就回退旧 compose。
+**判据**：`git diff <上次出包commit>..HEAD -- runtime/patches/ | wc -l` 非零即需重编。
+
+```bash
+# 1) 重新准备 npm 输入（fresh npm ci，锁文件 SHA 固定；约几分钟）
+bash scripts/prepNN.sh            # → /root/prepNN，看 PREPARE_RC=0 和 receiptSha256
+# 2) 应用当前 pins 组成 runtime
+bash scripts/composeNN.sh         # → build/composeNN/dsh-runtime-rawfile.zip，看 COMPOSE_RC=0
+#    产出 runtimeVersion（如 ohos-38b312bb…），fullhapNN.sh 会自动优先用它
+```
+
+从 `prep74.sh`/`compose74.sh` 派生时改 V/OUT/PREP/DEST 即可；`composeNN.sh` 的 runtime
+搜索要插到候选首位。`pins.json` 变化大（v93 合入 +751 行）时旧 prep 的 patch SHA 对不上，
+必须重新 prep。文档警告的 "OH deletion source changed" 由 `runtime/session-deletion/core.mjs`
+与 `bridge/.../session-deletion.js` 的改动触发；没改这两个就不会拒绝（v93 实测 OK）。
+
 ## 3. 第二步：打未签名 HAP
 
 ```bash
@@ -100,6 +120,8 @@ $H install -r hap-build/dsh-ohos-vNN-signed.hap
 | AOT run `failure`，job `runner_id:0`、`steps:[]`、排队十几分钟 | **macOS runner 始终没分配**，被 GitHub 排队超时取消，不是代码问题 | 重新 `gh workflow run ...`（可能需重试 2 次）；确认新 run 的 `runner_id` 非 0 且步骤在跑 |
 | `aot-fetch66.py` 报某 run `failure/cancelled` 但实际有更新的 run | 脚本原来取同 sha 的第一个 run，被旧的取消 run 挡住 | 已修：跳过 `completed` 且非 `success` 的 run，只在全部失败时才判失败 |
 | `install -r` / `file send` 卡住不动、`rc=124`，但 `shell echo` 正常 | hdc **文件传输通道卡死**（shell 通道独立正常）；小文件也传不进去可确认 | shell 用户无权 kill 设备端 `hdcd`，**重启整机**（`hdc shell reboot`）后 `tconn` 重连即恢复 |
+| `analyze` 报 `tooling/companion/*.dart` 之类 uri 不存在，但文件在 origin/main 里 | 工作树是 **sparse-checkout**，白名单外的目录 merge 进索引但没落地 | `git sparse-checkout add tooling`（或对应目录），文件落地后错误消失——非合并问题 |
+| 整体 merge 后 HAP 里 runtime 与 pins 不一致 | runtime patches 变了但沿用了旧 compose zip | 按 §2.5 重新 prep + compose，确认 audit 里 `runtime identicalToInput=True` |
 
 ## 7. 版本记录约定
 
