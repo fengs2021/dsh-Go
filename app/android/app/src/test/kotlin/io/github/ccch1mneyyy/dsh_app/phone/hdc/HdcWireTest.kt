@@ -6,14 +6,15 @@ import org.junit.Test
 
 class HdcWireTest {
     @Test
-    fun head_is_nine_bytes_with_hw_flag_and_version() {
+    fun head_is_eleven_bytes_with_hw_flag_and_version() {
         val head = HdcWire.encodeHead(headSize = 0x0102, dataSize = 0x00030405)
         assertEquals(HdcWire.HEAD_SIZE, head.size)
         assertEquals('H'.code.toByte(), head[0])
         assertEquals('W'.code.toByte(), head[1])
-        assertEquals(HdcWire.PROTOCOL_VERSION.toByte(), head[2])
-        // 大端：headSize 2 字节、dataSize 4 字节
-        assertEquals(listOf(0x01, 0x02, 0x00, 0x03, 0x04, 0x05), head.drop(3).map { it.toInt() and 0xFF })
+        assertEquals(HdcWire.PROTOCOL_VERSION.toByte(), head[4])
+        // reserve(2) + ver(1) + headSize(2) + dataSize(4)，全部大端
+        assertEquals(listOf(0x00, 0x00, 0x01, 0x01, 0x02, 0x00, 0x03, 0x04, 0x05),
+            head.drop(2).map { it.toInt() and 0xFF })
     }
 
     @Test
@@ -28,7 +29,7 @@ class HdcWireTest {
         assertNull(HdcWire.decodeHead(byteArrayOf(1, 2, 3)))
         val badFlag = HdcWire.encodeHead(1, 1).also { it[0] = 'X'.code.toByte() }
         assertNull(HdcWire.decodeHead(badFlag))
-        val badVersion = HdcWire.encodeHead(1, 1).also { it[2] = 0x7F }
+        val badVersion = HdcWire.encodeHead(1, 1).also { it[4] = 0x7F }
         assertNull(HdcWire.decodeHead(badVersion))
     }
 
