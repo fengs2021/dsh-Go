@@ -182,6 +182,17 @@ class MainActivity : FlutterActivity() {
     /** Per activity: the handler acts on this activity, so it goes with it (see [cleanUpFlutterEngine]). */
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // hdc 自检：debug 包里开机跑一次，结果写日志并弹 toast（真机联调用）。
+        if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            Thread {
+                val verdict = io.github.ccch1mneyyy.dsh_app.phone.hdc.HdcProbe.probe(
+                    host = getSharedPreferences("dsh_hdc", MODE_PRIVATE).getString("probe_host", "127.0.0.1") ?: "127.0.0.1",
+                    port = getSharedPreferences("dsh_hdc", MODE_PRIVATE).getInt("probe_port", 45957),
+                )
+                android.util.Log.i("DshHdcProbe", verdict)
+                runOnUiThread { android.widget.Toast.makeText(this, "hdc: $verdict", android.widget.Toast.LENGTH_LONG).show() }
+            }.start()
+        }
         textActions = CachedTextActions.install(flutterEngine)
         appChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "dsh/app")
         appChannel!!.setMethodCallHandler { call, result ->
