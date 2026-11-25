@@ -111,6 +111,13 @@ power-shell timeout -r           # 还原（回显 Restore screen off time）
 按文字精确匹配优先、其次最短文本，可用 `bottom`/`top` 限定区域避免点到正文。
 每步都截图到 `_shots/daily-<date>/`，日志 `/root/daily-apps/<date>.log`——某一步点不到就记 FAIL 继续下一个 App，不影响其它。
 
+UI 文案/状态会变，2026-11-26 实测两处并已修脚本（改动前备份 `scripts/phone-daily-apps.sh.bak-20261126`）：
+- 中国移动首页签到入口从「每日签到/立即签到」变成「**签到有礼**」（顶部横幅红礼物图标旁）。
+  关键词列表已把「签到有礼」放首位，旧词保留兜底。排查手法：看 `_shots/daily-<date>/cmcc-1-open.png`。
+- 起点读书打开后会恢复上次的听书播放页（如《伪像报告》沉浸页），此时没有「福利」；
+  脚本改为打开后先 `keyEvent Back` 退到主界面再找入口，并多截一张 `qidian-1b-after-back.png`。
+  排查手法：看 `qidian-1-open.png` 是否落在播放页。真机改 UI 布局后按截图更新关键词即可。
+
 B 的坑（2026-11-25 首晚踩到）：systemd 的 PATH 里没有 `/opt/node22/bin`，`dsh` 是
 `/usr/bin/env node` 起的，直接 `timeout … dsh` 会 `rc=127 No such file or directory`。
 脚本里必须显式 `export PATH=/opt/node22/bin:…` 并用绝对路径 `$DSH_BIN`。
