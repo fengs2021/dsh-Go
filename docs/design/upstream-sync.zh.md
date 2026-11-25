@@ -155,7 +155,8 @@ HoKit 重签 success、`hdc install -r` 成功，设备侧 `ccchimneyyy.dsh.go /
 `check-arkts --full` OK（0 errors）+ `audit-hap` OK（用 v92 的 AOT 可正常出包）。
 改动规模约 126 文件 / +8677−222 行。
 
-**结论**：整体 merge 到 `origin/main` 技术上低代价、可验证通过，能一次性拿到 companion 链、
-chat 批量 perf、runtime patches 等所有定点方式拿不到的上游改动。**待决策**：确实要引入这批
-大改动吗（含 runtime 运行时字节变化、需重编 runtime + 全量门禁 + 真机验证 + 重新出包）？
-预演成果保留在 `probe/merge-main` 工作树，未合回 `port/v71`。
+**结论与执行**：整体 merge 技术上低代价、可验证通过，已合回 `port/v71`
+（merge commit `9500f09b8`）。runtime patches 变化 73 个文件，已重新 prep + compose
+（runtimeVersion `ohos-38b312bb…`），并重编 AOT、出 v93 装机验证通过（见 `hap-build/BUILD-v93.txt`）。
+回退点 `5073e5da7`（合入前 HEAD）。预演工作树 `probe/merge-main` 已清理。
+真机行为待用户验证。
