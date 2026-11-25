@@ -42,7 +42,23 @@ Rust 侧的权威定义（可直接照着移植，比啃 C++ 便宜）：
 + `native_struct.rs`（98 行）——这是**下一个要移植的东西**，用 Kotlin 重写这三块即可，
 不必再抓包。
 
-已落地的代码：`phone/hdc/HdcWire.kt`（包头编解码 + 常量 + 版本串）与对应 JVM 单测，
+### 关键结论：线上格式就是 protobuf wire format
+
+上游 C++ 的 `Hdc::SerialStruct`（`hdc_rust/src/cffi/serial_struct.*` 背后）看着复杂，但抓包证明
+**它输出的就是 protobuf**：字段按声明顺序编号，varint 用 wire type 0、字符串用 wire type 2。
+
+```
+PayloadProtect(channelId=0, commandFlag=1, checkSum=0, vCode=9)
+  → 08 00 | 10 01 | 18 00 | 20 09
+SessionHandShake
+  → 0a 08 "OHOS HDC" | 10 00 | 18 <varint sessionId> | 22 0f "host:port" | 2a … | 32 …
+```
+
+因此**不需要移植那 436 行序列化器**，只要一个 varint + length-delimited 的编码器即可：
+`phone/hdc/HdcCodec.kt` 已实现 `PayloadProtect` / `SessionHandShake` 的编解码，
+并用真实抓包字节做 fixture 断言（编码结果与原字节逐字节相等）。
+
+已落地的代码：`phone/hdc/HdcWire.kt`（11 字节头）、`phone/hdc/HdcCodec.kt`（protobuf 编解码）（包头编解码 + 常量 + 版本串）与对应 JVM 单测，
 不依赖真机即可验证字节布局。
 
 ## 2. 还差什么（真正的工程量）
