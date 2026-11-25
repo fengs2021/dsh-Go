@@ -60,7 +60,7 @@ export default class EntryAbility extends FlutterAbility {
   private static ensureWakeWork(context: common.UIAbilityContext): void {
     const work: workScheduler.WorkInfo = {
       workId: 1001,
-      bundleName: 'ccchimneyyy.dsh.go',
+      bundleName: 'fengs.dsh.go',
       abilityName: 'EngineWakeAbility',
       isRepeat: true,
       repeatCycleTime: 2 * 60 * 60 * 1000,
