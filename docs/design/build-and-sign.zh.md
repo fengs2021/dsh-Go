@@ -104,8 +104,13 @@ $H install -r hap-build/dsh-ohos-vNN-signed.hap
 - 手机 IP 会漂（随机 MAC）：用 `/24` 扫 `45957` 端口发现，缓存写 `/root/.phone-night.last`。
 - 若 `install -r` 或 `file send` 卡住超过 1 分钟：先 `$H shell echo ALIVE` 判断通道——
   shell 正常而传输卡住即文件通道坏，重启整机（`hdc shell reboot`，约 60s 重新上线）后重连重装。
-- 一键全链路：`bash scripts/v91-pipeline.sh`（等 AOT→构建→签名→装机→核验，日志 `/root/v91-pipeline.log`，
-  终态看 `PIPELINE_RC=`）；复制成 vNN 即可用于下一版。
+- 一键全链路：`bash scripts/vNN-pipeline.sh`（等 AOT→构建→签名→装机→核验，日志 `/root/vNN-pipeline.log`，
+  终态看 `PIPELINE_RC=`）。
+- **派生下一版脚本**：不要手动 sed（v92/v93 都漏过 fullhap/sign 调用名和 SHA），用
+  `bash scripts/derive-version.sh <源版本> <目标版本> [HEAD_sha]`，它一次生成 8 个文件并对
+  pipeline 调用名 / resign appPath / runtime 搜索 / SHA 做 9 项断言校验，全过才返回 0。
+  例：`bash scripts/derive-version.sh 93 94 $(git rev-parse HEAD)`。若 runtime patches 有变，
+  按 §2.5 重跑 prep/compose，并确认 composeNN 产物与 fullhapNN 的 runtime 搜索首位一致。
 
 ## 6. 失败对照表
 
