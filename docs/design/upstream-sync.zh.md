@@ -91,3 +91,18 @@ terminal 和 phone 那两个仍印证上一节的「成批演进」规律，要�
 因此这俩不是「再补一两个前置提交」能解决，而是要搬 11-21 起的一整串 companion Pro 提交（彼此耦合、
 还带 Android Kotlin 侧改动）。**判据**：凡改动触及 `app/lib/companion*`、`app/lib/ui/companion*`、
 `app/lib/ui/common/app_{sheet,dialog}.dart` 的，一律不做定点搬运，列入「只能整体 rebase」清单。
+
+### 5.2 按改动文件重筛（2026-11-26 第二轮）
+
+第一轮按 commit message 关键词筛会漏掉「标题没点模块名」的提交，改用 GitHub API 拉每个提交的
+**改动文件清单**再筛（rate limit 60/h，本次取到前 60 个）。新发现：
+
+| 上游提交 | 内容 | 结果 |
+|---|---|---|
+| `e54f1532e0` | perf(remote)：分块传输大载荷（>256KB）的 UTF-8/JSON 解码放 `Isolate.run` | ✅ 已 pick 合回，HEAD `565547c0f` |
+| `c0076093d9` / `bc1b8116dc` | perf(runtime)：改 `runtime/patches` + `pins.json` + `series`（pi-ai 空模型 / Office buffer） | ⏸ 不动：改引擎运行时字节，需重编 runtime + 全量门禁，不符合定点独立修复判据 |
+
+`e54f1532e0` 与上次 revert 的 remote 提交（`_receiveTail` 那批）无关，纯性能优化、语义不变。
+验证：dsh_remote analyze 仅 1 条既有 info（基线相同）、测试无失败；app analyze No issues。
+
+**待办**：`565547c0f` 是 Dart 改动，尚未出 HAP（v91 装机于它之前）。下次出包时重编 AOT 即带入。
