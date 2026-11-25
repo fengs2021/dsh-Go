@@ -72,5 +72,22 @@
 未引入新失败；`l10n_merge --check`、`guide_sync --check` 通过。5 个提交共 7 文件、81  insertions。
 
 **结论**：定点搬运可行，但判据要严——只有无跨提交依赖、无 companion/Android 耦合的独立修复才单摘；
-terminal 和 phone 那两个仍印证上一节的「成批演进」规律，要拿到只能整体 rebase。成果留在
-`sync/upstream-1126`，未合回 `port/v71`，等真机出包验证后再决定。
+terminal 和 phone 那两个仍印证上一节的「成批演进」规律，要拿到只能整体 rebase。5 个提交已于
+2026-11-26 合回 `port/v71`（fast-forward 到 `d9664fc64`）并出包 v91 装机验证通过。
+
+### 5.1 terminal / phone 两个的依赖链根因（2026-11-26 追证）
+
+不满足于「成批演进」的经验判断，追了依赖链，确认两个都挂在**整套 companion Pro 特性链**上：
+
+- `onRouteChanged` 参数由上游 `4442548660`（11-21，companion agent「F03-pause-app / notes 前台暂停」）
+  引入，一次改了 `showAppSheet`、`showAppDialog`、`showTextPrompt`、`showDirectoryPicker`、
+  `confirmRisk` 等公共函数签名，并深度改造 `companion_page.dart`（notes 前台保活/暂停、审批风险路由观察）。
+- terminal `a99b5e190`（11-24）用 `showAppSheet(..., onRouteChanged:)` 观察输入面板被键盘 route 覆盖，
+  依赖上述整套改动；我们主线分叉时没有这条链，`showAppSheet` 签名里没有该参数，单摘即编译失败。
+- phone `2c9f771e4`（11-24）本身改 companion 的 `companion_agent_phone_tools` / `companion_page`，
+  还依赖已有的 `app/test/companion/companion_agent_phone_tools_test.dart`（我们分支删过），
+  冲突面同样是这条 companion 链。
+
+因此这俩不是「再补一两个前置提交」能解决，而是要搬 11-21 起的一整串 companion Pro 提交（彼此耦合、
+还带 Android Kotlin 侧改动）。**判据**：凡改动触及 `app/lib/companion*`、`app/lib/ui/companion*`、
+`app/lib/ui/common/app_{sheet,dialog}.dart` 的，一律不做定点搬运，列入「只能整体 rebase」清单。
