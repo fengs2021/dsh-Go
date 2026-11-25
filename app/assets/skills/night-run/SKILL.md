@@ -118,7 +118,8 @@ UI 文案/状态会变，2026-11-26 实测两处并已修脚本（改动前备�
   脚本改为打开后先 `keyEvent Back` 退到主界面再找入口，并多截一张 `qidian-1b-after-back.png`。
   排查手法：看 `qidian-1-open.png` 是否落在播放页。真机改 UI 布局后按截图更新关键词即可。
 
-验证第二天结果：`bash scripts/verify-daily-apps.sh YYYY-MM-DD`（只读，不碰 App）——
+脚本结尾已自动调用 `verify-daily-apps.sh` 并把 PASS/FAIL 写进当天日志（在「==== 结束 ====」之后调用，
+因为 verify 以该标记判日志完整性）；也可手动 `bash scripts/verify-daily-apps.sh YYYY-MM-DD`（只读，不碰 App）——
 按日志的 `tap '…' ok` 与截图存证给出 PASS/FAIL，并列出「未找到」的关键词供定位。
 2026-11-26 用它自检已知失败日，正确报 FAIL 并列出全部落空关键词。
 
