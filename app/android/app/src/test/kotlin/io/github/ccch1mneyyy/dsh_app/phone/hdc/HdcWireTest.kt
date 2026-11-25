@@ -7,13 +7,13 @@ import org.junit.Test
 class HdcWireTest {
     @Test
     fun head_is_nine_bytes_with_hw_flag_and_version() {
-        val head = HdcWire.encodeHead(headSize = 0x0102, dataSize = 0x03040506)
+        val head = HdcWire.encodeHead(headSize = 0x0102, dataSize = 0x00030405)
         assertEquals(HdcWire.HEAD_SIZE, head.size)
         assertEquals('H'.code.toByte(), head[0])
         assertEquals('W'.code.toByte(), head[1])
         assertEquals(HdcWire.PROTOCOL_VERSION.toByte(), head[2])
         // 大端：headSize 2 字节、dataSize 4 字节
-        assertEquals(listOf(0x01, 0x02, 0x03, 0x04, 0x05, 0x06), head.drop(3).map { it.toInt() and 0xFF })
+        assertEquals(listOf(0x01, 0x02, 0x00, 0x03, 0x04, 0x05), head.drop(3).map { it.toInt() and 0xFF })
     }
 
     @Test
