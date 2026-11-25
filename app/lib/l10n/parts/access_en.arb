@@ -135,5 +135,7 @@
     }
   },
   "accessPageTitle": "System permissions",
-  "accessPageSubtitle": "What each feature needs from Android"
+  "accessPageSubtitle": "What each feature needs from Android",
+  "floatingPillTitle": "Floating pill",
+  "floatingPillHint": "A draggable pill stays at the screen edge and shows whether the current session is running; tap to dismiss."
 }

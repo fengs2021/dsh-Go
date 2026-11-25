@@ -30,6 +30,7 @@ import '../remote/remote_screen.dart';
 import '../theme/theme.dart';
 import '../web/mode_home.dart';
 import 'brand_mark.dart';
+import 'floating_pill.dart';
 import 'usage_upgrade_notice.dart';
 
 /// Where a launch should start, given what is installed and configured.
@@ -419,14 +420,23 @@ class _RootGateState extends ConsumerState<RootGate> {
         launch.ready(waitsForEngine: ref.read(activeHostProvider).isLocal);
       });
     }
-    return AnimatedSwitcher(
-      duration: AppMotion.of(context, AppMotion.page),
-      switchInCurve: AppMotion.enter,
-      switchOutCurve: AppMotion.exit,
-      child: KeyedSubtree(
-        key: ValueKey(child is _Splash ? 'splash' : (_step == null ? 'home' : 'onboarding')),
-        child: child,
-      ),
+    final pillOn = ref.watch(floatingPillProvider);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: AnimatedSwitcher(
+            duration: AppMotion.of(context, AppMotion.page),
+            switchInCurve: AppMotion.enter,
+            switchOutCurve: AppMotion.exit,
+            child: KeyedSubtree(
+              key: ValueKey(child is _Splash ? 'splash' : (_step == null ? 'home' : 'onboarding')),
+              child: child,
+            ),
+          ),
+        ),
+        // 应用内悬浮小窗：跨页面常驻，显示当前会话是否在跑。
+        if (pillOn && child is! _Splash) const FloatingPill(),
+      ],
     );
   }
 }

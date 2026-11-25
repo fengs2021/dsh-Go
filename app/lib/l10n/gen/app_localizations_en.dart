@@ -292,6 +292,13 @@ class L10nEn extends L10n {
   String get accessPageSubtitle => 'What each feature needs from Android';
 
   @override
+  String get floatingPillTitle => 'Floating pill';
+
+  @override
+  String get floatingPillHint =>
+      'A draggable pill stays at the screen edge and shows whether the current session is running; tap to dismiss.';
+
+  @override
   String get activityThinkingUntangle => 'Hmm… let me untangle this';
 
   @override
