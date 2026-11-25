@@ -86,6 +86,8 @@
   "accessVoiceDownload": "The voice model (about {size} MB) starts downloading once the engine is ready. Follow it in Settings › General › Voice input.",
   "accessPageTitle": "System permissions",
   "accessPageSubtitle": "What each feature needs from Android",
+  "floatingPillTitle": "Floating pill",
+  "floatingPillHint": "A draggable pill stays at the screen edge and shows whether the current session is running; tap to dismiss.",
   "activityThinkingUntangle": "Hmm… let me untangle this",
   "activityThinkingWorkThrough": "Let’s work through this",
   "activityThinkingGears": "Brain gears turning",

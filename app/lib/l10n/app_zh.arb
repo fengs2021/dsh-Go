@@ -152,6 +152,8 @@
   },
   "accessPageTitle": "系统权限",
   "accessPageSubtitle": "各项功能用到的系统权限",
+  "floatingPillTitle": "悬浮小窗",
+  "floatingPillHint": "在页面边缘常驻一枚胶囊，显示当前会话是否在运行；可拖动，点开可关闭。",
   "activityThinkingUntangle": "嗯…让我捋捋",
   "activityThinkingWorkThrough": "盘一下盘一下",
   "activityThinkingGears": "大脑转起来了",
