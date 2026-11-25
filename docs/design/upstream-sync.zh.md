@@ -132,3 +132,30 @@ AOT run `45683254728` 成功（AOT_COMMIT=e4d79d78c）、`check-arkts`/`audit-ha
 HoKit 重签 success、`hdc install -r` 成功，设备侧 `ccchimneyyy.dsh.go / 1.3.0`。
 签名包 md5 `90284636055b6ea6158d3ae1f66cde74`，完整记录见 `hap-build/BUILD-v92.txt`。
 全链路 `scripts/v92-pipeline.sh`（`PIPELINE_RC=0`），本次 hdc 文件通道正常。
+
+## 6. 整体 merge 可行性预演（2026-11-26，隔离工作树 `probe/merge-main`）
+
+第 3/4 节曾保守判断「整体 rebase 冲突面大、风险高」。用 `git merge-tree --write-tree`
+只读预演 + 隔离工作树实做，**推翻该判断**：
+
+- 分叉点 `c9d3c5825`，ours `c38dba28b` / theirs `d73c679c3`。
+- **仅 2 个冲突文件**，其余 30+ 全部自动合并：
+  1. `.github/workflows/ohos-compile.yml`——上游加了 `workflow_call`/`source_sha`（私有 HAP 构建用）、
+     group 与 artifact 名按 source_sha；我们改了 `cancel-in-progress: false`。
+     解法：保留上游全部新结构 + `cancel-in-progress: false`。
+  2. `packages/dsh_client/lib/src/session_api.dart`——我们加 `HttpClient`/`httpClientFactory`
+     构造参数（DoH），上游加 `_decodeLargeAttachment`；改在函数不同位置，
+     唯一冲突是两个 import（`dart:io` vs `dart:isolate`），两个都留。
+- **坑**：工作树是 sparse-checkout（白名单不含 `tooling/companion`），merge 带入的
+  `tooling/companion/offline_http.dart` 进了索引但没落地，`analyze` 报 uri 不存在。
+  `git sparse-checkout add tooling` 后消失——评估环境问题，非合并问题。
+
+**验证全绿**：`l10n_merge --check`（9036 keys）、`guide_sync --check`（38 files）、
+`flutter analyze` No issues、`test/chat` + `test/state` **3239 全通过**、
+`check-arkts --full` OK（0 errors）+ `audit-hap` OK（用 v92 的 AOT 可正常出包）。
+改动规模约 126 文件 / +8677−222 行。
+
+**结论**：整体 merge 到 `origin/main` 技术上低代价、可验证通过，能一次性拿到 companion 链、
+chat 批量 perf、runtime patches 等所有定点方式拿不到的上游改动。**待决策**：确实要引入这批
+大改动吗（含 runtime 运行时字节变化、需重编 runtime + 全量门禁 + 真机验证 + 重新出包）？
+预演成果保留在 `probe/merge-main` 工作树，未合回 `port/v71`。
