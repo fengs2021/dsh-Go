@@ -118,6 +118,10 @@ UI 文案/状态会变，2026-11-26 实测两处并已修脚本（改动前备�
   脚本改为打开后先 `keyEvent Back` 退到主界面再找入口，并多截一张 `qidian-1b-after-back.png`。
   排查手法：看 `qidian-1-open.png` 是否落在播放页。真机改 UI 布局后按截图更新关键词即可。
 
+验证第二天结果：`bash scripts/verify-daily-apps.sh YYYY-MM-DD`（只读，不碰 App）——
+按日志的 `tap '…' ok` 与截图存证给出 PASS/FAIL，并列出「未找到」的关键词供定位。
+2026-11-26 用它自检已知失败日，正确报 FAIL 并列出全部落空关键词。
+
 B 的坑（2026-11-25 首晚踩到）：systemd 的 PATH 里没有 `/opt/node22/bin`，`dsh` 是
 `/usr/bin/env node` 起的，直接 `timeout … dsh` 会 `rc=127 No such file or directory`。
 脚本里必须显式 `export PATH=/opt/node22/bin:…` 并用绝对路径 `$DSH_BIN`。
