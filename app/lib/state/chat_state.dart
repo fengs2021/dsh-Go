@@ -265,6 +265,48 @@ class CommandNotice {
 }
 
 /// Render state for one session's conversation.
+/// 一次发送实际使用的模式。回合运行中，普通「发送」跟随引擎设置
+/// `conversation.busyEnter`（DSH「繁忙时的发送行为」）；显式选择不受影响。
+SendMode effectiveSendMode({
+  required SendMode requested,
+  required bool running,
+  required SendMode busyEnter,
+}) {
+  if (!running) return SendMode.now;
+  return requested == SendMode.now ? busyEnter : requested;
+}
+
+/// 引擎设置 `conversation.busyEnter`（DSH「繁忙时的发送行为」，默认 queue）。
+/// 读一次缓存起来，发送路径只同步读它，绝不在发送里发 RPC。
+final busyEnterProvider = NotifierProvider<BusyEnterController, SendMode>(BusyEnterController.new);
+
+class BusyEnterController extends Notifier<SendMode> {
+  bool _loaded = false;
+
+  @override
+  SendMode build() {
+    // 换 Host 重新读。
+    ref.watch(activeHostProvider);
+    _loaded = false;
+    return SendMode.queue;
+  }
+
+  Future<void> load({bool force = false}) async {
+    if (_loaded && !force) return;
+    final client = ref.read(activeConnectionProvider).value?.client;
+    if (client == null) return;
+    _loaded = true;
+    try {
+      final described = SettingsDescription.fromJson(await client.rpc.call('settings/describe'));
+      final raw = described.namespaces['conversation']?.value['busyEnter'];
+      final next = raw == 'steer' ? SendMode.steer : SendMode.queue;
+      if (ref.mounted && state != next) state = next;
+    } catch (_) {
+      // 读不到就按 DSH 默认排队。
+    }
+  }
+}
+
 class ChatState {
   const ChatState({
     this.items = const [],
@@ -293,6 +335,7 @@ class ChatState {
     this.todos,
     this.goal,
     this.clockSkew = Duration.zero,
+    this.busyEnter = SendMode.queue,
   });
 
   final List<ChatItem> items;
@@ -365,6 +408,10 @@ class ChatState {
   /// on-device engine). Live timers subtract it from `DateTime.now()`.
   final Duration clockSkew;
 
+  /// 回合运行中，普通「发送」该排队还是插话。来源是引擎设置
+  /// `conversation.busyEnter`（DSH 官方「繁忙时的发送行为」，默认 queue）。
+  final SendMode busyEnter;
+
   /// The running turn's trace; null when idle.
   TurnTrace? get runningTurn {
     final last = turns.isEmpty ? null : turns.last;
@@ -399,6 +446,7 @@ class ChatState {
     List<PendingPrompt>? pending,
     bool? autoApprove,
     Set<String>? autoAnswered,
+    SendMode? busyEnter,
     List<CommandNotice>? commands,
   }) => ChatState(
     items: items,
@@ -427,6 +475,7 @@ class ChatState {
     todos: todos,
     goal: goal,
     clockSkew: clockSkew,
+    busyEnter: busyEnter ?? this.busyEnter,
   );
 }
 
@@ -461,6 +510,7 @@ class ChatController extends Notifier<ChatState> {
   bool get _activationAllowed => _interactions.values.any((allowed) => allowed());
 
   ChatController(this.sessionId);
+
 
   final String sessionId;
   final ChatTranscript _transcript = ChatTranscript();
@@ -1401,7 +1451,7 @@ class ChatController extends Notifier<ChatState> {
     }
 
     final running = state.running;
-    final effective = running ? (mode == SendMode.now ? SendMode.steer : mode) : SendMode.now;
+    final effective = effectiveSendMode(requested: mode, running: running, busyEnter: ref.read(busyEnterProvider));
     _pending = List.unmodifiable([
       ..._pending,
       PendingPrompt(

@@ -279,14 +279,27 @@ void main() {
       expect(client.cancels, 0);
     });
 
-    test('running: "now" steers into the turn', () async {
+    test('running: a plain send follows the engine setting — queue by default', () async {
       client.events.add(const SessionStatusEvent('s1', true));
       await settle();
       expect(state().running, isTrue);
 
       await chat().send('用 pnpm');
-      expect(client.prompts.single.mode, PromptMode.steer);
-      expect(state().pending.single.mode, SendMode.steer);
+      // DSH「繁忙时的发送行为」默认是排队；以前这里硬编码成插话。
+      expect(client.prompts.single.mode, PromptMode.queue);
+      expect(state().pending.single.mode, SendMode.queue);
+    });
+
+    test('busy mapping: the engine setting decides between queue and steer', () {
+      // 空闲：一律开始新一轮。
+      expect(effectiveSendMode(requested: SendMode.now, running: false, busyEnter: SendMode.steer), SendMode.now);
+      // 忙时：普通发送跟随设置（默认 queue）。
+      expect(effectiveSendMode(requested: SendMode.now, running: true, busyEnter: SendMode.queue), SendMode.queue);
+      expect(effectiveSendMode(requested: SendMode.now, running: true, busyEnter: SendMode.steer), SendMode.steer);
+      // 显式选择永远优先。
+      expect(effectiveSendMode(requested: SendMode.steer, running: true, busyEnter: SendMode.queue), SendMode.steer);
+      expect(effectiveSendMode(requested: SendMode.queue, running: true, busyEnter: SendMode.steer), SendMode.queue);
+      expect(effectiveSendMode(requested: SendMode.interrupt, running: true, busyEnter: SendMode.queue), SendMode.interrupt);
     });
 
     test('running: queue waits; interrupt stops first, then sends', () async {
@@ -334,7 +347,7 @@ void main() {
       await settle();
       final gate = Completer<String>();
       client.promptResult = gate;
-      final sending = chat().send('现在停止');
+      final sending = chat().send('现在停止', mode: SendMode.steer);
       await settle();
       expect(state().pending.single.mode, SendMode.steer);
 
@@ -353,7 +366,8 @@ void main() {
       await settle();
       expect(await chat().send('现在停止'), isTrue);
       await settle();
-      expect(state().pending.single.mode, SendMode.steer);
+      // 忙时默认跟随引擎设置（queue），这里只关心「Host 没接手」的表现。
+      expect(state().pending.single.mode, SendMode.queue);
 
       // The Host's own baseline says it holds nothing and never echoed it.
       client.events.add(
@@ -372,7 +386,7 @@ void main() {
       await settle();
       final pending = state().pending.single;
       expect(pending.failed, isTrue);
-      expect(pending.mode, SendMode.steer);
+      expect(pending.mode, SendMode.queue);
     });
   });
 

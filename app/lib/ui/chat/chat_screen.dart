@@ -449,6 +449,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> with WidgetsBindingObse
       }
       if (mounted && ref.read(readyComposeProvider) != null) _takeCompose();
     });
+    // 「繁忙时的发送行为」跟随引擎设置（conversation.busyEnter），进页面读一次。
+    unawaited(ref.read(busyEnterProvider.notifier).load());
   }
 
   void _takeRepairDraft() {

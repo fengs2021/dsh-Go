@@ -48,12 +48,13 @@ void main() {
     } finally { await h.close(); }
   }, RealSyncHttp()));
 
-  test('ordinary send keeps existing now to steer behavior without source callback', () => HttpOverrides.runWithHttpOverrides(() async {
+  test('ordinary send follows the busy-send setting — queue by default', () => HttpOverrides.runWithHttpOverrides(() async {
     final h = await SyncHarness.start();
     try {
       expect(await h.chat.send('ordinary message'), isTrue);
       expect(h.boundary.length, 1);
-      expect((h.boundary.single['request'] as Map)['mode'], 'steer');
+      // DSH「繁忙时的发送行为」默认排队；显式插话仍可用 SendMode.steer。
+      expect((h.boundary.single['request'] as Map)['mode'], 'queue');
       expect(h.cancelledBackendRuns, isEmpty);
     } finally { await h.close(); }
   }, RealSyncHttp()));
