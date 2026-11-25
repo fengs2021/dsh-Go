@@ -19,6 +19,29 @@
 | 端口 | 鸿蒙「无线调试」页显示，实测 `45957` |
 | 鉴权 | TCP 直连**不需要公钥**：`connect_validation` 默认 `VALIDATION_CLOSE`，不弹设备授权框（我们 PC 侧 `hdc.exe tconn` 全程未配对即验证过） |
 
+**2026-11-25 抓包校正**（用 Windows/WSL TCP relay 拦了一次真实 `CNXN`，179 字节）：
+
+```
+48 57 | 00 00 | 01 | 00 08 | 00 00 00 a0 | a0 08 00 10 01 18 00 20 09 | 0a 08 "OHOS HDC" ...
+ flag    reserve  ver  headSize=8  dataSize=160    PayloadProtect(序列化后 8B)      HandShake 负载
+```
+
+- 包头是 **10 字节**，之前漏了 `reserve[2]`（加密/选项位，明文链路为 `00 00`）；
+- `headSize=8` 说明 `PayloadProtect` 是**压缩序列化**后的 8 字节，不是 10 字节裸结构；
+- 负载里能直接看到 `0a 08 4f 48 4f 53 20 48 44 43` = `"OHOS HDC"`，与 TLV/pack 编码一致。
+
+Rust 侧的权威定义（可直接照着移植，比啃 C++ 便宜）：
+
+| 结构 | 字段 |
+| --- | --- |
+| `PayloadProtect` | `channel_id: u32`、`command_flag: u32`、`check_sum: u8`、`v_code: u8`（`v_code` 静态值 `0x09`） |
+| `PayloadHead` | `flag[2]`、`reserve[2]`、`protocol_ver: u8`、`head_size: u16`、`data_size: u32` |
+| `SessionHandShake` | `banner: String`、`auth_type: u8`、`session_id: u32`、`connect_key: String`、`buf: String`、`version: String` |
+
+序列化实现规模：`hdc_rust/src/serializer/pack_struct.rs`（121 行）+ `serialize.rs`（436 行）
++ `native_struct.rs`（98 行）——这是**下一个要移植的东西**，用 Kotlin 重写这三块即可，
+不必再抓包。
+
 已落地的代码：`phone/hdc/HdcWire.kt`（包头编解码 + 常量 + 版本串）与对应 JVM 单测，
 不依赖真机即可验证字节布局。
 
