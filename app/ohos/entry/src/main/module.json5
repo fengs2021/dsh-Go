@@ -154,14 +154,6 @@
       {
         "name": "ohos.permission.KEEP_BACKGROUND_RUNNING"
       },
-      // 受限权限：先声明，安装后用 `atm perm -g` 试授予（uid=2000 通道）。
-      // 若安装因 ACL 被拒，删掉这两项即可回退。
-      {
-        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING_SYSTEM"
-      },
-      {
-        "name": "ohos.permission.SYSTEM_FLOAT_WINDOW"
-      },
       {
         "name": "ohos.permission.FILE_ACCESS_PERSIST"
       },

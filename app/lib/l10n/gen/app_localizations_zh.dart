@@ -286,12 +286,6 @@ class L10nZh extends L10n {
   String get accessPageSubtitle => '各项功能用到的系统权限';
 
   @override
-  String get floatingPillTitle => '悬浮小窗';
-
-  @override
-  String get floatingPillHint => '在页面边缘常驻一枚胶囊，显示当前会话是否在运行；可拖动，点开可关闭。';
-
-  @override
   String get activityThinkingUntangle => '嗯…让我捋捋';
 
   @override

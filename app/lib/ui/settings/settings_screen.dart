@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../l10n/l10n.dart';
-import '../shell/floating_pill.dart';
 import '../../runtime/local_footprint.dart';
 import '../../runtime/runtime_state.dart';
 import '../../state/account_state.dart';
@@ -252,14 +251,6 @@ class SettingsScreen extends ConsumerWidget {
               spot: SettingsIndex.entry(SettingsPageId.interface),
               value: Text(uiMode.label),
               onTap: () => _push(context, const InterfacePage()),
-            ),
-            SettingsSwitchTile(
-              icon: AppIcons.pin,
-              tint: SettingsHues.general,
-              title: l10n.floatingPillTitle,
-              subtitle: l10n.floatingPillHint,
-              value: ref.watch(floatingPillProvider),
-              onChanged: (on) => ref.read(floatingPillProvider.notifier).set(on),
             ),
             const LanguageSettingsTile(tint: SettingsHues.general),
             const NotificationSettingsTile(tint: SettingsHues.general),

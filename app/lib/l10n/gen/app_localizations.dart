@@ -608,18 +608,6 @@ abstract class L10n {
   /// **'各项功能用到的系统权限'**
   String get accessPageSubtitle;
 
-  /// No description provided for @floatingPillTitle.
-  ///
-  /// In zh, this message translates to:
-  /// **'悬浮小窗'**
-  String get floatingPillTitle;
-
-  /// No description provided for @floatingPillHint.
-  ///
-  /// In zh, this message translates to:
-  /// **'在页面边缘常驻一枚胶囊，显示当前会话是否在运行；可拖动，点开可关闭。'**
-  String get floatingPillHint;
-
   /// No description provided for @activityThinkingUntangle.
   ///
   /// In zh, this message translates to:
