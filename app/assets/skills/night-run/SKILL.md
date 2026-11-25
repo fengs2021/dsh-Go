@@ -148,3 +148,10 @@ power-shell suspend      # 熄屏
 - 期待 `TASK_KEEPING` 在无 ACL 的签名下可用。
 - 在 WorkScheduler 扩展里启动引擎或拉起 UIAbility（2 分钟上限 + 禁止 backgroundTaskManager + 无 startAbility）。
 - 试图通过 `app.json5` 打开 `allowAppRunWhenDeviceFirstLocked`（第三方 schema 不认）。
+
+## 8. 运维备忘：aot85.timer 是历史残留，无害
+
+`aot85.timer`（06:30/12:30/18:30）是 v85 时期 AOT 重试定时器。service 带
+`ConditionPathExists=!/root/b85/DONE`，而 `/root/b85/DONE` 自 2026-11-24 已存在（内容
+`068445c3…`），所以每次触发都被跳过，不会 dispatch、不干扰现在的出包。
+排查 AOT 编译被顶掉时不用怀疑它。当前 AOT 一律手动 `gh workflow run` + `aot-fetch66.py`。
