@@ -105,7 +105,7 @@ terminal 和 phone 那两个仍印证上一节的「成批演进」规律，要�
 `e54f1532e0` 与上次 revert 的 remote 提交（`_receiveTail` 那批）无关，纯性能优化、语义不变。
 验证：dsh_remote analyze 仅 1 条既有 info（基线相同）、测试无失败；app analyze No issues。
 
-**待办**：`565547c0f` 是 Dart 改动，尚未出 HAP（v91 装机于它之前）。下次出包时重编 AOT 即带入。
+**出包**：`565547c0f` 已随 v92 出包装机（见 §5.4）。
 
 ### 5.3 本地 diff-tree 全量重筛（2026-11-26 第三轮）
 
@@ -125,5 +125,10 @@ GitHub API rate limit（60/h）用尽后，改用本地 `git diff-tree --name-on
 （perf，非必需）、约 18 个「第八波」chat 流式渲染批量 perf（成批演进、收益边际、互相依赖，
 按判据整体 rebase 才拿，不做定点）。**定点搬运到此处收尾**：独立、有价值、无依赖的都进来了。
 
-**待办**：HEAD `2dec5465c` 含 `565547c0f`+2 个 chat 优化共 3 个 Dart 改动，尚未出 HAP
-（v91 装机于它们之前）。下次出包重编 AOT 即带入。
+### 5.4 出包 v92（2026-11-26）
+
+HEAD `e4d79d78c`（含 `565547c0f` + 2 个 chat 优化共 3 个 Dart 改动）已出 v92 并装机：
+AOT run `45683254728` 成功（AOT_COMMIT=e4d79d78c）、`check-arkts`/`audit-hap` OK、
+HoKit 重签 success、`hdc install -r` 成功，设备侧 `ccchimneyyy.dsh.go / 1.3.0`。
+签名包 md5 `90284636055b6ea6158d3ae1f66cde74`，完整记录见 `hap-build/BUILD-v92.txt`。
+全链路 `scripts/v92-pipeline.sh`（`PIPELINE_RC=0`），本次 hdc 文件通道正常。
