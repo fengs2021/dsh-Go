@@ -25,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../companion/companion_state.dart' show companionSessionFilterProvider, companionSessionsProvider;
 import '../../l10n/l10n.dart';
 import '../../links/app_links.dart';
 import '../../links/launcher_entries.dart';
@@ -39,6 +40,8 @@ import '../../state/settings_state.dart';
 import '../../state/ui_mode_state.dart';
 import '../common/discard_guard.dart';
 import '../common/empty_view.dart';
+import '../companion/companion_tasks_page.dart';
+import '../companion/companion_page.dart';
 import '../forum/forum_link_host.dart';
 import '../notify/chat_alert_host.dart';
 import '../pets/pet_settings_page.dart';
@@ -325,6 +328,12 @@ class _WebEntryHostState extends ConsumerState<WebEntryHost> {
   }
 
   Future<void> _onEntry(LauncherEntry entry) async {
+    if (entry is OpenChatEntry) {
+      // A cold start may still be reading her saved sessions.
+      await ref.read(companionSessionsProvider.notifier).ready;
+      if (!mounted) return;
+      entry = entry.forCompanion(ref.read(companionSessionFilterProvider), active: ref.read(activeHostProvider));
+    }
     switch (entry) {
       case NewChatEntry(:final text):
         // Dictation is the native composer's; Siri's supplied text still
@@ -352,6 +361,19 @@ class _WebEntryHostState extends ConsumerState<WebEntryHost> {
         // The page follows the current conversation (WebHome).
         ref.read(activeHostProvider.notifier).select(host);
         ref.read(currentSessionProvider.notifier).select(sessionId);
+      case OpenCompanionTaskEntry(:final taskId, :final taskRev):
+        if (mounted) {
+          await Navigator.of(context, rootNavigator: true).push(
+            MaterialPageRoute<void>(
+              builder: (_) => CompanionTasksPage(taskId: taskId, openedRevision: taskRev),
+            ),
+          );
+        }
+      case CompanionAssistantEntry():
+        if (mounted) await openCompanionAssistant(context, ref, entry);
+      case OpenCompanionEntry(:final room):
+        // As on the native home: her room, never the page's conversation.
+        if (room && mounted) await showCompanionRoom(context, ref);
     }
   }
 

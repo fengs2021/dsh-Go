@@ -603,7 +603,6 @@ class PhoneStatus {
     this.tasks = const [],
     this.parallelLimit = 1,
     this.device = const PhoneDevice(),
-    this.skills = const PhoneSkillStatus(),
     this.taskInterruption = const PhoneTaskInterruption(),
   });
 
@@ -626,7 +625,6 @@ class PhoneStatus {
       tasks = const [],
       parallelLimit = 1,
       device = const PhoneDevice(),
-      skills = const PhoneSkillStatus(),
       taskInterruption = const PhoneTaskInterruption();
 
   factory PhoneStatus.fromMap(Map<Object?, Object?> m) => PhoneStatus(
@@ -647,7 +645,6 @@ class PhoneStatus {
     tasks: _phoneTasks(m),
     parallelLimit: _int(m['parallelLimit']) ?? 1,
     device: PhoneDevice.fromMap(_map(m['device'])),
-    skills: PhoneSkillStatus.parse(m['skills']),
     taskInterruption: PhoneTaskInterruption.parse(m['taskInterruption']),
   );
 
@@ -682,7 +679,6 @@ class PhoneStatus {
   final List<PhoneTaskStatus> tasks;
   final int parallelLimit;
   final PhoneDevice device;
-  final PhoneSkillStatus skills;
   final PhoneTaskInterruption taskInterruption;
 
   /// Some task may still act, the selected one or any other conversation's: active, a call
@@ -708,7 +704,6 @@ class PhoneStatus {
     tasks: tasks,
     parallelLimit: parallelLimit,
     device: device,
-    skills: skills,
     taskInterruption: taskInterruption,
   );
 }
@@ -716,19 +711,34 @@ class PhoneStatus {
 // ── 悬浮条 ───────────────────────────────────────────────────────────────────
 
 /// 设置 → 手机操控 → 悬浮条 (`overlayPrefs` / `setOverlayPrefs`): how opaque the
-/// ball is when idle, and whether an idle capsule folds into the ball by itself
-/// (on unless the person turned it off, as OverlayPrefs.kt). A showing overlay
-/// follows changes at once.
+/// ball is when idle, whether the island gets out of the way by itself (off
+/// unless the person turns it on), whether the screen's edge glows while DSH
+/// works and whether the phone's own island shows the task instead of the
+/// floating bar (both on unless turned off), as OverlayPrefs.kt. A showing
+/// overlay follows changes at once.
 class PhoneOverlayPrefs {
-  const PhoneOverlayPrefs({this.idleOpacity = defaultOpacity, this.autoCollapse = defaultAutoCollapse});
+  const PhoneOverlayPrefs({
+    this.idleOpacity = defaultOpacity,
+    this.autoCollapse = defaultAutoCollapse,
+    this.edgeGlow = defaultEdgeGlow,
+    this.systemIsland = defaultSystemIsland,
+  });
 
   factory PhoneOverlayPrefs.fromMap(Map<Object?, Object?> m) => PhoneOverlayPrefs(
     idleOpacity: clampOpacity(m['idleOpacity'] is num ? (m['idleOpacity'] as num).toDouble() : defaultOpacity),
     autoCollapse: _maybeFlag(m['autoCollapse']) ?? defaultAutoCollapse,
+    edgeGlow: _maybeFlag(m['edgeGlow']) ?? defaultEdgeGlow,
+    systemIsland: _maybeFlag(m['systemIsland']) ?? defaultSystemIsland,
   );
 
-  /// On: the capsule shows what DSH starts doing, then gets out of the way.
-  static const defaultAutoCollapse = true;
+  /// Off: the island stays as the person left it and folds into the ball only by hand.
+  static const defaultAutoCollapse = false;
+
+  /// On: the screen's edge glows while DSH operates the phone.
+  static const defaultEdgeGlow = true;
+
+  /// On: where the phone has its own island (HyperOS, ColorOS, MagicOS), the task shows there.
+  static const defaultSystemIsland = true;
 
   /// 70 %: the line reads over light and dark pages alike (see OverlayPrefs.kt).
   static const defaultOpacity = 0.7;
@@ -745,19 +755,32 @@ class PhoneOverlayPrefs {
   /// 闲置时自动收起.
   final bool autoCollapse;
 
+  /// 屏幕边缘光效.
+  final bool edgeGlow;
+
+  /// 用系统灵动岛显示.
+  final bool systemIsland;
+
   int get percent => (idleOpacity * 100).round();
 
-  PhoneOverlayPrefs copyWith({double? idleOpacity, bool? autoCollapse}) => PhoneOverlayPrefs(
-    idleOpacity: idleOpacity == null ? this.idleOpacity : clampOpacity(idleOpacity),
-    autoCollapse: autoCollapse ?? this.autoCollapse,
-  );
+  PhoneOverlayPrefs copyWith({double? idleOpacity, bool? autoCollapse, bool? edgeGlow, bool? systemIsland}) =>
+      PhoneOverlayPrefs(
+        idleOpacity: idleOpacity == null ? this.idleOpacity : clampOpacity(idleOpacity),
+        autoCollapse: autoCollapse ?? this.autoCollapse,
+        edgeGlow: edgeGlow ?? this.edgeGlow,
+        systemIsland: systemIsland ?? this.systemIsland,
+      );
 
   @override
   bool operator ==(Object other) =>
-      other is PhoneOverlayPrefs && other.idleOpacity == idleOpacity && other.autoCollapse == autoCollapse;
+      other is PhoneOverlayPrefs &&
+      other.idleOpacity == idleOpacity &&
+      other.autoCollapse == autoCollapse &&
+      other.edgeGlow == edgeGlow &&
+      other.systemIsland == systemIsland;
 
   @override
-  int get hashCode => Object.hash(idleOpacity, autoCollapse);
+  int get hashCode => Object.hash(idleOpacity, autoCollapse, edgeGlow, systemIsland);
 }
 
 // ── Results ──────────────────────────────────────────────────────────────────
@@ -1271,21 +1294,25 @@ class PhonePreviewFrame {
 class PhoneChannel {
   PhoneChannel({MethodChannel? methods, EventChannel? events, EventChannel? preview})
     : _methods = methods ?? const MethodChannel('dsh/phone'),
-      _events = events ?? const EventChannel('dsh/phone/events'),
+      _pushes = events == null ? _defaultPushes : _eventStream(events),
       _preview = preview ?? const EventChannel('dsh/phone/preview');
 
   final MethodChannel _methods;
-  final EventChannel _events;
   final EventChannel _preview;
-  Stream<PhoneStatus>? _stream;
+  // A named native channel has one listen/cancel pair, including when callers construct separate wrappers.
+  static final _defaultPushes = _eventStream(const EventChannel('dsh/phone/events'));
+  static Stream<SkillWireMap> _eventStream(EventChannel events) =>
+      events.receiveBroadcastStream().where((raw) => raw is SkillWireMap).cast<SkillWireMap>();
+  final Stream<SkillWireMap> _pushes;
 
-  /// Status pushes. Listen only after [status] came back ready: activating the
-  /// stream without a native side reports an error to Flutter.
-  Stream<PhoneStatus> get statusChanges => _stream ??= _events
-      .receiveBroadcastStream()
-      .where((raw) => raw is Map)
-      .map((raw) => PhoneStatus.fromMap((raw as Map).cast<Object?, Object?>()))
-      .asBroadcastStream();
+  /// Status snapshots from all supported platforms are untagged.
+  late final Stream<PhoneStatus> statusChanges = _pushes
+      .where((map) => map['type'] == null || map['type'] == 'status')
+      .map(PhoneStatus.fromMap);
+
+  late final Stream<PhoneSkillEvent> skillEvents = _pushes
+      .where((map) => map['type'] == 'skillDraft' || map['type'] == 'skillOutcome')
+      .map((map) => map['type'] == 'skillDraft' ? PhoneSkillDraftEvent.fromMap(map) : PhoneSkillOutcomeEvent.fromMap(map));
 
   Future<PhoneStatus> status() async {
     try {
@@ -1299,6 +1326,10 @@ class PhoneChannel {
   }
 
   Future<bool> setEnabled(bool enabled) => _bool('setEnabled', {'enabled': enabled});
+
+  /// Her full-mode sessions on this phone's engine, replacing the last set.
+  /// Native lets exactly these operate the phone with the switch off.
+  Future<bool> setCompanionSessions(Set<String> ids) => _bool('setCompanionSessions', {'ids': ids.toList()});
 
   /// Explicit preference only; native snapshots it when a new background driver is created.
   Future<PhoneResult> setBackgroundViewport(PhoneBackgroundViewport preset) =>
@@ -1355,30 +1386,45 @@ class PhoneChannel {
     return controller.stream.map(PhonePreviewFrame.parse);
   }
 
-  Future<bool> setSkillSavePrompt(bool enabled) => _bool('setSkillSavePrompt', {'enabled': enabled});
+  Future<PhoneSkillListing> listSkills() => _skill('skills.list', PhoneSkillListing.fromMap);
 
-  Future<PhoneSkillReply> openSkillDraft(PhoneSkillCandidate candidate, {required bool confirmed}) =>
-      _skillReply('skillDraft', {'action': 'open', 'taskId': candidate.taskId,
-        'generation': candidate.generation, 'confirmed': confirmed});
+  Future<PhoneSkill> getSkill(String name) => _skill('skills.get', PhoneSkill.fromMap, {'name': name});
 
-  Future<PhoneSkillReply> editSkillDraft(PhoneSkillDraftView draft, {required String goal,
-    required String prerequisites, required List<String> checkpoints, required List<int> stepOrder}) =>
-      _skillReply('skillDraft', {'action': 'edit', 'taskId': draft.taskId, 'draftId': draft.draftId,
-        'revision': draft.revision, 'goal': goal, 'prerequisites': prerequisites,
-        'checkpoints': checkpoints, 'stepOrder': stepOrder});
+  Future<bool> setSkillLearning(bool on) => _skill('skills.setLearn', (reply) => reply['learn'] as bool, {'on': on});
 
-  Future<PhoneSkillReply> checkSkillSave(PhoneSkillSaveHandle handle) =>
-      _skillReply('skillDraft', handle.query);
+  Future<PhoneSkill> acceptSkill(String draftId, {PhoneSkillSections? edited}) =>
+      _skill('skills.accept', PhoneSkill.fromMap, {'draftId': draftId, 'edited': ?edited?.toMap()});
 
-  Future<PhoneSkillReply> viewSkillDraft(PhoneSkillDraftView draft) => _skillReply('skillDraft',
-      {'action': 'view', 'taskId': draft.taskId, 'draftId': draft.draftId});
+  Future<void> discardSkill(String draftId) => _skill<void>('skills.discard', (_) {}, {'draftId': draftId});
 
-  Future<PhoneSkillReply> saveSkillDraft(PhoneSkillDraftView draft, {required bool confirmed}) =>
-      _skillReply('saveSkillDraft', {'taskId': draft.taskId, 'draftId': draft.draftId,
-        'revision': draft.revision, 'confirmed': confirmed});
+  Future<PhoneSkill> saveSkill(String name, {String? display, String? description, String? whenToUse,
+      PhoneSkillSections? sections}) => _skill('skills.save', PhoneSkill.fromMap, {
+    'name': name, 'display': ?display, 'description': ?description, 'whenToUse': ?whenToUse, 'sections': ?sections?.toMap(),
+  });
 
-  Future<PhoneSkillReply> discardSkillDraft(PhoneSkillDraftView draft) =>
-      _skillReply('discardSkillDraft', {'taskId': draft.taskId, 'draftId': draft.draftId});
+  Future<PhoneSkill> setSkillEnabled(String name, bool on) =>
+      _skill('skills.setEnabled', PhoneSkill.fromMap, {'name': name, 'on': on});
+
+  Future<PhoneSkill> restoreSkill(String name) => _skill('skills.restore', PhoneSkill.fromMap, {'name': name});
+
+  Future<void> deleteSkill(String name) => _skill<void>('skills.delete', (_) {}, {'name': name});
+
+  Future<T> _skill<T>(String method, T Function(SkillWireMap) parse, [Map<String, Object?>? args]) async {
+    try {
+      final reply = await _methods.invokeMapMethod<Object?, Object?>(method, args);
+      if (reply == null) throw const PhoneSkillException('unavailable', 'Empty native response.');
+      if (reply['error'] case final String code) throw PhoneSkillException(code, reply['detail'] as String? ?? '');
+      return parse(reply);
+    } on MissingPluginException {
+      throw const PhoneSkillException('unavailable', 'Phone skills are unavailable.');
+    } on PlatformException {
+      throw const PhoneSkillException('unavailable', 'Phone skills are unavailable.');
+    } on FormatException {
+      throw const PhoneSkillException('invalid', 'Invalid native skill response.');
+    } on TypeError {
+      throw const PhoneSkillException('invalid', 'Invalid native skill response.');
+    }
+  }
 
   Future<PhoneSkillReplayInspection> inspectSkillReplay(String skillId) async {
     try {
@@ -1414,18 +1460,6 @@ class PhoneChannel {
       return false;
     }
   }
-
-  Future<PhoneSkillReply> _skillReply(String method, Map<String, Object?> arguments) async {
-    try {
-      return PhoneSkillReply.parse(await _methods.invokeMapMethod<Object?, Object?>(method, arguments));
-    } on MissingPluginException {
-      return const PhoneSkillReply.unavailable();
-    } on PlatformException {
-      // Draft contents and native exception details never enter an error message or a log.
-      return const PhoneSkillReply.unavailable();
-    }
-  }
-
 
   Future<bool> openAccessibilitySettings() => _bool('openAccessibilitySettings');
 
@@ -1577,8 +1611,59 @@ class PhoneChannel {
   Future<PhoneOverlayPrefs?> overlayPrefs() => _overlay('overlayPrefs');
 
   /// Writes what is given (the rest stays); the stored result, null without the native side.
-  Future<PhoneOverlayPrefs?> setOverlayPrefs({double? idleOpacity, bool? autoCollapse}) =>
-      _overlay('setOverlayPrefs', {'idleOpacity': ?idleOpacity, 'autoCollapse': ?autoCollapse});
+  Future<PhoneOverlayPrefs?> setOverlayPrefs({
+    double? idleOpacity,
+    bool? autoCollapse,
+    bool? edgeGlow,
+    bool? systemIsland,
+  }) => _overlay('setOverlayPrefs', {
+    'idleOpacity': ?idleOpacity,
+    'autoCollapse': ?autoCollapse,
+    'edgeGlow': ?edgeGlow,
+    'systemIsland': ?systemIsland,
+  });
+
+  /// Whether this phone has its own island the task can show in (HyperOS 超级岛,
+  /// ColorOS 流体云, MagicOS): `vendor`; and whether it does now (`shows`: the
+  /// live activity is on and the system promotes it). False without the native side.
+  /// Installed apps' names and icons (PNG) by package; apps not installed are left out.
+  Future<Map<String, ({String label, Uint8List icon})>> appInfo(List<String> packages) async {
+    if (packages.isEmpty) return const {};
+    try {
+      final map = await _methods.invokeMapMethod<String, Object?>('appInfo', {'packages': packages});
+      return {
+        for (final MapEntry(:key, :value) in (map ?? const {}).entries)
+          if (value case {'label': final String label, 'icon': final Uint8List icon}) key: (label: label, icon: icon),
+      };
+    } on MissingPluginException {
+      return const {};
+    } on PlatformException {
+      return const {};
+    }
+  }
+
+  Future<({bool vendor, bool shows})> systemIsland() async {
+    try {
+      final map = await _methods.invokeMapMethod<Object?, Object?>('systemIsland');
+      return (vendor: map?['vendor'] == true, shows: map?['shows'] == true);
+    } on MissingPluginException {
+      return (vendor: false, shows: false);
+    } on PlatformException {
+      return (vendor: false, shows: false);
+    }
+  }
+
+  /// What DSH last said in [sessionId], the conversation driving the phone, for
+  /// the island's card (null forgets it). Best effort: an older native side ignores it.
+  Future<void> setPhoneThought(String sessionId, String? text) async {
+    try {
+      await _methods.invokeMethod<bool>('setPhoneThought', {'sessionId': sessionId, 'text': text});
+    } on MissingPluginException {
+      // An older native module shows no thoughts.
+    } on PlatformException {
+      // Nothing to show then.
+    }
+  }
 
   Future<PhoneOverlayPrefs?> _overlay(String method, [Object? args]) async {
     try {

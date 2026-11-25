@@ -26,6 +26,7 @@ import 'code_block.dart';
 import 'markdown_blocks.dart';
 import 'markdown_image.dart';
 import 'markdown_math.dart';
+import 'markdown_prepare.dart';
 import 'markdown_split.dart';
 import 'math_syntax.dart';
 import 'stream_repair.dart';
@@ -121,12 +122,27 @@ class MarkdownBody extends StatefulWidget {
   ///
   /// 缓存按语言 + 表格底色的组合分开:同一页里"跟随主题"和"无底色"是两份
   /// 主题,换设置后不必把旧的丢掉再重建。
-  static GptMarkdownThemeData _themeFor(ThemeData theme, bool secondary, L10n l10n, TableTint tint) {
+  ///
+  /// [reply]: an assistant reply under a theme pack, which restyles it (see
+  /// [_buildTheme]); everything it reads comes from [theme].
+  static GptMarkdownThemeData _themeFor(
+    ThemeData theme,
+    bool secondary,
+    L10n l10n,
+    TableTint tint, {
+    bool reply = false,
+  }) {
     final cache = (secondary ? _secondaryThemes : _themes).putIfAbsent(
-      '${l10n.localeName}|${tint.name}',
+      '${l10n.localeName}|${tint.name}${reply ? '|reply' : ''}',
       () => Expando<GptMarkdownThemeData>('markdownTheme'),
     );
-    return cache[theme] ??= _buildTheme(theme, l10n, secondary: secondary, tint: tint);
+    return cache[theme] ??= _buildTheme(
+      theme,
+      l10n,
+      secondary: secondary,
+      tint: tint,
+      reply: reply ? theme.extension<DshThemeStyle>() : null,
+    );
   }
 
   static GptMarkdownThemeData _buildTheme(
@@ -134,6 +150,7 @@ class MarkdownBody extends StatefulWidget {
     L10n l10n, {
     bool secondary = false,
     TableTint tint = TableTint.follow,
+    DshThemeStyle? reply,
   }) {
     final colors = theme.colorScheme;
     final dsh = theme.extension<DshColors>()!;
@@ -145,13 +162,21 @@ class MarkdownBody extends StatefulWidget {
       stripeColor: colors.onSurface.withValues(alpha: theme.brightness == Brightness.dark ? 0.06 : 0.05),
     );
     final shrink = secondary ? 0.9 : 1.0;
-    TextStyle heading(double size, {double height = 1.45}) => TextStyle(
-      fontSize: size * shrink,
-      fontWeight: FontWeight.w600,
-      height: height,
-      color: secondary ? colors.onSurfaceVariant : colors.onSurface,
-      leadingDistribution: TextLeadingDistribution.even,
-    );
+    final headingColor =
+        reply?.heading ?? (reply?.components.headingStyle == ThemeHeadingStyle.accent ? colors.primary : null);
+    final linkColor = reply?.link ?? colors.primary;
+    TextStyle heading(double size, {double height = 1.45}) {
+      final style = TextStyle(
+        fontSize: size * shrink,
+        fontWeight: FontWeight.w600,
+        height: height,
+        color: headingColor ?? (secondary ? colors.onSurfaceVariant : colors.onSurface),
+        leadingDistribution: TextLeadingDistribution.even,
+      );
+      // A heading does not inherit the body's font, so the pack's is set here.
+      return reply == null ? style : reply.headingTextStyle(reply.applyFontRole(style, reply.typography.uiFont));
+    }
+
     return GptMarkdownThemeData(
       brightness: theme.brightness,
       h1: heading(20, height: 1.4),
@@ -163,15 +188,15 @@ class MarkdownBody extends StatefulWidget {
       hrLineThickness: 0.5,
       hrLineColor: colors.outlineVariant,
       hrLinePadding: const EdgeInsets.symmetric(vertical: 12),
-      linkColor: colors.primary,
-      linkHoverColor: colors.primary,
+      linkColor: linkColor,
+      linkHoverColor: linkColor,
       autoAddDividerLineAfterH1: false,
       inlineCode: InlineCodeStyle(
         fontFamily: AppType.monoFamily,
         fontFamilyFallback: AppType.monoFallback,
         fontSizeFactor: 0.875,
-        color: dsh.codeWellFg,
-        backgroundColor: dsh.codeWellBg,
+        color: reply?.inlineCodeFg ?? dsh.codeWellFg,
+        backgroundColor: reply?.inlineCodeBg ?? dsh.codeWellBg,
         borderColor: dsh.codeWellBorder,
         borderWidth: 0.5,
         borderRadius: const Radius.circular(AppShape.xs),
@@ -206,8 +231,8 @@ class MarkdownBody extends StatefulWidget {
         // `<mark>`:荧光笔一样的暖黄底。
         highlight: HighlightStyle(backgroundColor: dsh.warningContainer, color: dsh.onWarningContainer),
         link: LinkStyle(
-          color: colors.primary,
-          hoverColor: colors.primary,
+          color: linkColor,
+          hoverColor: linkColor,
           decoration: TextDecoration.underline,
           decorationThickness: 0.6,
         ),
@@ -225,7 +250,7 @@ class MarkdownBody extends StatefulWidget {
           headerBackground: tableFills.header,
           rowStripeColor: tableFills.stripe,
           cellPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          columnWidth: const MinColumnWidth(IntrinsicColumnWidth(), FixedColumnWidth(_maxColumnWidth)),
+          columnWidth: const _CappedIntrinsicColumnWidth(_maxColumnWidth),
           overflow: TableOverflow.scroll,
         ),
       ),
@@ -516,7 +541,11 @@ class MarkdownBody extends StatefulWidget {
     final size = (heading ?? const TextStyle()).merge(style.textStyle).fontSize ?? MarkdownImageFont.of(context);
     return MarkdownImageFont(
       size: size,
-      child: Semantics(header: true, container: true, child: content),
+      child: Semantics(
+        header: true,
+        container: true,
+        child: MarkdownReplyScope.of(context) ? _ReplyHeading(level: level, child: content) : content,
+      ),
     );
   }
 
@@ -556,8 +585,10 @@ class MarkdownBody extends StatefulWidget {
   /// placed. With [repairBareViews] a bare `dsh-ui` JSON block gets its fence
   /// back first (see [fenceBareDshUiViews]).
   @visibleForTesting
-  static String prepareSource(String text, {bool streaming = false, bool repairBareViews = false}) =>
-      _prepareSource(text, streaming: streaming, repairBareViews: repairBareViews);
+  static String prepareSource(String text, {bool streaming = false, bool repairBareViews = false}) {
+    final source = _prepareMarkdown(text, repairBareViews: repairBareViews, streaming: streaming);
+    return streaming ? repairStreamingMarkdown(source, cursor: _cursorSentinel) : source;
+  }
 
   /// Characters a second when the model is slower than this; the reveal goes faster
   /// by itself when it would fall behind. Near a comfortable reading pace, so the text
@@ -567,45 +598,13 @@ class MarkdownBody extends StatefulWidget {
   /// How long the newest words take to fade in.
   static const _revealFade = 0.24;
 
-  /// [text] for the reveal. Only ever appended to while streaming, as the reveal needs
-  /// (a rewrite far from the end would retype the message): a table's header is bolded
-  /// as its delimiter row arrives, right at the end and for good, so its columns don't
-  /// change when the reply finishes. Formulas are left to the library's own hold.
-  static String _prepareRevealed(String text, {required bool repairBareViews}) {
+  /// Shared preparation before tail repair. The reveal uses [streaming] false:
+  /// formulas are left to the library's own hold, while table headers become
+  /// bold as their delimiter arrives, so columns do not change on completion.
+  static String _prepareMarkdown(String text, {required bool repairBareViews, bool streaming = false}) {
     final repaired = repairBareViews ? fenceBareDshUiViews(text) : text;
-    return boldTableHeaders(blankLineBeforeTables(normalizeMath(repaired)));
+    return prepareTables(normalizeMath(repaired, streaming: streaming));
   }
-
-  static String _prepareSource(
-    String text, {
-    bool streaming = false,
-    bool repairBareViews = false,
-    StreamingMarkdownRepair? repair,
-  }) {
-    final repaired = repairBareViews ? fenceBareDshUiViews(text) : text;
-    final source = boldTableHeaders(blankLineBeforeTables(normalizeMath(repaired, streaming: streaming)));
-    if (!streaming) return source;
-    return _withCursor(repair?.repair(source) ?? repairStreamingMarkdown(source));
-  }
-
-  /// [text] with the cursor sentinel where the reader's eye is: at the end
-  /// of the last line, except that a closing fence or a display formula's
-  /// `\]` must stay alone on its line, and a table row takes it inside its
-  /// last cell rather than as a new cell after the pipe.
-  static String _withCursor(String text) {
-    final last = text.substring(text.lastIndexOf('\n') + 1).trim();
-    if (_fenceLine.hasMatch(last) || last.endsWith(r'\]')) {
-      return '$text\n$_cursorSentinel';
-    }
-    if (last.length > 1 && last.startsWith('|') && last.endsWith('|')) {
-      final pipe = text.lastIndexOf('|');
-      return '${text.substring(0, pipe).trimRight()} $_cursorSentinel '
-          '${text.substring(pipe)}';
-    }
-    return '$text$_cursorSentinel';
-  }
-
-  static final _fenceLine = RegExp(r'^(?:>\s*)*(?:`{3,}|~{3,})\s*$');
 
   static InlineSpan _inlineCodeBuilder(BuildContext context, String code, TextStyle style, InlineCodeStyle codeStyle) =>
       CodeTextSpan(
@@ -620,6 +619,7 @@ class MarkdownBody extends StatefulWidget {
 
 class _MarkdownBodyState extends State<MarkdownBody> {
   StreamingMarkdownRepair? _repair;
+  StreamingMarkdownPreparation? _preparation;
 
   // Preparation depends only on text and streaming, not theme, text scale or
   // selection. Keep one result for this mounted body; unrelated stream rows
@@ -627,16 +627,16 @@ class _MarkdownBodyState extends State<MarkdownBody> {
   late String _source = _prepare();
 
   String _prepare() {
-    if (widget.reveal) {
-      return MarkdownBody._prepareRevealed(widget.text, repairBareViews: widget.repairBareViews);
+    final streaming = widget.streaming && !widget.reveal;
+    final repairBareViews = widget.repairBareViews;
+    String prepare(String text) =>
+        MarkdownBody._prepareMarkdown(text, repairBareViews: repairBareViews, streaming: streaming);
+    if (widget.streaming && widget.text.length >= MarkdownBody.blockLength) {
+      _preparation ??= StreamingMarkdownPreparation(prepare);
     }
-    _repair = widget.streaming ? (_repair ?? StreamingMarkdownRepair()) : null;
-    return MarkdownBody._prepareSource(
-      widget.text,
-      streaming: widget.streaming,
-      repairBareViews: widget.repairBareViews,
-      repair: _repair,
-    );
+    final source = _preparation?.prepare(widget.text) ?? prepare(widget.text);
+    _repair = streaming ? (_repair ?? StreamingMarkdownRepair()) : null;
+    return _repair == null ? source : _repair!.repair(source, cursor: _cursorSentinel);
   }
 
   /// 这棵树里有没有 ProviderScope。只在依赖变化时向上找一次 —— 正文随流式
@@ -676,10 +676,12 @@ class _MarkdownBodyState extends State<MarkdownBody> {
   @override
   void didUpdateWidget(MarkdownBody oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.text != widget.text ||
+    final modeChanged =
         oldWidget.streaming != widget.streaming ||
         oldWidget.reveal != widget.reveal ||
-        oldWidget.repairBareViews != widget.repairBareViews) {
+        oldWidget.repairBareViews != widget.repairBareViews;
+    if (modeChanged) _preparation = null;
+    if (oldWidget.text != widget.text || modeChanged) {
       _source = _prepare();
     }
     _blocked = _blocked || _wantsBlocks();
@@ -747,6 +749,9 @@ class _MarkdownBodyState extends State<MarkdownBody> {
         } else {
           _built.add(built);
         }
+      } else if (!identical(built.text, text)) {
+        // Keep the widget, and recognize the splitter's current string next time.
+        _built[i] = (text: text, live: live, widget: built.widget);
       }
       children.add(built.widget);
     }
@@ -760,6 +765,7 @@ class _MarkdownBodyState extends State<MarkdownBody> {
     final l10n = context.l10n;
     final theme = Theme.of(context);
     final themeStyle = DshThemeStyle.of(context);
+    final reply = widget.replyTypography && themeStyle.pack != null;
     final baseBody = widget.secondary
         ? AppType.chatBody(context, scale: 0.9, color: theme.colorScheme.onSurfaceVariant)
         : AppType.chatBody(context, color: themeStyle.onAssistantBubble ?? theme.colorScheme.onSurface);
@@ -790,8 +796,10 @@ class _MarkdownBodyState extends State<MarkdownBody> {
             },
           );
 
-    Widget withTint(TableTint tint) =>
-        GptMarkdownTheme(gptThemeData: MarkdownBody._themeFor(theme, widget.secondary, l10n, tint), child: text);
+    Widget withTint(TableTint tint) => GptMarkdownTheme(
+      gptThemeData: MarkdownBody._themeFor(theme, widget.secondary, l10n, tint, reply: reply),
+      child: text,
+    );
 
     // Golden 和几何测试不套 ProviderScope:那时按默认那一档画。
     Widget markdown = _scoped
@@ -799,12 +807,75 @@ class _MarkdownBodyState extends State<MarkdownBody> {
         : withTint(TableTint.follow);
     // 表格、成块公式横向放不下时,两端淡出提示还能横滑。
     markdown = ScrollConfiguration(behavior: const EdgeFadeScrollBehavior(), child: markdown);
+    if (reply) {
+      markdown = MarkdownReplyScope(child: markdown);
+    } else if (MarkdownReplyScope.of(context)) {
+      markdown = MarkdownReplyScope(reply: false, child: markdown);
+    }
     if (widget.reveal) markdown = _RevealStreaming(streaming: widget.streaming, blocks: _blocks, child: markdown);
     if (widget.selectable) markdown = SelectionArea(child: markdown);
     return MarkdownImageFont(
       size: body.fontSize!,
       child: MarkdownGalleryScope(child: markdown),
     );
+  }
+}
+
+/// Content-sized like an intrinsic column, bounded by the chat's width limit.
+class _CappedIntrinsicColumnWidth extends TableColumnWidth {
+  const _CappedIntrinsicColumnWidth(this.limit);
+
+  final double limit;
+
+  double _widest(Iterable<RenderBox> cells, double Function(RenderBox) measure) {
+    var widest = 0.0;
+    for (final cell in cells) {
+      final width = measure(cell);
+      if (width >= limit) return limit;
+      if (width > widest) widest = width;
+    }
+    return widest;
+  }
+
+  @override
+  double minIntrinsicWidth(Iterable<RenderBox> cells, double containerWidth) =>
+      _widest(cells, (cell) => cell.getMinIntrinsicWidth(double.infinity));
+
+  @override
+  double maxIntrinsicWidth(Iterable<RenderBox> cells, double containerWidth) =>
+      _widest(cells, (cell) => cell.getMaxIntrinsicWidth(double.infinity));
+}
+
+/// A reply heading in the pack's heading style. A widget of its own, so it
+/// follows the theme without the Markdown above it being rebuilt.
+class _ReplyHeading extends StatelessWidget {
+  const _ReplyHeading({required this.level, required this.child});
+
+  final int level;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final themeStyle = DshThemeStyle.of(context);
+    final colors = Theme.of(context).colorScheme;
+    return switch (themeStyle.components.headingStyle) {
+      ThemeHeadingStyle.underline when level <= 2 => DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: colors.outlineVariant)),
+        ),
+        child: SizedBox(
+          width: double.infinity,
+          child: Padding(padding: const EdgeInsets.only(bottom: 4), child: child),
+        ),
+      ),
+      ThemeHeadingStyle.marker => DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(left: BorderSide(color: themeStyle.rule ?? colors.primary, width: 3)),
+        ),
+        child: Padding(padding: const EdgeInsets.only(left: 11), child: child),
+      ),
+      _ => child,
+    };
   }
 }
 

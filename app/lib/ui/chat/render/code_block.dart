@@ -72,6 +72,7 @@ import '../../common/overscroll_forwarder.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/theme.dart';
 import 'diff_view.dart' show DiffLineKind, parseUnifiedDiff;
+import 'markdown_blocks.dart' show MarkdownReplyScope;
 import 'mermaid_preview.dart';
 
 /// 超过该长度不做语法高亮(纯等宽渲染),避免大输出卡顿。
@@ -238,34 +239,41 @@ TextSpan highlightCode(
   Brightness brightness, {
   TextStyle? style,
   AppAccent accent = AppAccent.mist,
+  ThemeSyntaxColors? syntax,
 }) {
   final base = style ?? AppType.mono();
   final lang = _normalizeLanguage(language);
   if (lang == null) return TextSpan(text: code, style: base);
   final chunks = codeChunks(code);
-  if (chunks.length == 1) return _highlightChunk(code, lang, brightness, base, accent);
+  if (chunks.length == 1) return _highlightChunk(code, lang, brightness, base, accent, syntax);
   return TextSpan(
     style: base,
-    children: [for (final chunk in chunks) _highlightChunk(chunk, lang, brightness, base, accent)],
+    children: [for (final chunk in chunks) _highlightChunk(chunk, lang, brightness, base, accent, syntax)],
   );
 }
 
 /// 最近高亮过的块(LRU)。
-final _chunkSpans = <(String, String, Brightness, TextStyle, AppAccent), TextSpan>{};
+final _chunkSpans = <(String, String, Brightness, TextStyle, AppAccent, ThemeSyntaxColors?), TextSpan>{};
 
-TextSpan _highlightChunk(String code, String language, Brightness brightness, TextStyle base, AppAccent accent) {
-  final key = (code, language, brightness, base, accent);
+TextSpan _highlightChunk(
+  String code,
+  String language,
+  Brightness brightness,
+  TextStyle base,
+  AppAccent accent,
+  ThemeSyntaxColors? syntax,
+) {
+  if (code.length > _kHighlightMaxChars) return TextSpan(text: code, style: base);
+  final key = (code, language, brightness, base, accent, syntax);
   final cached = _chunkSpans.remove(key);
   if (cached != null) return _chunkSpans[key] = cached;
   var span = TextSpan(text: code, style: base);
-  if (code.length <= _kHighlightMaxChars) {
-    try {
-      final result = _hl.highlight(code: code, language: language);
-      final renderer = TextSpanRenderer(base, dshHighlightTheme(brightness, accent));
-      result.render(renderer);
-      span = renderer.span ?? span;
-    } catch (_) {}
-  }
+  try {
+    final result = _hl.highlight(code: code, language: language);
+    final renderer = TextSpanRenderer(base, dshHighlightTheme(brightness, accent, syntax));
+    result.render(renderer);
+    span = renderer.span ?? span;
+  } catch (_) {}
   _chunkSpans[key] = span;
   if (_chunkSpans.length > 64) _chunkSpans.remove(_chunkSpans.keys.first);
   return span;
@@ -273,11 +281,17 @@ TextSpan _highlightChunk(String code, String language, Brightness brightness, Te
 
 /// 把长代码切成能各自高亮的块,拼起来和原文一字不差。
 ///
-/// 不超过 200 行、8000 字是一块。更长的从上一刀起满 200 行后,切在「空行
+/// 不超过 200 行是一块。更长的从上一刀起满 200 行后,切在「空行
 /// 之后顶格的一行」前面(多半是下一个声明),块注释和多行字符串里不切;
 /// 满 400 行还没找到就硬切。
 @visibleForTesting
 List<String> codeChunks(String code) {
+  var startOfLine = 0;
+  for (var line = 0; line < 200; line++) {
+    final end = code.indexOf('\n', startOfLine);
+    if (end < 0 || end + 1 == code.length) return [code];
+    startOfLine = end + 1;
+  }
   final lines = <String>[];
   for (var at = 0; at < code.length;) {
     final end = code.indexOf('\n', at);
@@ -285,7 +299,6 @@ List<String> codeChunks(String code) {
     lines.add(code.substring(at, next));
     at = next;
   }
-  if (lines.length <= 200 && code.length <= 8000) return [code];
   final topLevel = RegExp(r'^[A-Za-z0-9_]');
   final chunks = <String>[];
   var start = 0;
@@ -388,14 +401,29 @@ class _CodeBlockState extends State<CodeBlock> {
   String? _cachedLanguage;
   Brightness? _cachedBrightness;
   AppAccent? _cachedAccent;
+  ThemeSyntaxColors? _cachedSyntax;
   bool? _cachedDense;
   String? _cachedFontFamily;
+  double? _cachedFontSize;
 
   /// 复制成功后图标原地闪成对勾再回退 —— 比 SnackBar 轻。
-  bool _copied = false;
+  late _CopyButton _copyButton = _CopyButton(copied: false, onTap: _copy);
 
   /// 长行折回显示,而不是横向滚动。
   bool _wrap = false;
+  _HeaderButton? _wrapButton;
+
+  _HeaderButton _wrapControl(L10n l10n) {
+    final hint = _wrap ? l10n.chatUnwrapLines : l10n.chatWrapLines;
+    final button = _wrapButton;
+    if (button != null && button.selected == _wrap && button.tooltip == hint) return button;
+    return _wrapButton = _HeaderButton(
+      icon: AppIcons.wrapLines,
+      tooltip: hint,
+      selected: _wrap,
+      onTap: () => setState(() => _wrap = !_wrap),
+    );
+  }
 
   /// While code streams in, it is highlighted again at most this often (the
   /// last chunk of up to 8000 characters, every delta, was the cost); what
@@ -423,12 +451,14 @@ class _CodeBlockState extends State<CodeBlock> {
     return code;
   }
 
+  void _setCopied(bool copied) => setState(() => _copyButton = _CopyButton(copied: copied, onTap: _copy));
+
   void _copy() {
     Clipboard.setData(ClipboardData(text: _trimmedCode));
     HapticFeedback.lightImpact();
-    setState(() => _copied = true);
+    _setCopied(true);
     Future.delayed(const Duration(milliseconds: 1200), () {
-      if (mounted) setState(() => _copied = false);
+      if (mounted) _setCopied(false);
     });
   }
 
@@ -442,18 +472,28 @@ class _CodeBlockState extends State<CodeBlock> {
     final accent = DshSurfaces.of(context).accent;
     final code = _trimmedCode;
     final themeStyle = DshThemeStyle.of(context);
+    final syntax = themeStyle.syntax;
     final baseStyle = widget.dense ? AppType.monoSmall(color: dsh.codeWellFg) : AppType.mono(color: dsh.codeWellFg);
     final style = themeStyle.pack == null ? baseStyle : themeStyle.codeTextStyle(baseStyle);
 
+    final diff = !widget.showLineNumbers && normalizedLanguage(widget.language) == 'diff';
     final previous = _cachedCode;
     final sameLook =
         _span != null &&
         _cachedLanguage == widget.language &&
         _cachedBrightness == brightness &&
         _cachedAccent == accent &&
+        _cachedSyntax == syntax &&
         _cachedDense == widget.dense &&
-        _cachedFontFamily == style.fontFamily;
-    if (!sameLook || previous != code) {
+        _cachedFontFamily == style.fontFamily &&
+        _cachedFontSize == style.fontSize;
+    if (diff) {
+      // Diff rows paint their own colours; discard any previous highlighted text.
+      _span = _shown = null;
+      _cachedCode = null;
+      _cooldown?.cancel();
+      _cooldown = null;
+    } else if (!sameLook || previous != code) {
       final grows = sameLook && previous != null && code.length > previous.length && code.startsWith(previous);
       if (grows && _cooldown != null) {
         _shown = TextSpan(
@@ -464,13 +504,22 @@ class _CodeBlockState extends State<CodeBlock> {
           ],
         );
       } else {
-        _span = _shown = highlightCode(code, widget.language, brightness, style: style, accent: accent);
+        final old = grows ? _span : null;
+        _span = _shown = highlightCode(code, widget.language, brightness, style: style, accent: accent, syntax: syntax);
+        // Code that grew replaced its cached prefix: the old span itself (one chunk) or its
+        // last chunk (several). Drop that from the global cache unless the new span reuses it.
+        for (final stale in [?old, ?old?.children?.lastOrNull]) {
+          if (identical(stale, _span) || (_span!.children?.any((c) => identical(c, stale)) ?? false)) continue;
+          _chunkSpans.removeWhere((_, span) => identical(span, stale));
+        }
         _cachedCode = code;
         _cachedLanguage = widget.language;
         _cachedBrightness = brightness;
         _cachedAccent = accent;
+        _cachedSyntax = syntax;
         _cachedDense = widget.dense;
         _cachedFontFamily = style.fontFamily;
+        _cachedFontSize = style.fontSize;
         _cooldown?.cancel();
         _cooldown = grows ? Timer(_highlightEvery, _cooled) : null;
       }
@@ -480,7 +529,6 @@ class _CodeBlockState extends State<CodeBlock> {
       _shown = _span;
     }
 
-    final diff = !widget.showLineNumbers && normalizedLanguage(widget.language) == 'diff';
     Widget body;
     if (diff) {
       body = _DiffLines(code: code, style: style, wrap: _wrap);
@@ -537,17 +585,26 @@ class _CodeBlockState extends State<CodeBlock> {
     if (widget.embedded) return body;
 
     final label = widget.language?.trim();
-    final codeRadius = themeStyle.pack == null ? AppShape.md : themeStyle.scaleRadius(AppShape.md);
+    final codeRadius = themeStyle.pack == null ? AppShape.md : themeStyle.codeRadius;
     final codeBorderRadius = themeStyle.pack == null
         ? AppShape.radiusMd
         : BorderRadius.all(Radius.circular(codeRadius));
     final codeStyle = themeStyle.components.codeBlockStyle;
+    // In a reply that is itself a card, the block drops its own outline:
+    // one frame, not two. A frame-only block then needs the well's fill.
+    final framed =
+        themeStyle.pack != null &&
+        MarkdownReplyScope.of(context) &&
+        (themeStyle.components.assistantStyle == ThemeAssistantStyle.card ||
+            themeStyle.components.assistantStyle == ThemeAssistantStyle.quote);
     final boxFill = switch (codeStyle) {
       ThemeCodeBlockStyle.well => dsh.codeWellBg,
+      ThemeCodeBlockStyle.outlined when framed => dsh.codeWellBg,
       ThemeCodeBlockStyle.outlined => colors.surface.withValues(alpha: 0.72),
       ThemeCodeBlockStyle.card => DshSurfaces.of(context).card.fallbackFill,
     };
     final headerFill = switch (codeStyle) {
+      _ when themeStyle.components.codeHeaderStyle == ThemeCodeHeaderStyle.plain => Colors.transparent,
       ThemeCodeBlockStyle.well => dsh.codeWellHeader,
       ThemeCodeBlockStyle.outlined => dsh.codeWellHeader.withValues(alpha: 0.45),
       ThemeCodeBlockStyle.card => dsh.codeWellHeader.withValues(alpha: 0.7),
@@ -563,14 +620,14 @@ class _CodeBlockState extends State<CodeBlock> {
       child: DecoratedBox(
         decoration: ShapeDecoration(
           color: boxFill,
-          shape: RoundedSuperellipseBorder(
-            borderRadius: codeBorderRadius,
-            side: BorderSide(color: boxBorderColor, width: boxBorderWidth),
+          shape: themeStyle.shapeFor(
+            codeBorderRadius,
+            framed ? BorderSide.none : BorderSide(color: boxBorderColor, width: boxBorderWidth),
           ),
         ),
-        child: Squircle.clip(
-          radius: codeRadius,
-          child: Column(
+        child: themeStyle.clipFor(
+          codeRadius,
+          Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // 标题条:左边语言名、右边「复制」,两端各留 16(复制键自带 8
@@ -607,13 +664,8 @@ class _CodeBlockState extends State<CodeBlock> {
                           onTap: () => Navigator.of(context).push(MermaidPreviewPage.route(source: code)),
                         )
                       else if (widget.replyActions)
-                        _HeaderButton(
-                          icon: AppIcons.wrapLines,
-                          tooltip: _wrap ? l10n.chatUnwrapLines : l10n.chatWrapLines,
-                          selected: _wrap,
-                          onTap: () => setState(() => _wrap = !_wrap),
-                        ),
-                      _CopyButton(copied: _copied, onTap: _copy),
+                        _wrapControl(l10n),
+                      _copyButton,
                       const SizedBox(width: 8),
                     ],
                   ),

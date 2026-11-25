@@ -127,6 +127,13 @@ class CallCapture(
 
     private fun capture(r: AudioRecord, g: TurnGate, mine: Int) {
         val frame = ShortArray((RATE * SpeechGate.FRAME_MS / 1000).toInt())
+        val buffer = ByteBuffer.allocate(frame.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+        fun append(out: ByteArrayOutputStream, samples: ShortArray) {
+            buffer.clear()
+            for (s in samples) buffer.putShort(s)
+            out.write(buffer.array())
+        }
+
         val preroll = ArrayDeque<ShortArray>()
         var utterance: ByteArrayOutputStream? = null
         var utteranceFrames = 0
@@ -134,6 +141,7 @@ class CallCapture(
         var pcmTap: StreamingPcm.Tap? = null
         var frameEpoch = 0
         var tick = 0
+        var mutedLevelSent = false
         try {
             while (running) {
                 if (filled == 0) {
@@ -155,9 +163,13 @@ class CallCapture(
                     utterance = null
                     preroll.clear()
                     frame.fill(0)
-                    if (++tick % 2 == 0) post(mine) { listener.onLevel(0.0) }
+                    if (++tick % 2 == 0 && !mutedLevelSent) {
+                        mutedLevelSent = true
+                        post(mine) { listener.onLevel(0.0) }
+                    }
                     continue
                 }
+                mutedLevelSent = false
                 val level = SpeechGate.levelOf(frame, frame.size)
                 pcmTap?.let { tap ->
                     val epoch = frameEpoch
@@ -191,8 +203,8 @@ class CallCapture(
                         }
                     }
                 }
-                preroll.addLast(frame.copyOf())
-                while (preroll.size > PREROLL_FRAMES) preroll.removeFirst()
+                val slot = if (preroll.size == PREROLL_FRAMES) preroll.removeFirst() else ShortArray(frame.size)
+                preroll.addLast(frame.copyInto(slot))
             }
         } catch (_: Exception) {
             post(mine) { listener.onError("capture") }
@@ -201,12 +213,6 @@ class CallCapture(
             frame.fill(0)
             preroll.clear()
         }
-    }
-
-    private fun append(out: ByteArrayOutputStream, samples: ShortArray) {
-        val buffer = ByteBuffer.allocate(samples.size * 2).order(ByteOrder.LITTLE_ENDIAN)
-        for (s in samples) buffer.putShort(s)
-        out.write(buffer.array())
     }
 
     private fun post(mine: Int, block: () -> Unit) {

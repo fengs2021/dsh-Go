@@ -14,8 +14,12 @@ import io.github.ccch1mneyyy.dsh_app.phone.PhoneControl
 import io.github.ccch1mneyyy.dsh_app.phone.DiagnosticsTool
 import org.json.JSONArray
 import org.json.JSONObject
+import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillStore
+import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillValidation
+import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillProblem
 import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillRoute
 import java.io.File
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executors
 
 /**
@@ -136,6 +140,9 @@ class RuntimeController private constructor(private val app: Context) : DshProce
 
     fun addSink(sink: EventSink) = synchronized(sinks) { sinks += sink }
     fun removeSink(sink: EventSink) = synchronized(sinks) { sinks -= sink }
+
+    internal fun shouldAutoStart(autoStart: Boolean): Boolean =
+        LaunchStart.shouldStart(autoStart, phase.wire, safeState.wire, autoSafe(), strikes)
 
     fun status(): Map<String, Any?> = mapOf(
         "abi" to (runCatching { manifest.abi }.getOrNull() ?: Build.SUPPORTED_ABIS.firstOrNull()),
@@ -419,6 +426,24 @@ class RuntimeController private constructor(private val app: Context) : DshProce
             runGen == origin.generation && stopGen < origin.generation &&
             phoneSkillStoppedGeneration < origin.generation && runGen == origin.generation
 
+    /** One rootfs owner for native UI mutations, learned-skill reads, reset and publication. */
+    internal fun <T> phoneSkills(origin: PhoneSkillOrigin?, work: (PhoneSkillStore) -> T):
+        CompletableFuture<T> {
+        val result = CompletableFuture<T>()
+        worker.execute {
+            try {
+                if (resetting || origin != null && !phoneSkillOriginCurrent(origin)) {
+                    throw PhoneSkillProblem("unavailable", "Runtime retired.")
+                }
+                val store = PhoneSkillStore(installer.rootfs, File(app.filesDir, "phone-skills"),
+                    PhoneSkillValidation::clean,
+                    PhoneSkillValidation::redactLegacy)
+                result.complete(work(store))
+            } catch (e: Exception) { result.completeExceptionally(e) }
+        }
+        return result
+    }
+
     /** Uses the existing rootfs worker. The only descriptor input is the native reviewed table;
      * private UI/JSON never supplies it. An empty table has no executable App registration.
      * Caller keeps this same origin for pending/claim checks, outside registry/Tasks locks. */
@@ -555,6 +580,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         timeline.requested()
         worker.execute {
             var launched: DshProcess? = null
+            var siwcStore: SiwcStoreBridge? = null
             try {
                 try {
                     installer.cleanupCommittedUpgrade()
@@ -597,6 +623,14 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                         null
                     }
                 }
+                // Only the installed native endpoint may advertise SIWC for this launch.
+                env.remove(SiwcStoreBridge.ENV)
+                val launchStore = if (authOverlay && AppAuthGuest.writeSiwcFiles(app, installer.rootfs)) {
+                    try { SiwcStoreBridge.start(app) } catch (_: Exception) { null }
+                } else null
+                siwcStore = launchStore
+                if (launchStore != null) env[SiwcStoreBridge.ENV] = launchStore.endpoint
+                else if (authOverlay) log("[dsh-app] OpenAI SIWC secure storage not mounted", "system")
                 // startProcess advances runGen under this same monitor. Publish only while
                 // this queued launch still owns that generation; once published, its non-null
                 // process prevents another start from advancing the generation underneath it.
@@ -605,6 +639,11 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                     else DshProcess(
                         app, manifest, installer.rootfs,
                         object : DshProcess.Listener by this@RuntimeController {
+                            override fun onExit(source: DshProcess, code: Int, expected: Boolean) {
+                                launchStore?.close()
+                                this@RuntimeController.onExit(source, code, expected)
+                            }
+
                             override fun onLog(line: String, stream: String, storageLine: String) {
                                 if (stream != "system") {
                                     synchronized(runTail) {
@@ -623,6 +662,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                         process = it
                     }
                 } ?: run {
+                    launchStore?.close()
                     PhoneControl.get(app).onEngineStopped()
                     return@execute
                 }
@@ -639,6 +679,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
                 }
                 if (phone) PhoneControl.get(app).launched(p.phoneMounted)
             } catch (e: Throwable) {
+                siwcStore?.close()
                 // Keep ownership while the old UID sweep runs, including a
                 // failure after spawning but before the waiter was allocated.
                 launched?.launchDiagnostics?.failed("startFailed")
@@ -1233,6 +1274,7 @@ class RuntimeController private constructor(private val app: Context) : DshProce
         if (next != Phase.RUNNING) managedSkillGate.retire()
         phase = next
         emitStatus()
+        main.post { AndroidBackgroundProtection.get(app).refresh() }
         DshService.updateNotification(app)
     }
 

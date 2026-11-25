@@ -93,6 +93,10 @@ String _firstLine(String text) {
 class _ThinkingPillState extends State<ThinkingPill> {
   bool _expanded = false;
 
+  /// Reasoning can grow while all four inputs to the header stay the same.
+  (bool, bool, String, Widget?)? _headerInputs;
+  late Widget _header;
+
   /// 收起动画期间还要画的那块内容:收起时它已经不该在树上了,但高度收回
   /// 去的过程里得先留着,不能啪地消失留下一块空白。
   Widget? _body;
@@ -125,17 +129,13 @@ class _ThinkingPillState extends State<ThinkingPill> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildHeader(BuildContext context, String preview) {
     final l10n = context.l10n;
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
     // 深色底上品牌蓝提一档亮度,图形才不发闷。
     final brand = dark ? Color.lerp(_brandBlue, Colors.white, 0.3)! : _brandBlue;
     final active = widget.active;
-    // 思考中或展开了全文:内容在下面,行内不再重复一行预览。
-    final open = active || _expanded;
-    final preview = open ? '' : thinkingPreview(widget.reasoning);
     final detail = StreamRow.detail(context);
 
     final header = Row(
@@ -179,6 +179,24 @@ class _ThinkingPillState extends State<ThinkingPill> {
       ],
     );
 
+    return Semantics(
+      button: true,
+      expanded: _expanded,
+      child: StreamRowFrame(onTap: () => setState(() => _expanded = !_expanded), child: header),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = widget.active;
+    final open = active || _expanded;
+    final preview = open ? '' : thinkingPreview(widget.reasoning);
+    final heading = (active, _expanded, preview, widget.meta);
+    if (heading != _headerInputs) {
+      _headerInputs = heading;
+      _header = Builder(builder: (context) => _buildHeader(context, preview));
+    }
+
     Widget reasoningBody() {
       if (!_expanded) return ThinkingTicker(text: widget.reasoning);
       // 展开后,点正文本身和点头部一样收起。只在展开态挂这层手势:实时窗口
@@ -215,11 +233,7 @@ class _ThinkingPillState extends State<ThinkingPill> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Semantics(
-          button: true,
-          expanded: _expanded,
-          child: StreamRowFrame(onTap: () => setState(() => _expanded = !_expanded), child: header),
-        ),
+        _header,
         // 一个槽:思考中是实时窗口,点开换成全文,一轮结束收起。
         ExpandReveal(open: open && !_windowHeld, child: _body ?? const SizedBox.shrink()),
       ],
@@ -493,6 +507,7 @@ class _FluidTickerState extends State<_FluidTicker> with SingleTickerProviderSta
 
   /// How far the text still has to rise. Only ever a transform.
   final _behind = ValueNotifier(0.0);
+  final _painter = TextPainter();
   late String _shown = fluidTickerText(widget.text);
 
   Duration _last = Duration.zero;
@@ -509,6 +524,7 @@ class _FluidTickerState extends State<_FluidTicker> with SingleTickerProviderSta
   void initState() {
     super.initState();
     _pacer = StreamPacer(shown: widget.text.length);
+    PaintingBinding.instance.systemFonts.addListener(_painter.markNeedsLayout);
   }
 
   @override
@@ -528,6 +544,8 @@ class _FluidTickerState extends State<_FluidTicker> with SingleTickerProviderSta
 
   @override
   void dispose() {
+    PaintingBinding.instance.systemFonts.removeListener(_painter.markNeedsLayout);
+    _painter.dispose();
     _ticker.dispose();
     _behind.dispose();
     super.dispose();
@@ -537,6 +555,7 @@ class _FluidTickerState extends State<_FluidTicker> with SingleTickerProviderSta
     final seconds = (elapsed - _last).inMicroseconds / Duration.microsecondsPerSecond;
     _last = elapsed;
     _sinceLine += seconds;
+    final wasCaughtUp = _pacer.caughtUp(widget.text.length);
     _pacer.advance(seconds, widget.text.length);
     _sincePublish += seconds;
     final behind = _behind.value;
@@ -548,21 +567,24 @@ class _FluidTickerState extends State<_FluidTicker> with SingleTickerProviderSta
     // The last of it goes out at once: the ticker is about to stop.
     if (_sincePublish >= _publishEvery || _pacer.caughtUp(widget.text.length)) {
       _sincePublish = 0;
-      final next = fluidTickerText(widget.text.substring(0, _pacer.shown));
-      if (next != _shown) setState(() => _shown = next);
+      if (!wasCaughtUp) {
+        final next = fluidTickerText(widget.text.substring(0, _pacer.shown));
+        if (next != _shown) setState(() => _shown = next);
+      }
     }
     if (_pacer.caughtUp(widget.text.length) && _behind.value == 0) _ticker.stop();
   }
 
   /// Text height at [width], with what growing by a line means for the motion.
   double _measure(TextStyle? style, TextScaler scaler, double width, double lineHeight, double window, String text) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: Directionality.of(context),
-      textScaler: scaler,
-    )..layout(maxWidth: width);
-    final height = painter.height;
-    painter.dispose();
+    // Kept across builds: an arrival rebuilds before the shown text changes, and then
+    // the painter hands back its last layout.
+    _painter
+      ..text = TextSpan(text: text, style: style)
+      ..textDirection = Directionality.of(context)
+      ..textScaler = scaler
+      ..layout(maxWidth: width);
+    final height = _painter.height;
     // Only what goes past the window has to rise: below that the text grows into the
     // space it has, and any distance saved up would jump when the window fills.
     final past = math.max(_height, window);

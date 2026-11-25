@@ -169,7 +169,10 @@ class DshHttpCarrier extends DshCarrier {
       }
       decoded = decodeBinaryResponse(response.body, boundary);
     } else {
-      decoded = asMap(tryDecodeJson(response.text));
+      final json = endpoint == 'session/page' && response.body.length < _largeJson
+          ? _parseJsonBody(response.body)
+          : _decodeJsonText(response.text);
+      decoded = asMap(json is Future<Object?> ? await json : json);
     }
     tracer?.call(
       DshTraceEntry(
@@ -281,8 +284,24 @@ class _WebSocketMuxLink implements DshMuxLink {
 
 FutureOr<Object?> _decodeMuxFrame(Object? data) {
   if (data is! String) throw const DshProtocolException('binary WebSocket message');
-  // Large follow snapshots must not block input while decoding. Small control
-  // frames stay synchronous; asyncMap preserves their order around the worker.
-  if (data.length < 1024 * 1024) return tryDecodeJson(data);
-  return Isolate.run(() => tryDecodeJson(data), debugName: 'dsh-mux-json');
+  // asyncMap preserves the order of small frames around the worker.
+  return _decodeJsonText(data);
+}
+
+const _largeJson = 1024 * 1024;
+final _utf8Json = const Utf8Decoder(allowMalformed: true).fuse(json.decoder);
+
+Object? _parseJsonBody(List<int> bytes) {
+  try {
+    return _utf8Json.convert(bytes);
+  } on FormatException {
+    return null;
+  }
+}
+
+/// Large JSON (follow snapshots, HTTP results with images) must not block
+/// input while decoding; small texts stay synchronous.
+FutureOr<Object?> _decodeJsonText(String text) {
+  if (text.length < _largeJson) return tryDecodeJson(text);
+  return Isolate.run(() => tryDecodeJson(text), debugName: 'dsh-large-json');
 }

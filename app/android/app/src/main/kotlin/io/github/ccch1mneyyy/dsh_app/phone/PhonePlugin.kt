@@ -12,12 +12,12 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillDrafts
-import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillBridge
 import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillReplaySelections
 import io.github.ccch1mneyyy.dsh_app.phone.skills.PhoneSkillReplayApps
 import io.github.ccch1mneyyy.dsh_app.runtime.RuntimeController
 import io.github.ccch1mneyyy.dsh_app.runtime.PhoneSkillBundleReader
 import io.github.ccch1mneyyy.dsh_app.phone.a11y.OverlayPrefs
+import io.github.ccch1mneyyy.dsh_app.notify.LiveActivity
 import io.github.ccch1mneyyy.dsh_app.phone.background.PrivilegedActionGate
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -54,6 +54,8 @@ class PhonePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     }
     private lateinit var appContext: Context
     private lateinit var control: PhoneControl
+    private lateinit var companion: CompanionPhoneBridge
+    private lateinit var companionScreen: CompanionScreenBridge
     private var activity: ActivityPluginBinding? = null
     private var sink: ((Map<String, Any?>) -> Unit)? = null
     private val main = Handler(Looper.getMainLooper())
@@ -76,8 +78,10 @@ class PhonePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
         (appContext as Application).registerActivityLifecycleCallbacks(previewLifecycle)
         promptOwner = Any()
         attached = true
+        companion = CompanionPhoneBridge(control, main, io, controlIo) { attached }
         control.background.restoreKeptChannel()
         methods = MethodChannel(binding.binaryMessenger, "dsh/phone").also { it.setMethodCallHandler(this) }
+        companionScreen = CompanionScreenBridge(appContext, control, binding.binaryMessenger)
         events = EventChannel(binding.binaryMessenger, "dsh/phone/events").also { it.setStreamHandler(this) }
         previewEvents = EventChannel(binding.binaryMessenger, "dsh/phone/preview").also { channel ->
             channel.setStreamHandler(object : EventChannel.StreamHandler {
@@ -106,6 +110,8 @@ class PhonePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         control.selfCheck.stop(promptOwner)
         attached = false
+        companion.detach()
+        companionScreen.close()
         skillSelectionRequest = Any()
         skillInspection = null
         skillClient?.let { control.skillReplaySelections.retireClient(it); control.skillDrafts.retireClient(it) }
@@ -188,8 +194,12 @@ class PhonePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        if (companion.handle(call, result)) return
         when (call.method) {
+            "companionScreenState" -> result.success(companionScreen.state(call.arguments as? Map<*, *>))
+            "companionScreenSample" -> async(result) { companionScreen.sample(call.arguments as? Map<*, *>) }
             "status" -> control.status { complete(result, it) }
+            "setCompanionSessions" -> result.success(control.setCompanionSessions((call.arguments as? Map<*, *>)?.get("ids")))
             "androidShellStatus" -> async(result, shortControl = true) { control.shell.status() }
             "configureAndroidShell" -> {
                 val args = call.arguments as? Map<*, *>
@@ -232,12 +242,10 @@ class PhonePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
                 val args = call.arguments as? Map<*, *>
                 control.background.setBackgroundViewport(if (args != null && args.keys == setOf("preset")) args["preset"] else null)
             }
-            "setSkillSavePrompt" -> {
-                val enabled = (call.arguments as? Map<*, *>)?.get("enabled") as? Boolean
-                if (enabled == null) result.success(false)
-                else async(result, shortControl = true) { control.setSkillSavePrompt(enabled) }
+            "skills.list", "skills.get", "skills.setLearn", "skills.accept", "skills.discard", "skills.save",
+            "skills.setEnabled", "skills.restore", "skills.delete" -> control.skillsCall(call.method, call.arguments) { value ->
+                main.post { result.success(value) }
             }
-            "skillDraft", "saveSkillDraft", "discardSkillDraft" -> skillCall(call, result)
             "inspectSkillReplay" -> inspectSkillReplay(call, result)
             "prepareSkillReplay" -> prepareSkillReplay(call, result)
             "discardSkillReplay" -> {
@@ -341,9 +349,19 @@ class PhonePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
                 val id = call.argument<String>("requestId")
                 result.success(id != null && id.length in 1..200 && control.prompts.cancel(id))
             }
-            // 设置 → 手机操控 → 悬浮条: {idleOpacity 0.3–1, autoCollapse}; a showing overlay follows at once.
+            // 设置 → 手机操控 → 悬浮条: {idleOpacity 0.3–1, autoCollapse, edgeGlow, systemIsland}; a showing overlay follows at once.
             "overlayPrefs" -> result.success(OverlayPrefs.read(appContext).toMap())
             "setOverlayPrefs" -> result.success(OverlayPrefs.write(appContext, call.arguments as? Map<*, *>).toMap())
+            // Whether the phone has its own island for the task (「用系统灵动岛显示」 shows only then). Off the main thread: a binder call on HyperOS.
+            "systemIsland" -> async(result) { LiveActivity.islandSupport(appContext) }
+            // {packages}: each installed app's name and icon (PNG, 96 px, unmasked) for the skills page; missing apps are left out.
+            "appInfo" -> async(result) { PhoneAppInfo.read(appContext, call.argument<List<String>>("packages").orEmpty()) }
+            // {sessionId, text}: what DSH last said in the conversation driving the phone, for the island's card; null text forgets it.
+            "setPhoneThought" -> {
+                val session = call.argument<String>("sessionId")?.takeIf { it.length in 1..200 }
+                if (session != null) PhoneThoughts.set(session, call.argument<String>("text"))
+                result.success(session != null)
+            }
             else -> result.notImplemented()
         }
         if (call.method == "setBackgroundMode" || call.method == "adbConnect" || call.method == "requestShizukuPermission") {
@@ -470,26 +488,6 @@ class PhonePlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandle
                             "parameterNames" to emptyList<String>()))
                     }
                 }
-            }
-        }
-    }
-
-    private fun skillCall(call: MethodCall, result: MethodChannel.Result) {
-        val client = skillClient
-        if (client == null) { result.success(PhoneSkillBridge.rejected("stale")); return }
-        controlIo.execute {
-            fun finish(value: Map<String, Any?>) {
-                main.post {
-                    if (skillClient === client) result.success(value)
-                    else result.success(PhoneSkillBridge.rejected("stale"))
-                }
-            }
-            if (call.method == "skillDraft" && (call.arguments as? Map<*, *>)?.get("action") == "check_save") {
-                control.skillBridge.checkSave(client, call.arguments, ::finish)
-            } else {
-                val value = try { control.skillBridge.call(client, call.method, call.arguments) }
-                    catch (_: Exception) { PhoneSkillBridge.rejected("io") }
-                finish(value)
             }
         }
     }

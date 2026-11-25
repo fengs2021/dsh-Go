@@ -1,7 +1,7 @@
 // Decoded pet sheets, shared by every sprite on screen. Deepy's 5× sheets are
 // ~139 MB decoded in all (docs/design/pets.md §3.3), so nothing is decoded
-// ahead: a sheet is decoded when it first plays, idle's main sheet stays, and
-// the rest live in a small LRU.
+// ahead: a sheet is decoded when it first plays, the current pet's idle main
+// sheet stays, and the rest live in a small LRU.
 
 import 'dart:async';
 import 'dart:collection';
@@ -75,8 +75,21 @@ class PetSheets {
     return kept.clone();
   }
 
-  /// Keeps [anim]'s sheet decoded for good (idle's main animation).
-  void pin(PetPack pack, PetAnimation anim) => _pinned.add(keyOf(pack, anim));
+  /// Keeps [anim]'s sheet decoded for good (idle's main animation) while
+  /// [pack] is the pet. The pet before it goes back to the LRU, so trying
+  /// pet after pet doesn't keep every one of them decoded.
+  void pin(PetPack pack, PetAnimation anim) {
+    _pinned
+      ..clear()
+      ..add(keyOf(pack, anim));
+    _evict();
+  }
+
+  /// No pet shown: the last one's idle sheet goes back to the LRU too.
+  void unpin() {
+    _pinned.clear();
+    _evict();
+  }
 
   _Decode _start(String key, Future<Uint8List> Function() read) {
     final job = _Decode();
@@ -115,6 +128,15 @@ class PetSheets {
       if (_pinned.contains(key)) continue;
       _images.remove(key)?.dispose();
       unpinned--;
+    }
+  }
+
+  /// The system is short of memory: only the pinned sheets stay decoded. A
+  /// sprite still drawing one keeps its own handle; the next load decodes it
+  /// again.
+  void trim() {
+    for (final key in [..._images.keys]) {
+      if (!_pinned.contains(key)) _images.remove(key)?.dispose();
     }
   }
 

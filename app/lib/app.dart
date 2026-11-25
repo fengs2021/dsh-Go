@@ -7,15 +7,22 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'companion/companion_initiative_owner.dart' show companionInitiativeProvider;
+import 'companion/companion_always_on.dart' show companionAlwaysOnOwnerProvider;
+import 'companion/companion_residency.dart' show companionResidencyProvider;
+import 'companion/companion_state.dart' show companionPhoneSessionsBridgeProvider;
+import 'pets/pet_overlay_bridge.dart' show petOverlayBridgeProvider;
+import 'pets/pet_sheets.dart';
 import 'l10n/l10n.dart';
 import 'performance/performance_state.dart';
 import 'performance/refresh_rate.dart';
 import 'state/app_info.dart';
 import 'state/appearance_state.dart';
 import 'state/locale_state.dart';
+import 'state/notify_state.dart' show notifyChannelProvider;
 import 'state/star_prompt.dart' show starPromptGateProvider, starPromptProvider;
 import 'state/tile_style_state.dart';
 import 'ui/chat/dsh_ui/dsh_ui_model.dart' show DshUiAppAccent;
+import 'ui/chat/run_info.dart' show runActivityProvider;
 import 'ui/common/keyboard_motion.dart';
 import 'ui/common/side_insets.dart';
 import 'ui/launch/launch_overlay.dart';
@@ -95,8 +102,15 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
   /// 跟随系统: the system language changed while the app was open.
   @override
   void didChangeLocales(List<Locale>? locales) {
-    if (ref.read(appLanguageProvider) == AppLanguage.system) setState(() {});
+    if (ref.read(appLanguageProvider) != AppLanguage.system) return;
+    setState(() {});
+    // Android re-registers the notification channels under the new language.
+    unawaited(ref.read(notifyChannelProvider).status());
   }
+
+  /// Decoded pet sheets nobody pins go, as Flutter's own image cache does.
+  @override
+  void didHaveMemoryPressure() => PetSheets.instance.trim();
 
   /// The system's remove-animations setting changed while the app was open: page
   /// transitions are chosen in [build], so they would keep the old answer.
@@ -161,7 +175,15 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
       final first = _shown == null;
       _shown = locale;
       AppLocale.use(locale);
-      if (!first) WidgetsBinding.instance.addPostFrameCallback((_) => _rebuildAll());
+      if (!first) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          // Providers refresh before this build switches appL10n: redo the
+          // activity titles in the new language.
+          ref.invalidate(runActivityProvider);
+          _rebuildAll();
+        });
+      }
     }
     return locale;
   }
@@ -177,6 +199,10 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(companionAlwaysOnOwnerProvider);
+    // Only Android's native phone control knows her sessions.
+    if (Platform.isAndroid) ref.watch(companionPhoneSessionsBridgeProvider);
+    if (ref.watch(companionResidencyProvider).enabled) ref.watch(petOverlayBridgeProvider);
     // 刷新率设置改动时告诉原生;setMode 对同一个值不做任何事。
     unawaited(RefreshRateService.instance.setMode(ref.watch(performancePrefsProvider.select((p) => p.refreshRate))));
     final themeMode = ref.watch(uiThemeModeProvider.select((s) => s.value));
@@ -185,7 +211,11 @@ class _DshAppState extends ConsumerState<DshApp> with WidgetsBindingObserver {
         !appearance.loaded ||
         (appearance.source == AccentSource.wallpaper && ref.watch(wallpaperAccentProvider).isLoading);
     final locale = _resolveLocale();
-    final performance = ref.watch(performanceDefaultsProvider);
+    final performance = ref.watch(
+      performanceDefaultsProvider.select(
+        (p) => (blur: p.blur, reduceMotion: p.reduceMotion, fluidMotion: p.fluidMotion),
+      ),
+    );
     final reduced =
         performance.reduceMotion || WidgetsBinding.instance.platformDispatcher.accessibilityFeatures.disableAnimations;
     final fluid = performance.fluidMotion && !reduced;

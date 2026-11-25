@@ -16,12 +16,16 @@ is needed. The JSON has a developer-report format, not the App adapter format.
 ## Exact code and input provenance
 
 The default stage is `app/assets/companion/stage.js`, pinned to the reviewed
-SHA-256 `3e2a0516e7f3c433bc2556f1702964e6ccb10cf94331233b824c3412acc83260`
-(the companion performance pass: render rate, the water's motion and the float
-window's bounds; the replayed `STANDARD`…`encodePath` slice is byte-identical to
-C906's stage `157acf7397e604e53184ee93fa217af11909b91ed29c102b9b4571d6fed56f67`,
-which added complete rule-alias facts and preserved numeric probe precision;
-fit/set/add routing is unchanged. The earlier PR #753 stage was
+SHA-256 `57e6a570f6b51b091fcf3f649e47c2003a0c6ab85d459b77042a301aec1e37c1`
+(the Workshop cover pass adds a one-shot render mode outside the replayed slice.
+The previous stage `298b4fda879242c21220e653af74857b209bec7160eb51c3fab86ff019d41927` contained
+the companion performance pass: render rate, the water's motion and the float
+window's bounds; then dropping the redundant parameter snapshot in `tick` and the
+unused depth buffer;
+the replayed `STANDARD`…`encodePath` slice differs from C906's stage
+`157acf7397e604e53184ee93fa217af11909b91ed29c102b9b4571d6fed56f67` only by that
+`saveParameters` removal. Complete rule-alias facts, numeric probe precision
+and fit/set/add routing are unchanged. The earlier PR #753 stage was
 `25e103c70b5fffa9ebab580d645bd8cb9f0dcc3f818f16a33c47a65db448b22a`; the facts were first replayed against c76's
 `270b4721f5458cb75faf89ea2cb9321c404aa3800366cf0544e23b2830b22a8b`, with the
 same 356/432 result). Update the pin and this line together whenever the stage

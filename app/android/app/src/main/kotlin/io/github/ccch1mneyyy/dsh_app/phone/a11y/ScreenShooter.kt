@@ -39,6 +39,8 @@ internal class Shot(
     val capturedWindowId: Int? = null,
     /** This capture's successful UI hide receipt; not a compositor/frame acknowledgement. */
     val hiddenOverlayWindowIds: Set<Int> = emptySet(),
+    /** Optional local 64 by 36 luminance sample; never part of a phone tool result. */
+    val luminanceGrid: ByteArray? = null,
 ) {
     /** Geometry and raw dimensions travel together even when no JPEG was requested. */
     fun visualText(): LocalOcrVisual.Output? {
@@ -79,7 +81,9 @@ internal class ScreenShooter(private val service: AccessibilityService, private 
      */
     fun shoot(window: UiWindow?, screen: Box, marks: List<ScreenElement>, secrets: List<Box>, timeoutMs: Long, image: Boolean = true,
         readLocalText: Boolean = false, localTextPrivacyAllowed: Boolean = false,
-        localTextCancelled: () -> Boolean = { false }): Shot {
+        localTextCancelled: () -> Boolean = { false }, frameWanted: ((ByteArray) -> Boolean)? = null,
+        maxImageSide: Int = 1300): Shot {
+        require(maxImageSide in 1..1300)
         val deadline = SystemClock.uptimeMillis() + timeoutMs
         // l10n:keep agent screenshot result
         if (Build.VERSION.SDK_INT < 30) return Shot(null, null, null, false, "本机系统低于 Android 11，不支持无障碍截图")
@@ -100,6 +104,11 @@ internal class ScreenShooter(private val service: AccessibilityService, private 
         try {
             // l10n:keep agent screenshot result
             if (looksBlack(bitmap)) return Shot(null, null, null, true, "截图全黑，可能是禁止截图的页面")
+            val grid = frameWanted?.let { CompanionScreenChange.grid(bitmap) }
+            if (grid != null && !frameWanted!!(grid)) return Shot(null, null, null, false, null,
+                raw.takenAtMillis, rawWidth = bitmap.width, rawHeight = bitmap.height,
+                capturedWindowId = if (useWindow) window.id else null,
+                hiddenOverlayWindowIds = hiddenOverlayWindowIds, luminanceGrid = grid)
             val cancelled = { Thread.currentThread().isInterrupted || localTextCancelled() ||
                 synchronized(captureLock) { closed } }
             val localText = LocalOcrBoundary.read(readLocalText, localTextPrivacyAllowed,
@@ -111,7 +120,7 @@ internal class ScreenShooter(private val service: AccessibilityService, private 
             val frame = VisualFrame.capture(bitmap.width, bitmap.height) { y, row ->
                 bitmap.getPixels(row, 0, bitmap.width, 0, y, bitmap.width, 1)
             }
-            val factor = minOf(1f, 1300f / max(bitmap.width, bitmap.height))
+            val factor = minOf(1f, maxImageSide.toFloat() / max(bitmap.width, bitmap.height))
             val w = (bitmap.width * factor).roundToInt().coerceAtLeast(1)
             val h = (bitmap.height * factor).roundToInt().coerceAtLeast(1)
             val sx = w.toFloat() / origin.width.coerceAtLeast(1)
@@ -122,7 +131,7 @@ internal class ScreenShooter(private val service: AccessibilityService, private 
             if (!image) return Shot(null, null, geometry, false, null, takenAt, observation,
                 localText, bitmap.width, bitmap.height, viewport,
                 capturedWindowId = if (useWindow) window.id else null,
-                hiddenOverlayWindowIds = hiddenOverlayWindowIds)
+                hiddenOverlayWindowIds = hiddenOverlayWindowIds, luminanceGrid = grid)
             var scaled = if (factor < 1f) Bitmap.createScaledBitmap(bitmap, w, h, true) else bitmap
             if (scaled === bitmap || !scaled.isMutable) {
                 val mutable = scaled.copy(Bitmap.Config.ARGB_8888, true)
@@ -136,7 +145,7 @@ internal class ScreenShooter(private val service: AccessibilityService, private 
                 return Shot(out.toByteArray(), "image/jpeg", geometry, false, null, takenAt,
                     observation, localText, bitmap.width, bitmap.height, viewport,
                     capturedWindowId = if (useWindow) window.id else null,
-                    hiddenOverlayWindowIds = hiddenOverlayWindowIds)
+                    hiddenOverlayWindowIds = hiddenOverlayWindowIds, luminanceGrid = grid)
             } finally { scaled.recycle() }
         } finally { bitmap.recycle() }
     }

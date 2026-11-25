@@ -79,25 +79,31 @@ Alarms, events, maps and sharing don't need the accessibility service.
 
 ## Floating bar
 
-When a task starts, a floating bar appears in the lower middle of the screen, and a faint band of colour lights up round the screen's edge to show the phone is being operated. The bar takes three shapes, and a tap moves between them:
+When a task starts, a floating bar appears at the top centre of the screen, and a band of light runs round the screen's edge to show the phone is being operated. The bar is a dark "island" in three shapes, and it changes only when you tap it:
 
-- Capsule: one line saying what DSH is doing, like "Tap “Send”", with **Pause** and **Stop** on the right. After **Pause**, the button reads **Continue**; tap it to let DSH carry on. Hold and drag the capsule to move it: it stays at the height you let go, against the left, the middle or the right, and is there next time. Drag it off the left or right edge to shrink it to a ball on that side.
-- Card: tap the line on the capsule to open it. It shows the app DSH is working in, whether approvals are off, the last few steps, and a field to steer DSH another way. Left alone for a few seconds, it goes back to the capsule.
-- Ball: tap the dot at the capsule's left end, or **Shrink to a ball** in the card, to shrink it to a ball at the screen edge. Left alone for 3 seconds, the ball fades and slides half out of sight over the edge; a touch brings it back. Tap the ball to open it. Drag it anywhere; it snaps to the nearest edge and stays there next time. **Hold the ball for a second to stop**: a ring closes round it first, and letting go cancels.
+If the phone has an island of its own (Xiaomi's HyperOS, ColorOS, Honor's MagicOS) and the system lets DSH Go use it (notifications allowed, **Live activity** on, and the phone's own permission for the island granted), progress goes into the system's island instead and no floating bar shows: the island has the app, what DSH is doing and the time; opened, it has **Pause** and **Stop phone control**, and tapping it takes you back to DSH Go (pausing first if DSH is operating your screen). To see the card's thoughts and steps, turn off **Show in the system island** in the settings below.
+
+- Capsule: on the left, the icon of the app DSH is working in; the first line says what DSH is doing, like "Tap “Send”", the second the app, the step and how long it has taken. While DSH works, a thin light runs round the capsule's edge. On the right are **Pause** and **Back to DSH Go**. After **Pause**, the button reads **Continue**; tap it to let DSH carry on. Hold the pause key for a second to stop: a ring closes round it first, and letting go cancels. **Back to DSH Go** opens the chat this task belongs to; if DSH is operating your screen, it pauses first. Hold and drag the capsule to move it: it stays at the height you let go, against the left, the middle or the right, and is there next time. Drag it off the left or right edge to shrink it to a ball on that side. In the upper half of the screen the card opens downward, in the lower half upward.
+- Card: tap the line on the capsule to open it and watch DSH work: what it says it is thinking in the chat, and its last few steps (each new one slides in); it also says when approvals are off. A field lets you steer DSH another way; at the far end are **Shrink to a ball** and **Stop**. The card stays open; tap the line again to close it.
+- Ball: tap the app icon at the capsule's left end, or **Shrink to a ball** in the card, to shrink it to a ball: at the top centre for a bar at the top, otherwise at the side where you last left the ball (the right side at first). Left alone for 3 seconds, the ball fades; one at a screen edge also slides half out of sight; a touch brings it back. Tap the ball to open it. Drag it anywhere; it snaps to the nearest edge (or back to the top centre if you let go near it) and stays there next time. **Hold pause or the ball for a second to stop**: a ring closes first, and letting go cancels.
+
+When a task runs on the background screen of Do Not Disturb mode and **Live background preview** is on, there is no floating bar: a small window at the screen's side shows the background screen itself (view only), with what DSH is doing, **Pause** (hold to stop) and **Back to DSH Go** under it. Tap the picture to switch between two sizes; drag it to the left or right side, and it stays there next time. The key in the picture's corner minimizes the window to a ball at the side (just the app's icon; the live preview stops, while DSH still looks at the screen to work); tap the ball to expand it, or hold it for a second to stop. It only minimizes when you tap that key, and every task starts with the full window. No light runs round your screen then, as your own screen isn't being operated.
 
 When DSH needs your approval, the capsule says "Waiting for you below" and the approval card appears at the bottom of the screen.
 
 Expand **More settings** on the phone control page, then adjust it under **Floating bar** (shown once phone control is on):
 
 - **Idle opacity**: how far the ball fades after 3 seconds untouched, 30% to 100%, 70% by default. A touch brings it back; the capsule, the card and anything waiting for you stay solid.
-- **Collapse when idle**: on by default. The capsule shrinks to a ball at the edge after a few idle seconds, and opens by itself when you need to approve something. Turned off, the capsule stays; drag it out of the way.
+- **Screen edge glow**: on by default. Turned off, no light runs round the screen while DSH works.
+- **Collapse when idle**: off by default, so the bar folds only when you tap it. Turned on, the card closes after a few untouched seconds and the capsule then shrinks to a ball, opening by itself when you need to approve something.
+- **Show in the system island**: on by default, and only available on phones with an island of their own. On, progress shows in the system's island instead of the floating bar; it needs notifications allowed, **Live activity** on and the phone's island permission; without them the floating bar shows as usual.
 - **Back to DSH Go when done**: on by default. When the reply ends and the app is in the background, it tries to bring you back to that chat. If the system blocks background windows, use the notification; see Confirmations and return below.
 
 Whatever the settings, the bar closes when the reply ends.
 
 ## Stop
 
-- **Stop** on the floating bar, or hold the ball for a second.
+- Hold the pause key on the floating bar for a second, or hold the ball for a second; the open card also has **Stop**.
 - **Stop** on the "Operating your phone" card on the phone control page.
 - **Stop phone control** on the engine notification. **Stop engine** on the same notification stops the whole engine.
 
@@ -170,11 +176,22 @@ Disclaimer:
 - Turn it on only when you need it, and off when you're done.
 - We advise against turning it on for a device that holds payment or banking details.
 
+## Learning from completed tasks (Android)
+
+When a phone task ends normally and the phone has accepted at least three actions, DSH can ask the same model and provider to draft a reusable procedure. Learning is on by default. If you take over, decline a confirmation, stop the task, or complete it by following an existing skill, DSH skips the new draft.
+
+The drafting model receives your original goal, the final DSH answer, a summary of phone actions, and short descriptions of existing skills. The action summary omits screen text, images and coordinates, and replaces typed input with a placeholder. The model is asked to turn names, numbers, amounts, addresses and message text into parameters. Before saving the draft, DSH checks for secret fields and masks quoted values, groups of digits and amounts.
+
+<!-- nav: commonSettings,hubSettingsPhoneControl,phoneSkillsTitle -->
+A draft appears in the chat the task ran in (a card above the composer) and under **To review** in `Settings › Phone control › Phone skills`; tap **Accept**, **Edit** or **Discard**. Up to 20 drafts survive a restart and expire after 30 days. **Edit** lets you change its five sections before accepting. An update shows the added and removed lines. If the saved skill has changed since the proposal, review the newer version. Accepting a skill starts its trial. To choose an enabled skill explicitly in chat, enter its name, such as `/phone-find-item`.
+
+A trial skill becomes active after its procedure is used successfully in one of its apps. Two misses in the latest three scored uses suspend it. The five most recent results can also include unscored uses, such as network, model or quota failures. These do not contribute to suspension. Re-enabling a suspended skill starts a fresh scoring window. Switching off learning stops automatic drafts from phone tasks.
+
 ## Action log and more settings
 
 Expand **More settings**. **Recent actions** logs every step, without screen contents. Tap **All actions** to see them. The log lasts until the app closes.
 
-**Non-disruptive mode** is directly available on the main page. **More settings** holds the floating bar, accessibility restoration, background running, Check phone control, text recognition, phone skills, Android Shell and recent actions.
+**Non-disruptive mode** is directly available on the main page. **More settings** holds the floating bar, accessibility restoration, background running, Check phone control, text recognition, Android Shell and recent actions.
 
 **Check phone control** opens a separate page showing only status and start or cancel/cleanup controls. B, C1 and C2 profiles, coverage, individual results, refresh and report export are under **Technical details**. This is a partial check: untested items never count as passed. Opening the page does not start a check.
 

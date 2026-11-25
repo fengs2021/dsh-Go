@@ -50,6 +50,25 @@ const _pack = PetPack(
   },
 );
 
+/// Every sheet reads at once.
+class _ReadyBundle extends CachingAssetBundle {
+  @override
+  Future<ByteData> load(String key) async => ByteData.sublistView(png(8, 8));
+}
+
+PetPack _petOf(String id) => PetPack(
+  id: id,
+  name: id,
+  canvas: const Size(8, 8),
+  anchorX: 4,
+  baseline: 8,
+  contentBox: const Rect.fromLTWH(0, 0, 8, 8),
+  animations: const {'idle': _anim},
+  states: const {
+    'idle': ['idle'],
+  },
+);
+
 void main() {
   setUp(() => PetSheets.enabled = true);
   tearDown(() {
@@ -116,6 +135,23 @@ void main() {
     });
   });
 
+  testWidgets("a pet switched away from keeps its idle sheet only as one of the LRU's", (tester) async {
+    await tester.runAsync(() async {
+      final sheets = PetSheets.instance;
+      final bundle = _ReadyBundle();
+      final first = _petOf('first'), second = _petOf('second');
+      sheets.pin(first, _anim);
+      (await sheets.load(first, _anim, bundle)).dispose();
+      sheets.pin(second, _anim);
+      (await sheets.load(second, _anim, bundle)).dispose();
+      for (final id in ['a', 'b', 'c']) {
+        (await sheets.load(_petOf(id), _anim, bundle)).dispose();
+      }
+      expect(sheets.peek(first, _anim), isNull);
+      sheets.peek(second, _anim)!.dispose();
+    });
+  });
+
   testWidgets('without a forget, loads of one sheet share one read', (tester) async {
     await tester.runAsync(() async {
       final bundle = _GatedBundle();
@@ -128,6 +164,22 @@ void main() {
         expect(image.width, 8);
         image.dispose();
       }
+    });
+  });
+
+  testWidgets('a trim (memory pressure) drops the sheets nobody pins; a sprite keeps its own handle', (tester) async {
+    await tester.runAsync(() async {
+      final sheets = PetSheets.instance;
+      final bundle = _ReadyBundle();
+      final pinned = _petOf('pinned'), other = _petOf('other');
+      sheets.pin(pinned, _anim);
+      (await sheets.load(pinned, _anim, bundle)).dispose();
+      final drawing = await sheets.load(other, _anim, bundle);
+      sheets.trim();
+      expect(sheets.peek(other, _anim), isNull);
+      sheets.peek(pinned, _anim)!.dispose();
+      expect(drawing.debugDisposed, isFalse);
+      drawing.dispose();
     });
   });
 }

@@ -16,6 +16,8 @@ import '../../companion/companion_adapt.dart';
 import '../../companion/companion_moves.dart';
 import '../../companion/companion_pack.dart';
 import '../../companion/companion_server.dart';
+import '../../pets/pet_pack_validator.dart' show pngIntact, pngSize;
+import '../../workshop/workshop_models.dart' show workshopPreviewBytes, workshopPreviewSide;
 import '../plugins/islands/island_platform.dart';
 import '../web/web_view_guard.dart';
 
@@ -30,6 +32,9 @@ const _lowMemoryBytes = 3 * 1024 * 1024 * 1024;
 
 /// Where her stage's resolution last settled on this phone (stage.js `quality`).
 const _qualityKey = 'companion_stage_quality';
+
+/// Where the person pinched her to in the room, per character: `<prefix><character key>`.
+const _viewKeyPrefix = 'companion_room_view:';
 
 /// The page's start-up options for this phone (stage.js and scene.js read them).
 ///
@@ -96,9 +101,13 @@ class CompanionStageEvents {
     required this.onActivity,
     this.onModel,
     this.onProbe,
+    this.onCover,
   });
 
   final VoidCallback onReady;
+
+  /// If set, load the one-shot cover stage instead of the interactive room.
+  final ValueChanged<Uint8List>? onCover;
 
   /// What the model is (stage.js `probeReport`), when it loads and whenever
   /// an adapter is worn or taken off (companion_adapt.dart).
@@ -125,6 +134,7 @@ class CompanionStage extends StatefulWidget {
     required this.controller,
     required this.events,
     this.bare = false,
+    this.viewKey,
   });
 
   final CompanionPackStore store;
@@ -134,6 +144,11 @@ class CompanionStage extends StatefulWidget {
   /// The model alone on a see-through page, without her room around it (the
   /// tavern's visual novel draws its own scene behind).
   final bool bare;
+
+  /// Her room's own: the size and place the person pinches her to are kept
+  /// under this key (her character) and come back next visit. Null elsewhere
+  /// (a call's backdrop, the tavern, a cover), which frame her their own way.
+  final String? viewKey;
 
   @override
   State<CompanionStage> createState() => _CompanionStageState();
@@ -157,6 +172,8 @@ class _CompanionStageState extends State<CompanionStage> with WidgetsBindingObse
   AppLifecycleState? _lifecycle;
   bool _routeVisible = true;
   bool? _appliedPause;
+
+  bool get _cover => widget.events.onCover != null;
 
   @override
   void initState() {
@@ -190,6 +207,7 @@ class _CompanionStageState extends State<CompanionStage> with WidgetsBindingObse
   }
 
   Future<void> _start() async {
+    final cover = _cover;
     final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     final generation = _generation;
     bool stale() => generation != _generation;
@@ -197,6 +215,16 @@ class _CompanionStageState extends State<CompanionStage> with WidgetsBindingObse
     // store from this hook: it runs inside the store's queue.
     _unhook = widget.store.beforeChanges(() => _retire(companionStagePackChanged));
     try {
+      if (cover) {
+        // A picked ZIP can borrow a runtime. Check the actual code and model
+        // references before giving this pack a WebView with a bridge.
+        final reason = await widget.store.coverUnavailableReason();
+        if (stale()) return;
+        if (reason != null) {
+          _fail(reason);
+          return;
+        }
+      }
       final server = await CompanionServer.start(rootBundle, widget.store.pack);
       if (stale()) {
         await server.close();
@@ -204,15 +232,42 @@ class _CompanionStageState extends State<CompanionStage> with WidgetsBindingObse
       }
       _server = server;
       final device = await IslandPlatform.instance.device();
-      final quality = await _rememberedQuality();
+      final quality = cover ? null : await _rememberedQuality();
       if (stale()) return;
+      final view = cover || widget.viewKey == null ? null : await _rememberedView(widget.viewKey!);
+      if (stale()) return;
+      final query = companionStageQuery(
+        ios: defaultTargetPlatform == TargetPlatform.iOS,
+        totalMem: device.totalMem,
+        quality: quality,
+        reduceMotion: reduceMotion || cover,
+        bare: widget.bare || cover,
+      );
+      if (view != null) {
+        query['viewZoom'] = '${view.zoom}';
+        query['viewX'] = '${view.x}';
+        query['viewY'] = '${view.y}';
+      }
+      if (cover) {
+        query['mode'] = 'cover';
+        query['coverSide'] = '$workshopPreviewSide';
+        query.putIfAbsent('maxTexture', () => '2048');
+      }
+      final page = server.pageUrl(query: query);
       final web = WebViewController(onPermissionRequest: (request) => unawaited(request.deny()));
+      final android = defaultTargetPlatform == TargetPlatform.android;
+      final needsGuard = android || (cover && defaultTargetPlatform != TargetPlatform.iOS);
+      if (cover && needsGuard) _webId = WebViewGuard.identifierOf(web);
       await web.setJavaScriptMode(JavaScriptMode.unrestricted);
-      await web.setBackgroundColor(widget.bare ? const Color(0x00000000) : const Color(0xFF0D2F55));
+      await web.setBackgroundColor(widget.bare || cover ? const Color(0x00000000) : const Color(0xFF0D2F55));
       await web.setNavigationDelegate(
         NavigationDelegate(
-          onNavigationRequest: (request) =>
-              server.ownsUrl(request.url) ? NavigationDecision.navigate : NavigationDecision.prevent,
+          onNavigationRequest: (request) {
+            final allowed = cover
+                ? request.isMainFrame && Uri.tryParse(request.url) == page
+                : server.ownsUrl(request.url);
+            return allowed ? NavigationDecision.navigate : NavigationDecision.prevent;
+          },
           onWebResourceError: (error) {
             if (generation == _generation && (error.isForMainFrame ?? false)) _fail('load ${error.errorCode}');
           },
@@ -229,10 +284,18 @@ class _CompanionStageState extends State<CompanionStage> with WidgetsBindingObse
       // Her renderer is the floating window's too; unguarded, its death takes
       // the app with it, so she doesn't load without the guard. (The page has
       // no text and its own colours: nothing else of the attach applies.)
-      final id = defaultTargetPlatform == TargetPlatform.android ? WebViewGuard.identifierOf(web) : null;
+      final id = cover ? _webId : (android ? WebViewGuard.identifierOf(web) : null);
+      if (cover && needsGuard && id == null) {
+        _fail('guard');
+        return;
+      }
       if (id != null) {
         final guarded = await IslandPlatform.instance.attach(id, dark: false, textZoom: 100);
-        if (stale()) return;
+        if (stale()) {
+          // Left while attaching: never shown, so it goes now (a cover's id was released already).
+          if (!cover) unawaited(IslandPlatform.instance.destroy(id));
+          return;
+        }
         if (!guarded) {
           _fail('guard');
           return;
@@ -244,17 +307,7 @@ class _CompanionStageState extends State<CompanionStage> with WidgetsBindingObse
         widget.controller._web = web;
       });
       _timeout = Timer(_readyTimeout, () => _fail('timeout'));
-      await web.loadRequest(
-        server.pageUrl(
-          query: companionStageQuery(
-            ios: defaultTargetPlatform == TargetPlatform.iOS,
-            totalMem: device.totalMem,
-            quality: quality,
-            reduceMotion: reduceMotion,
-            bare: widget.bare,
-          ),
-        ),
-      );
+      await web.loadRequest(page);
     } on Object catch (error) {
       if (generation == _generation) _fail('$error');
     }
@@ -271,22 +324,29 @@ class _CompanionStageState extends State<CompanionStage> with WidgetsBindingObse
       widget.controller
         .._web = null
         .._ready = false;
-      final id = _webId;
-      _webId = null;
       if (_web != null) setState(() => _web = null);
-      // Destroyed once the frame without its widget is drawn, as the other
-      // pages do. Not awaited: no frame comes while the app is hidden, and
-      // the store's queue must not wait for one.
-      if (id != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(IslandPlatform.instance.destroy(id)));
-      }
+      _destroyWebView();
     }
     await _server?.close();
     _fail(why);
   }
 
+  void _destroyWebView() {
+    final id = _webId;
+    _webId = null;
+    // Never destroy the native view before Flutter has detached its widget.
+    if (id != null) {
+      final platform = IslandPlatform.instance;
+      WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(platform.destroy(id)));
+    }
+  }
+
   void _onMessage(String raw) {
     if (!mounted) return;
+    if (_cover && raw.length > (workshopPreviewBytes + 2) ~/ 3 * 4 + 32) {
+      _fail('cover size');
+      return;
+    }
     final Object? message;
     try {
       message = jsonDecode(raw);
@@ -295,6 +355,31 @@ class _CompanionStageState extends State<CompanionStage> with WidgetsBindingObse
     }
     if (message is! Map) return;
     final events = widget.events;
+    if (events.onCover case final onCover?) {
+      switch (message['type']) {
+        case 'cover':
+          final data = message['png'];
+          if (data is! String) {
+            _fail('cover format');
+            return;
+          }
+          try {
+            final png = base64Decode(data);
+            if (png.length > workshopPreviewBytes ||
+                pngSize(png) != (workshopPreviewSide, workshopPreviewSide) ||
+                !pngIntact(png)) {
+              _fail('cover png');
+              return;
+            }
+            onCover(png);
+          } on FormatException {
+            _fail('cover format');
+          }
+        case 'error':
+          _fail('cover render');
+      }
+      return;
+    }
     switch (message['type']) {
       case 'ready':
         _timeout?.cancel();
@@ -327,6 +412,40 @@ class _CompanionStageState extends State<CompanionStage> with WidgetsBindingObse
       case 'quality':
         final value = message['value'];
         if (value is num && value >= 0.5 && value <= 1) unawaited(_rememberQuality(value.toDouble()));
+      case 'view':
+        final (zoom, x, y) = (message['zoom'], message['x'], message['y']);
+        if (_viewKey case final key? when zoom is num && x is num && y is num && zoom > 0) {
+          unawaited(_rememberView(key, (zoom: zoom.toDouble(), x: x.toDouble(), y: y.toDouble())));
+        }
+    }
+  }
+
+  /// The pref key this stage keeps her room's view under, once it has read it.
+  String? _viewKey;
+
+  Future<({double zoom, double x, double y})?> _rememberedView(String character) async {
+    try {
+      final key = _viewKey = '$_viewKeyPrefix$character';
+      final saved = (await SharedPreferences.getInstance()).getString(key);
+      if (saved == null) return null;
+      final json = jsonDecode(saved);
+      if (json case {'zoom': final num zoom, 'x': final num x, 'y': final num y} when zoom > 0) {
+        return (zoom: zoom.toDouble(), x: x.toDouble(), y: y.toDouble());
+      }
+    } on Object {
+      // Her default framing.
+    }
+    return null;
+  }
+
+  static Future<void> _rememberView(String key, ({double zoom, double x, double y}) view) async {
+    try {
+      await (await SharedPreferences.getInstance()).setString(
+        key,
+        jsonEncode({'zoom': view.zoom, 'x': view.x, 'y': view.y}),
+      );
+    } on Object {
+      // Kept for next time when it can be; this visit already has it.
     }
   }
 
@@ -366,6 +485,7 @@ class _CompanionStageState extends State<CompanionStage> with WidgetsBindingObse
     widget.controller
       .._web = null
       .._ready = false;
+    _destroyWebView();
     // The hook stays until the server has closed: a pack change that races
     // leaving the room waits for the last handler too.
     final unhook = _unhook;
@@ -381,7 +501,7 @@ class _CompanionStageState extends State<CompanionStage> with WidgetsBindingObse
       controller: web,
       // Her touch handling lives in the page: strokes must not become scrolls
       // or the back gesture's competitors.
-      gestureRecognizers: {Factory<OneSequenceGestureRecognizer>(EagerGestureRecognizer.new)},
+      gestureRecognizers: _cover ? const {} : {Factory<OneSequenceGestureRecognizer>(EagerGestureRecognizer.new)},
     );
   }
 }

@@ -12,6 +12,7 @@ import 'package:dsh_app/l10n/gen/app_localizations.dart';
 import 'package:dsh_app/state/connection_state.dart';
 import 'package:dsh_app/state/hosts_state.dart';
 import 'package:dsh_app/state/settings_state.dart';
+import 'package:dsh_app/ui/common/typing_indicator.dart';
 import 'package:dsh_app/ui/companion/companion_chrome.dart';
 import 'package:dsh_app/ui/companion/companion_page.dart';
 import 'package:dsh_app/ui/companion/companion_stage.dart';
@@ -61,13 +62,19 @@ class _Room {
     utf8.encode(
       'data: ${jsonEncode({
         'type': 'content_block_delta',
+        'index': 0,
         'delta': {'type': 'text_delta', 'text': text},
       })}\n\n',
     ),
   );
 
   Future<void> finish(WidgetTester tester) async {
-    replies.last.add(utf8.encode('data: {"type":"message_stop"}\n\n'));
+    replies.last.add(
+      utf8.encode(
+        'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":4}}\n\n'
+        'data: {"type":"message_stop"}\n\n',
+      ),
+    );
     unawaited(replies.last.close());
     await flush(tester);
     // The actual light history writes asynchronously after completion, one
@@ -91,7 +98,7 @@ class _Room {
     await flush(tester);
   }
 
-  Future<void> open(WidgetTester tester) async {
+  Future<void> open(WidgetTester tester, {bool sections = false}) async {
     Directory('${root.path}/pack/runtime').createSync(recursive: true);
     Directory('${root.path}/pack/character').createSync(recursive: true);
     File('${root.path}/pack/runtime/live2dcubismcore.min.js').writeAsStringSync('core');
@@ -111,6 +118,7 @@ class _Room {
           supportedLocales: L10n.supportedLocales,
           locale: const Locale('zh'),
           home: CompanionPage(
+            sections: sections,
             storeOverride: CompanionPackStore(root),
             stageController: CompanionStageController(sink: (type, args) => commands.add((type, args))),
             stageBuilder: (_, next) {
@@ -166,6 +174,83 @@ void main() {
         if (i == 20) rethrow;
         await Future<void>.delayed(const Duration(milliseconds: 50));
       }
+    }
+  });
+
+  testWidgets('a hidden room stops the thinking orb and can show its outgoing fade', (tester) async {
+    var roomVisible = true;
+    String? words;
+    late StateSetter update;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildDarkTheme(),
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            update = setState;
+            return IndexedStack(
+              index: roomVisible ? 0 : 1,
+              children: [
+                CompanionSpeech(text: words, thinking: words == null),
+                const SizedBox.shrink(),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+    final orb = find.byType(TypingIndicator, skipOffstage: false);
+    expect(orb, findsOneWidget);
+    update(() => roomVisible = false);
+    await tester.pump();
+    expect(orb, findsNothing);
+
+    update(() => words = '你好');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 32));
+    update(() => roomVisible = true);
+    await tester.pump();
+    expect(orb, findsOneWidget);
+    expect(find.text('你好'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(orb, findsNothing);
+  });
+
+  testWidgets('a streamed reply updates the bubble without rebuilding her section', (tester) async {
+    final room = _Room(temporary);
+    await room.open(tester, sections: true);
+    final previous = debugOnRebuildDirtyWidget;
+    try {
+      await room.send(tester, '讲给我听');
+      room.delta('先');
+      await flush(tester);
+      await tester.tap(find.text('她').last);
+      final activeRole = find.text('正在小屋里');
+      for (var i = 0; i < 100 && activeRole.evaluate().isEmpty; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+        await tester.pump();
+      }
+      expect(activeRole, findsOneWidget);
+      await flush(tester);
+      var pageBuilds = 0;
+      debugOnRebuildDirtyWidget = (element, builtOnce) {
+        if (element.widget is CompanionPage) pageBuilds++;
+        previous?.call(element, builtOnce);
+      };
+      var words = '先';
+      for (final word in ['讲', '给', '你', '听']) {
+        room.delta(word);
+        words += word;
+        await flush(tester);
+        expect(tester.widget<CompanionSpeech>(find.byType(CompanionSpeech, skipOffstage: false)).text, words);
+      }
+      expect(pageBuilds, 0);
+      await tester.tap(find.text('小屋').last);
+      await flush(tester);
+      expect(room.speech(tester), words);
+      await room.finish(tester);
+    } finally {
+      debugOnRebuildDirtyWidget = previous;
+      await room.close(tester);
     }
   });
 

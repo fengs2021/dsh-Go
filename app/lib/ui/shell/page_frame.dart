@@ -46,7 +46,7 @@ class AppPage extends StatefulWidget {
 
   /// Detail-page header (usually a `PageHero`) shown instead of the large title
   /// and [subtitle]. It fades out as the page scrolls, and [title] moves into
-  /// the bar.
+  /// the bar; fully faded, its tickers are muted.
   final Widget? hero;
 
   /// Page content. Use [AppPage.list] for a plain column of boxes.
@@ -97,6 +97,7 @@ class AppPage extends StatefulWidget {
 }
 
 class _AppPageState extends State<AppPage> {
+  static const _maxHeaderHeight = 400.0;
   final _controller = ScrollController();
 
   /// Scroll offset; the header fade, the bar title and the top fade all follow
@@ -110,7 +111,10 @@ class _AppPageState extends State<AppPage> {
   @override
   void initState() {
     super.initState();
-    _controller.addListener(() => _offset.value = _controller.hasClients ? _controller.offset : 0.0);
+    // Beyond the tallest header, all three fades have reached their endpoints.
+    _controller.addListener(() {
+      _offset.value = _controller.hasClients ? math.min(_controller.offset, _maxHeaderHeight) : 0.0;
+    });
     // Opened for one row (a search result, a row link): bring it into view.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(seekSpot(context, _controller));
@@ -131,7 +135,7 @@ class _AppPageState extends State<AppPage> {
 
   void _measureHeader() {
     final box = _headerKey.currentContext?.findRenderObject();
-    if (box is RenderBox && box.hasSize) _headerHeight = box.size.height.clamp(40.0, 400.0);
+    if (box is RenderBox && box.hasSize) _headerHeight = box.size.height.clamp(40.0, _maxHeaderHeight);
   }
 
   /// Header opacity: gone once ~60% of it has slid under the bar.
@@ -198,14 +202,18 @@ class _AppPageState extends State<AppPage> {
                         child: ValueListenableBuilder<double>(
                           valueListenable: _offset,
                           // Pulled past the top (only the fluid tier's lists go there), the
-                          // headline swells a little with the pull.
+                          // headline swells a little with the pull. Faded out, its
+                          // animations (the engine's status ring) hold still.
                           builder: (context, offset, child) => Opacity(
                             opacity: _headerOpacity(offset),
                             alwaysIncludeSemantics: true,
-                            child: Transform.scale(
-                              scale: 1 + (-offset / 900).clamp(0.0, 0.1),
-                              alignment: AlignmentDirectional.topStart,
-                              child: child,
+                            child: TickerMode(
+                              enabled: _headerOpacity(offset) > 0,
+                              child: Transform.scale(
+                                scale: 1 + (-offset / 900).clamp(0.0, 0.1),
+                                alignment: AlignmentDirectional.topStart,
+                                child: child,
+                              ),
                             ),
                           ),
                           child: KeyedSubtree(key: _headerKey, child: header),

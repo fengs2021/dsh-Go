@@ -14,6 +14,7 @@ import '../l10n/l10n.dart';
 import '../pets/overlay_channel.dart';
 import '../pets/pet_prefs.dart';
 import 'companion_pack.dart';
+import 'companion_residency.dart';
 import 'companion_server.dart';
 
 @immutable
@@ -245,6 +246,20 @@ final companionFloatStoreProvider = Provider<Future<CompanionPackStore> Function
       () async => CompanionPackStore(Directory('${(await getApplicationSupportDirectory()).path}/companion')),
 );
 
+/// Her pack's own name, for places outside her room (the drawer); null with
+/// no pack. The room refreshes it whenever her pack changes.
+final companionPackNameProvider = FutureProvider.autoDispose<String?>((ref) async {
+  try {
+    final store = await ref.watch(companionFloatStoreProvider)();
+    // A pack installed or removed anywhere (the room, the workshop) renames her.
+    final changes = store.revisions.listen((_) => ref.invalidateSelf());
+    ref.onDispose(changes.cancel);
+    return (await store.character()).name;
+  } on Object {
+    return null;
+  }
+});
+
 /// Subscribe before checking; a late check from a replaced/removed pack is
 /// never offered as an enabled choice. Opening settings does not download.
 final companionFloatAvailabilityProvider = StreamProvider.autoDispose<String?>((ref) async* {
@@ -304,14 +319,15 @@ class CompanionFloatController extends Notifier<CompanionFloatState> {
         if (!ref.mounted) return;
         final prefs = ref.read(petPrefsProvider);
         final overlay = ref.read(petOverlayProvider);
+        final resident = ref.read(companionResidencyProvider).enabled;
         unawaited(
           session.select(
             CompanionFloatOptions(
               enabled:
                   !overlay.ios &&
                   prefs.loaded &&
-                  prefs.enabled &&
-                  prefs.overlayRenderer == PetOverlayRenderer.companion &&
+                  (resident || prefs.enabled) &&
+                  (resident || prefs.overlayRenderer == PetOverlayRenderer.companion) &&
                   overlay.working,
               zoom: prefs.floatZoom,
               y: prefs.floatY,
@@ -322,6 +338,7 @@ class CompanionFloatController extends Notifier<CompanionFloatState> {
     }
 
     ref.listen(petPrefsProvider, (_, _) => update());
+    ref.listen(companionResidencyProvider.select((value) => value.enabled), (_, _) => update());
     ref.listen(petOverlayProvider.select((value) => value.working), (_, _) => update());
     update();
     return const CompanionFloatState();

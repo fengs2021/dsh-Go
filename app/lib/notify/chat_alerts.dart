@@ -170,11 +170,13 @@ class TurnOutcome {
   };
 
   /// The alert line, in the chat's own words (`NoticeRow`).
-  String get text {
+  String get text => _textWithFlatReply(reason.kind == 'completed' ? _flatSnippet(reply) : null);
+
+  String _textWithFlatReply(String? flatReply) {
     switch (reason.kind) {
       case 'completed':
-        final s = snippet(reply);
-        return s == null ? appL10n.stateAlertTurnDone : appL10n.stateAlertCompletedReply(s);
+        final preview = _clipSnippet(flatReply, 120);
+        return preview == null ? appL10n.stateAlertTurnDone : appL10n.stateAlertCompletedReply(preview);
       case 'max-tokens':
         return appL10n.stateAlertOutputLimit;
       case 'aborted':
@@ -195,7 +197,9 @@ class TurnOutcome {
 
 /// First [max] characters of [text] on one line, markdown markers dropped,
 /// credentials masked (before cutting, so no tail of one shows).
-String? snippet(String? text, {int max = 120}) {
+String? snippet(String? text, {int max = 120}) => _clipSnippet(_flatSnippet(text), max);
+
+String? _flatSnippet(String? text) {
   if (text == null) return null;
   final flat = _masked(text)
       .replaceAll(RegExp(r'```[a-zA-Z0-9_-]*'), ' ')
@@ -203,10 +207,14 @@ String? snippet(String? text, {int max = 120}) {
       .replaceAll(RegExp(r'\*\*|__|`'), '')
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
-  if (flat.isEmpty) return null;
-  final chars = flat.runes.toList();
+  return flat.isEmpty ? null : flat;
+}
+
+String? _clipSnippet(String? flat, int max) {
+  if (flat == null || flat.length <= max) return flat;
+  final chars = flat.runes.take(max + 1).toList();
   if (chars.length <= max) return flat;
-  return '${String.fromCharCodes(chars.take(max)).trimRight()}…';
+  return '${String.fromCharCodes(chars, 0, max).trimRight()}…';
 }
 
 /// The approval line, with the same verbs as the approval card.
@@ -294,10 +302,12 @@ String? petApprovalText(ApprovalRequest request, ToolCallPart? call) {
   // just as much as the command/path. Never approve an abbreviated action.
   if (!const {'bash', 'pwsh', 'write', 'edit', 'str_replace_editor', 'web_fetch'}.contains(call.name)) return null;
   final text = '${call.name} ${jsonEncode(args)}';
-  if (text.contains(RegExp('[\\u061c\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069]')) || _masked(text) != text) {
+  if (text.runes.elementAtOrNull(petApprovalMax) != null ||
+      text.contains(RegExp('[\\u061c\\u200b-\\u200f\\u202a-\\u202e\\u2066-\\u2069]')) ||
+      _masked(text) != text) {
     return null;
   }
-  return text.runes.length <= petApprovalMax ? text : null;
+  return text;
 }
 
 /// A question the pet's bubble takes with one tap: exactly one, single choice,
@@ -409,8 +419,9 @@ TurnOutcome? outcomeFromEvents(List<SessionLogEvent> events, {String? title}) {
     switch (event) {
       case TurnEndedEvent():
         end = event;
-      case AssistantMessageEvent(:final message) when message.text.trim().isNotEmpty:
-        reply = message.text;
+      case AssistantMessageEvent(:final message):
+        final text = message.text;
+        if (text.trim().isNotEmpty) reply = text;
       case TurnStartedEvent():
         end = null;
         reply = null;
@@ -433,6 +444,12 @@ class _RequestScope {
   static int _next = 0;
   final int petToken = ++_next;
 }
+
+// Alert display and lineage do not need the raw row or its inbox projections.
+typedef _AlertSession = ({String? title, bool isSubagent, String? parentSessionId});
+
+_AlertSession _alertSession(SessionSummary session) =>
+    (title: session.title, isSubagent: session.isSubagent, parentSessionId: session.parentSessionId);
 
 class HostAlertTracker {
   HostAlertTracker({
@@ -493,7 +510,7 @@ class HostAlertTracker {
   Timer? _reconcile;
   bool _disposed = false;
 
-  final Map<String, SessionSummary> _sessions = {};
+  final Map<String, _AlertSession> _sessions = {};
   final Map<String, bool> _running = {};
   final Map<String, MuxGeneration> _companionRunning = {};
   MuxEventProvenance? _readyProvenance;
@@ -633,7 +650,7 @@ class HostAlertTracker {
           unawaited(_onIdle(sessionId, provenance: provenance, freshness: wasLive ? 'live' : 'reconciled'));
         }
       case SessionAddedEvent(:final summary):
-        _sessions[summary.sessionId] = summary;
+        _sessions[summary.sessionId] = _alertSession(summary);
       case SessionRemovedEvent(:final sessionId):
         _sessions.remove(sessionId);
         _running.remove(sessionId);
@@ -785,15 +802,16 @@ class HostAlertTracker {
     if (outcome == null) return;
     if (!_turnsSeen.add('$sessionId@${outcome.seq}')) return;
     final title = alertTitle(outcome.title ?? info?.title);
+    final reply = outcome.kind == AlertKind.done ? _flatSnippet(outcome.reply) : null;
     final alert = ChatAlert(
       host: host,
       sessionId: sessionId,
       kind: outcome.kind,
       key: turnKey,
       title: title,
-      text: outcome.text,
+      text: outcome._textWithFlatReply(reply),
       turnEndKind: outcome.reason.kind,
-      reply: outcome.kind == AlertKind.done ? snippet(outcome.reply, max: 200) : null,
+      reply: _clipSnippet(reply, 200),
       endSeq: outcome.seq,
       turn: outcome.turn,
       sourceSessionId: sessionId,
@@ -822,7 +840,7 @@ class HostAlertTracker {
     for (final s in list) {
       // Live events received while listing are newer than this snapshot.
       if ((_statusRevision[s.sessionId] ?? 0) > revision) continue;
-      _sessions[s.sessionId] = s;
+      _sessions[s.sessionId] = _alertSession(s);
       if (!seedOnly && !s.running && (_running[s.sessionId] == true || _pendingIdle.contains(s.sessionId))) {
         missed.add(s.sessionId);
       }
@@ -837,13 +855,13 @@ class HostAlertTracker {
   }
 
   /// The summary of [sessionId], listing the sessions once when unknown.
-  Future<SessionSummary?> _info(String sessionId) async {
+  Future<_AlertSession?> _info(String sessionId) async {
     final known = _sessions[sessionId];
     if (known != null) return known;
     _listing ??= () async {
       try {
         for (final s in await source.listSessions()) {
-          _sessions[s.sessionId] = s;
+          _sessions[s.sessionId] = _alertSession(s);
           _running.putIfAbsent(s.sessionId, () => s.running);
         }
       } catch (_) {

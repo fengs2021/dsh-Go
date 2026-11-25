@@ -107,6 +107,12 @@ class LocalWorkshopPackages implements WorkshopPackages {
         }
         result.add(WorkshopInstalled(localId: 'companion', receipt: character));
       }
+      // The others on her shelf are installed too, each under her own key.
+      for (final entry in await companion.roster()) {
+        if (!entry.active && entry.workshop?.kind == 'companion') {
+          result.add(WorkshopInstalled(localId: '$_shelvedCompanion${entry.key}', receipt: entry.workshop!));
+        }
+      }
     } on WorkshopException catch (error) {
       result.add(WorkshopInstallationIssue(localId: 'companion', issue: workshopLocalError(error).code));
     } on FileSystemException catch (error) {
@@ -126,7 +132,25 @@ class LocalWorkshopPackages implements WorkshopPackages {
         final result = await pets.install(archive, workshop: receipt, replaceExisting: replaceExisting);
         return WorkshopInstalled(localId: result.id, receipt: receipt);
       case 'companion':
-        await companion.install(archive.path, workshop: receipt, replaceExisting: replaceExisting);
+        try {
+          await companion.install(archive.path, workshop: receipt, replaceExisting: replaceExisting);
+        } on CompanionPackException catch (error) {
+          // Her first companion on this phone: a pack from the Workshop carries
+          // no runtime, so the one inside the app goes in first, as a file
+          // import does (she then waits on the shelf).
+          if (error.problem != CompanionPackProblem.noRuntime) rethrow;
+          final bundled = await loadBundledCompanionPack();
+          if (bundled == null) rethrow;
+          final stamp = DateTime.now().microsecondsSinceEpoch;
+          final runtime = File('${companion.root.parent.path}/companion-runtime-$stamp.zip');
+          try {
+            await runtime.writeAsBytes(bundled, flush: true);
+            await companion.installBundled(runtime.path);
+          } finally {
+            if (await runtime.exists()) await runtime.delete();
+          }
+          await companion.install(archive.path, workshop: receipt, replaceExisting: replaceExisting);
+        }
         return WorkshopInstalled(localId: 'companion', receipt: receipt);
       case 'theme':
         final themeLib = themes;
@@ -140,6 +164,8 @@ class LocalWorkshopPackages implements WorkshopPackages {
   Future<void> remove(WorkshopInstalled installed) async {
     switch (installed.receipt.kind) {
       case 'pet': await pets.remove(installed.localId, expectedWorkshop: installed.receipt);
+      case 'companion' when installed.localId.startsWith(_shelvedCompanion):
+        await companion.removeShelved(installed.localId.substring(_shelvedCompanion.length));
       case 'companion': await companion.remove(expectedWorkshop: installed.receipt);
       case 'theme':
         final themeLib = themes;
@@ -318,11 +344,12 @@ class WorkshopRepository {
   });
 
   /// Exporting is explicit; no account settings or personal state are read.
-  Future<WorkshopPreparedUpload> preparePet(PetLibrary library, String localId, File destination, WorkshopPublication publication) => _exclusive(() async {
+  Future<WorkshopPreparedUpload> preparePet(PetLibrary library, String localId, File destination, WorkshopPublication publication,
+    {bool petIdleDownscale = false}) => _exclusive(() async {
     if (publication.kind != 'pet') workshopInvalid('workshop_unsupported_kind');
     final file = await library.exportZip(localId, destination, publicId: publication.id,
       author: publication.author, license: publication.license, source: publication.source);
-    return _prepared(file, publication);
+    return _prepared(file, publication, petIdleDownscale: petIdleDownscale);
   });
 
   Future<WorkshopPreparedUpload> prepareTheme(
@@ -415,13 +442,15 @@ class WorkshopRepository {
     }
   });
 
-  Future<WorkshopPreparedUpload> _prepared(File file, WorkshopPublication publication) async {
+  Future<WorkshopPreparedUpload> _prepared(File file, WorkshopPublication publication, {bool petIdleDownscale = false}) async {
     final size = await file.length();
     if (size < 1 || size > workshopArchiveBytes) workshopInvalid('workshop_body_too_large');
     final metadata = publication.withArchive(await _hasher(file), size);
     final bytes = await workshopArchiveSnapshot(file, metadata);
     final archive = ZipDecoder().decodeBytes(bytes);
-    if (publication.previewSource == 'pet-idle') workshopCheckPetPreview(archive);
+    if (publication.previewSource == 'pet-idle') {
+      workshopCheckPetPreview(archive, petIdleDownscale: petIdleDownscale);
+    }
     return WorkshopPreparedUpload(file: file, metadata: metadata,
       files: List.unmodifiable(archive.files.where((f) => f.isFile).map((f) => f.name).toList()..sort()));
   }
@@ -556,3 +585,6 @@ class _WorkshopDownloadHttp implements UpdateHttp {
     return UpdateHttpResponse(status: response.status, headers: response.headers, contentLength: response.contentLength, body: bounded);
   }
 }
+
+/// The local id of a companion waiting on the shelf: this, then her key.
+const _shelvedCompanion = 'companion@';

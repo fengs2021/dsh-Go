@@ -1425,6 +1425,7 @@ class ChatController extends Notifier<ChatState> {
     List<DraftAttachment> attachments = const [],
     SendMode mode = SendMode.now,
     bool verbatim = false,
+    String? originalRequestId,
     Future<bool> Function(String requestId)? beforeDeliver,
     bool Function()? deliveryAllowed,
   }) async {
@@ -1438,8 +1439,8 @@ class ChatController extends Notifier<ChatState> {
     if (!ref.mounted || !identical(client, _client) || !_canControl) return false;
     final operation = _ChatOperation(ref, client, _syncScope);
     final content = _contentKey(body, attachments);
-    final retrying = _unsettled?.content == content;
-    final requestId = retrying ? _unsettled!.requestId : _requestId();
+    final retrying = originalRequestId != null || _unsettled?.content == content;
+    final requestId = originalRequestId ?? (retrying ? _unsettled!.requestId : _requestId());
     _unsettled = null;
     // Retired on the same Host: the text comes back. A send that may have landed (or a retry of
     // one) keeps its request id for the next try, so the Host takes it once.
@@ -1489,12 +1490,18 @@ class ChatController extends Notifier<ChatState> {
       String? stopFailed;
       // Interrupt stops first, then sends: DSH keeps the inbox across a stop
       // but only starts the next turn for a prompt that arrives after it (one
-      // queued before the stop would wait for whatever is sent next).
+      // queued before the stop would wait for whatever is sent next). After
+      // the turn has ended, too: an accepted cancel returns while the turn is
+      // still winding down, and if it hands an unread interjection back to
+      // the inbox it drops the wake of a prompt that came in meanwhile (#1762).
       if (effective == SendMode.interrupt) {
         final stopped = await _stop(operation);
         // Retirement is not a failed cancel: it must never fall back to steer.
         if (!_currentOperation(operation)) return retire();
-        if (!stopped) {
+        if (stopped) {
+          await _stopSettled();
+          if (!_currentOperation(operation)) return retire();
+        } else {
           // The turn goes on: the message joins it instead.
           promptMode = PromptMode.steer;
           stopFailed = appL10n.stateChatStopSteered;
@@ -1866,6 +1873,99 @@ class ChatController extends Notifier<ChatState> {
       return false;
     }
   }
+
+  /// Resolves when 「正在停止」 is over: the stopped turn ended, the stop key
+  /// came back after ten seconds, or the follow started over. Also when this
+  /// build goes away (its listeners and stop timer go with it); the caller's
+  /// operation is retired then.
+  Future<void> _stopSettled() {
+    if (!state.stopping) return Future.value();
+    final settled = Completer<void>();
+    void done() {
+      if (!settled.isCompleted) settled.complete();
+    }
+    final unlisten = listenSelf((_, next) {
+      if (!next.stopping) done();
+    });
+    final undispose = ref.onDispose(done);
+    return settled.future.whenComplete(() {
+      unlisten();
+      undispose();
+    });
+  }
+
+  /// Stop just this sent prompt. Its HTTP/RPC can be in flight before its
+  /// echo or inbox slot arrives. Keep this follow alive until we can identify
+  /// its own slot or running turn, even if the original room has closed.
+  void Function() stopPrompt(String requestId) {
+    final owner = ref;
+    final client = _client;
+    if (client == null) return () {};
+    final lease = owner.keepAlive();
+    late final Timer deadline;
+    var closed = false;
+    var scheduled = false;
+    String? lastSlot;
+    late final void Function() unlisten;
+    late final void Function() undispose;
+    void close() {
+      if (closed) return;
+      closed = true;
+      deadline.cancel();
+      unlisten();
+      undispose();
+      lease.close();
+    }
+    void check() {
+      scheduled = false;
+      if (closed) return;
+      if (!owner.mounted || !identical(client, _client)) {
+        close();
+        return;
+      }
+      if (!state.controlReady) return;
+      final echo = events.whereType<UserMessageEvent>().where(
+        (e) => e.isHumanPrompt && !e.message.source.raw.containsKey('principal') && e.requestId == requestId,
+      ).firstOrNull;
+      if (echo != null) {
+        final turn = state.turns.reversed.where(
+          (t) => t.startSeq <= echo.seq && (t.endSeq == null || echo.seq <= t.endSeq!),
+        ).firstOrNull;
+        if (turn == null) return;
+        if (turn.running && state.runningTurn?.turn == turn.turn && !state.stopping) {
+          unawaited(_stop(_ChatOperation(owner, client, _syncScope), failure: appL10n.stateChatStopFailed));
+        }
+        close();
+        return;
+      }
+      final pending = state.pending.where((p) => p.requestId == requestId).firstOrNull;
+      if (pending?.failed == true) {
+        close();
+        return;
+      }
+      if (pending != null && pending.inboxId != null && pending.inboxId != lastSlot) {
+        lastSlot = pending.inboxId;
+        unawaited(withdrawQueued(pending).then((ok) {
+          if (ok) close(); // A concurrent claim will instead arrive as an echo.
+        }));
+      }
+    }
+    unlisten = listenSelf((_, _) {
+      if (!scheduled && !closed) {
+        scheduled = true;
+        scheduleMicrotask(check);
+      }
+    });
+    undispose = owner.onDispose(close);
+    // Same grace period as a closed chat screen. A lost, superseded HTTP
+    // delivery may never acquire a durable identity on this host.
+    deadline = Timer(const Duration(seconds: 60), close);
+    check();
+    return close;
+  }
+
+  /// A false send with this identity may still receive a durable echo.
+  bool awaitingPromptOutcome(String requestId) => _unsettled?.requestId == requestId;
 
   /// The stop key. What waits in the inbox then goes right away, as if the
   /// turn had ended: DSH keeps the inbox across a stop but starts no turn
@@ -2254,7 +2354,7 @@ class ChatController extends Notifier<ChatState> {
     final seq = item.seq;
     if (seq == null || item.streaming) return null;
     _checkLookups();
-    return _branchPoints.putIfAbsent(seq, () => forkPointAfterReply(_transcript.events, seq));
+    return _branchPoints.putIfAbsent(seq, () => forkPointAfterReply(_transcript.eventsFrom(seq), seq));
   }
 
   /// DSH `message.id` of the durable reply [item] (the feedback target).
@@ -2263,7 +2363,7 @@ class ChatController extends Notifier<ChatState> {
     if (seq == null || item.streaming) return null;
     _checkLookups();
     return _replyIds.putIfAbsent(seq, () {
-      for (final event in _transcript.events) {
+      for (final event in _transcript.eventsFrom(seq)) {
         if (event.seq == seq) {
           final id = event is AssistantMessageEvent ? event.message.id : '';
           return id.isEmpty ? null : id;

@@ -33,7 +33,7 @@
     "importer": "node_modules/@deepseek-ai/dsh-fs-local/lib/index.js",
     "specifier": "koffi",
     "occurrences": 1,
-    "importerSha256": "fe8d6fa69462b0a76d73db9d857edbc9b82f8d7f8a793168e04e3e817d6ba2ba",
+    "importerSha256": "eac93d34db79b3d96554aba5c458386c3f9355a69aca1087005c3b835a5480e3",
     "reason": "The fixed filesystem implementation enters Win32 ACL helpers only when process.platform is win32; OHOS takes the POSIX/publication branch."
   },
   {
@@ -61,7 +61,7 @@
     "importer": "node_modules/@deepseek-ai/dsh-session-persistence-jsonl/lib/index.js",
     "specifier": "koffi",
     "occurrences": 1,
-    "importerSha256": "31fb1a973e40c7886ebe6987344434bb5e33f6288850fcd861fb95f43cab27c9",
+    "importerSha256": "e41aefd237a3dea1a2a0a3c530d6ebdb192d8612e0ab85169b99b514bcd766ea",
     "reason": "The fixed session implementation selects Win32 semaphore/MoveFileEx only for win32; OHOS uses the linked publication owner and main-thread lock path."
   },
   {
@@ -75,7 +75,7 @@
     "importer": "node_modules/@deepseek-ai/dsh-tool-fs-search/lib/index.js",
     "specifier": "@vscode/ripgrep",
     "occurrences": 1,
-    "importerSha256": "ffdac06d530134e35a4ea2182f09ace344fcf48e2fa0e312419f69e3e73db255",
+    "importerSha256": "3c1ae6b6eb3765e21e2fe1197c9bd3bf779d38627473257c6aae0b3a2834d0f6",
     "reason": "getRgPath returns the virtual rg token immediately on openharmony, before the native binary import; the actual strict grep round covers this path."
   },
   {

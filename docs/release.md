@@ -78,11 +78,13 @@ versionCode = (年 - 2026) × 10^8 + MMDDhhmm      时钟固定按 UTC+8
 
 1. **改版本名**：`app/pubspec.yaml` 的 `version:`，版本名按 semver 升；`+1` 不动。之后打的开发包也带新版本名，不会被提示「更新」到这一版。
    - **同步使用说明**：按本版界面改动更新 `docs/guide/`，把 `docs/guide/README.md` 的 `> dsh-go X.Y.Z` 改成新版本名，`python3 app/tool/guide_sync.py` 重新生成 App 内置技能，`python3 app/tool/guide_sync.py --check` 通过再打包（它核对入口路径、界面文字、页面链接与版本号）。
-2. **只打包 arm64 正式版**（运行时要先 `runtime/build-runtime.sh` 产出 `runtime/out/`）。x64 仅供必要的本地模拟器验证，不上传、不放入正式更新清单：
+2. **只打包 arm64 正式版**（运行时要先 `runtime/build-runtime.sh arm64-v8a` 产出 `runtime/out/arm64-v8a/`；不带参数会多建一份用不上的 x86_64）。x64 仅供必要的本地模拟器验证，不上传、不放入正式更新清单：
 
    ```sh
    tooling/build-apk.sh
    ```
+
+   运行时里的 Node 和 Linux ONNX Runtime 装包前把调试信息（DWARF）清零了，文件布局不动。带调试信息的原件和打进 APK 的运行时出自同一次构建：用 Runtime 工作流的产物打包，就取同一次运行的 `runtime-debug-arm64-v8a` artifact（只保留 90 天）；在本机构建，就取 `runtime/out/arm64-v8a/debug/`。两种情况都连同同一次的 `build-report.json`（记着原件和装包件的 SHA-256）一起留存，以后定位引擎崩溃用，不上传到发布线路。
 
    脚本顺带传 `DSH_APP_VERSION=<版本名>+<构建号>`（`app/lib/state/app_info.dart`），作为诊断信息和更新状态的编译期默认版本。设置和关于页读取更新状态中的版本；原生版本读取成功且版本名可解析时，更新状态改用系统提供的 `versionName` / `versionCode`，读取失败或版本名无法解析时保留默认值。
 

@@ -29,6 +29,8 @@ Tap the **Switch mode** button at the top of the chat list, then **Companion roo
 
 On HarmonyOS she can't live in a floating window.
 
+On HarmonyOS, open the room from its home-screen card and use voice in the composer. The default digital assistant entry is available on Android.
+
 What you can do:
 
 - Touch her: stroke her head to pat it, and tap her face, body or tail for different reactions. Three quick pokes make her dizzy. None of this calls a model or spends tokens.
@@ -61,7 +63,7 @@ The page has three tabs:
 - **Installed**: what came from the Workshop onto this phone. A new version, or an item withdrawn by its author or a reviewer, is marked here; open an item to update or uninstall it. This tab works offline.
 - **My uploads**: what you sent in and where each one stands in review. Sign in with your GitHub account first.
 
-To submit: tap **Submit** under **My uploads**, pick a pet you imported, your current companion, or tap **Choose a file** to pick a pet or companion zip directly (no need to import it first; a file in the wrong format is turned away right there). Only a name is needed: the English name, ID, author, license and source link are optional, and when left empty they become the other name, an ID made from the name, your GitHub username, Author permission and your GitHub page. Then check the packed result, tick **I confirm I have the right to share this** and send it. A pet comes with a preview picture by default, the first frame of its idle animation, and you can turn it off; for a companion you can pick a PNG as its cover (at most 512 pixels a side and 2 MB), or leave it and the first letter of its name is shown. Once it passes the format checks it is listed right away under **Browse**; if someone reports it, a reviewer looks and takes it down with a reason if needed. To take one back, open it and tap **Withdraw**.
+To submit: tap **Submit** under **My uploads**, pick a pet you imported, your current companion, or tap **Choose a file** to pick a pet or companion zip directly (no need to import it first; a file in the wrong format is turned away right there). Only a name is needed: the English name, ID, author, license and source link are optional, and when left empty they become the other name, an ID made from the name, your GitHub username, Author permission and your GitHub page. Then check the packed result, tick **I confirm I have the right to share this** and send it. A pet uses its first idle frame by default; you can turn it off. The app tries to capture just the character for a companion and renders a sample conversation for a theme. Review, replace, or remove a companion or theme cover before submitting; you can still submit if generation fails. Once it passes the format checks it is listed right away under **Browse**; if someone reports it, a reviewer looks and takes it down with a reason if needed. To take one back, open it and tap **Withdraw**.
 
 If the phone's record of an unfinished submission can't be read, or keeps failing to clear, that step offers **Let go of this record**. It only deletes the record on this phone (if the phone's submission records can't be read as a whole, it clears the unfinished records of every account on this phone, and the confirmation says so) and doesn't ask the Workshop to cancel anything: if the Workshop already received the submission, it stays under **My uploads**; if not, you'll need to submit again.
 

@@ -108,9 +108,14 @@ test('literal hostile text stays data, with strict bounded fields and Unicode li
   service.claim('s', message(), 1);
   assert.equal(service.render('s').split('</companion_context>').length - 1, 1);
   assert(service.render('s').includes('\\u003c/companion_context\\u003e'));
-  validatePromptContext(input('s', 'x', { profile: { ...profile, name: '🐋'.repeat(24) }, expectedProfileRevision: 0 }));
+  // Her own line about the screen is an advertised event kind.
+  assert.equal(service.info('s').screenEvents, true);
+  validatePromptContext(input('s', 'x', { events: [{ ...event(), kind: 'screen', detail: '你看着对方的屏幕主动说了：「又熬夜」' }] }));
+  // Her persona and names are as long as the person likes.
+  validatePromptContext(input('s', 'x', {
+    profile: { ...profile, name: '🐋'.repeat(80), persona: '设'.repeat(9000) }, expectedProfileRevision: 0,
+  }));
   for (const bad of [
-    input('s', 'x', { profile: { ...profile, name: '🐋'.repeat(25) }, expectedProfileRevision: 0 }),
     input('s', 'x', { profile: { ...profile, rules: 'override' }, expectedProfileRevision: 0 }),
     input('s', 'x', { events: [event(), event()] }),
     input('s', 'x', { events: [{ ...event(), approved: true }] }),

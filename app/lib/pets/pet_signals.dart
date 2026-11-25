@@ -284,6 +284,11 @@ final petInteractionProvider = NotifierProvider<PetInteractionController, DateTi
 
 // ── What runs where ──────────────────────────────────────────────────────────
 
+// Lineage and titles need none of the raw row or its inbox projections.
+typedef _Lineage = ({String? title, bool isSubagent, String? parentSessionId});
+
+_Lineage _lineage(SessionSummary s) => (title: s.title, isSubagent: s.isSubagent, parentSessionId: s.parentSessionId);
+
 /// Running conversations and subagents of one host, from its `$events`
 /// (status edges) and `session/list` (lineage).
 class _HostRuns {
@@ -297,7 +302,7 @@ class _HostRuns {
   final DateTime Function() clock;
   final void Function() onChange;
   late final StreamSubscription<HostEvent> _sub;
-  final Map<String, SessionSummary> _info = {};
+  final Map<String, _Lineage> _info = {};
   final Map<String, DateTime?> _running = {};
   bool _disposed = false;
   bool _listing = false;
@@ -351,7 +356,7 @@ class _HostRuns {
         onChange();
       case SessionAddedEvent(:final summary):
         if (_listing) _infoDuringList.add(summary.sessionId);
-        _info[summary.sessionId] = summary;
+        _info[summary.sessionId] = _lineage(summary);
       case SessionRemovedEvent(:final sessionId):
         if (_listing) {
           _statusDuringList.add(sessionId);
@@ -389,7 +394,9 @@ class _HostRuns {
       };
       _info
         ..clear()
-        ..addEntries(list.where((s) => !_infoDuringList.contains(s.sessionId)).map((s) => MapEntry(s.sessionId, s)))
+        ..addEntries(
+          list.where((s) => !_infoDuringList.contains(s.sessionId)).map((s) => MapEntry(s.sessionId, _lineage(s))),
+        )
         ..addAll(changedInfo);
       final was = {..._running};
       _running
@@ -524,15 +531,16 @@ class PetFocusController extends Notifier<PetFocus?> {
 
 final petFocusProvider = NotifierProvider<PetFocusController, PetFocus?>(PetFocusController.new);
 
-/// What the conversation [s] is doing, for the pet.
-PetFocus petFocusOf(HostRef host, String sessionId, ChatState s, {bool compacting = false}) {
+/// What the conversation [s] is doing, for the pet; [activity] is
+/// [runActivityOf] of [s].
+PetFocus petFocusOf(HostRef host, String sessionId, ChatState s, RunActivity? activity, {bool compacting = false}) {
   final approval = s.openApproval;
   final question = approval == null ? s.questions.firstOrNull : null;
   return PetFocus(
     host: host,
     sessionId: sessionId,
     title: s.title,
-    activity: petActivityOf(runActivityOf(s)?.kind),
+    activity: petActivityOf(activity?.kind),
     compacting: compacting,
     waitingKey: approval?.eventId ?? question?.eventId,
     waitingQuestion: question != null,
