@@ -106,3 +106,24 @@ terminal 和 phone 那两个仍印证上一节的「成批演进」规律，要�
 验证：dsh_remote analyze 仅 1 条既有 info（基线相同）、测试无失败；app analyze No issues。
 
 **待办**：`565547c0f` 是 Dart 改动，尚未出 HAP（v91 装机于它之前）。下次出包时重编 AOT 即带入。
+
+### 5.3 本地 diff-tree 全量重筛（2026-11-26 第三轮）
+
+GitHub API rate limit（60/h）用尽后，改用本地 `git diff-tree --name-only -r <sha>` 扫全量 272 提交
+（只读 tree、不拉 blob，绕开 API 限制）。非 companion、命中关键模块的候选 33 个，试 pick 4 个：
+
+| 上游提交 | 内容 | 结果 |
+|---|---|---|
+| `797a2a9d11` | perf(chat)：已发送图片释放时逐出缩略图缓存；删除会话时关掉本对话也允许 | ✅ 干净合入 |
+| `cb22636dd9` | perf(chat)：远端工作区图片少发一次 stat | ✅ 干净合入 |
+| `1b07c55772` | perf(chat)：翻更早记录直接从响应字节解析 session/page | ❌ 冲突（`packages/dsh_client/lib/src/carrier.dart`，我们改过 client），abort |
+| `45c5edbe90` | fix(companion)：她不在当前主机时返回入口按聊天打开那台主机 | ❌ 冲突面 launcher_entries/web_home/system_entry，同 phone #1938 的 companion 链，跳过 |
+
+合入后 HEAD `2dec5465c`。验证：app analyze No issues；chat 相关 246 测试全通过。
+
+剩余 33 候选里未试的：6 个 runtime/patches（改引擎字节，不做定点）、terminal `276d896754`
+（perf，非必需）、约 18 个「第八波」chat 流式渲染批量 perf（成批演进、收益边际、互相依赖，
+按判据整体 rebase 才拿，不做定点）。**定点搬运到此处收尾**：独立、有价值、无依赖的都进来了。
+
+**待办**：HEAD `2dec5465c` 含 `565547c0f`+2 个 chat 优化共 3 个 Dart 改动，尚未出 HAP
+（v91 装机于它们之前）。下次出包重编 AOT 即带入。
