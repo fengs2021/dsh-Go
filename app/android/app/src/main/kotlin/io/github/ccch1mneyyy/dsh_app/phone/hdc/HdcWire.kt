@@ -46,6 +46,9 @@ object HdcWire {
     /** 鸿蒙「无线调试」页显示的默认端口。 */
     const val DEFAULT_PORT: Int = 45957
 
+    /** 命令字：抓包实测 CNXN 的 commandFlag = 1（其余命令待真机补全）。 */
+    const val CMD_CONNECT: Int = 1
+
     /** 单条报文上限（源码里约 512 KiB）。 */
     const val MAX_PACKET: Int = 512 * 1024
 
