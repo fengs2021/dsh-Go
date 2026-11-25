@@ -83,3 +83,31 @@ JNI 一层薄封装即可；C 最快见效但受「可否执行」限制，可�
 - **M4**：计划任务（夜间签到）从 UI 创建并执行。
 
 真机验证需要：鸿蒙手机开「无线调试」（`hdc tconn <ip>:45957` 可达）、Android 端与手机同网段。
+
+## 4. 打包与装机（2026-11-25 实测）
+
+```bash
+cd androidport/app
+ANDROID_HOME=/mnt/d/Android/Sdk \
+  /root/f47/bin/flutter build apk --debug --target-platform android-arm64
+# 产物：build/app/outputs/flutter-apk/app-arm64-debug.apk（约 162 MB）
+```
+
+- `flutter` 结尾会报 “Gradle build failed to produce an .apk file”，但 **APK 实际已生成**——
+  该工程是 ABI 分 flavor（`app-arm64-debug.apk` / `app-x64-debug.apk`），flutter 只找 `app-debug.apk`。
+- 包信息：`package=io.github.ccch1mneyyy.dsh_app`、`minSdk 26`、`targetSdk 28`。
+
+推送到鸿蒙手机（HarmonyOS **不能直接装 APK**，`hdc install` 返回 `[E006001] Not any installation package`）：
+
+```bash
+H=tools/hdc-oh/hdc.exe
+cd androidport/app/build/app/outputs/flutter-apk
+$H file send app-arm64-debug.apk /storage/media/100/local/files/Docs/Download/dshgo.apk
+```
+
+`file send` 的两个坑：
+1. 目标写成 `/data/local/tmp/xxx.apk` 会**建目录**（把本地相对路径整棵搬过去）；要传文件就先 `cd` 进所在目录、只给文件名；
+2. 公共下载目录属主是 `file_manager`（`rw-rw----`），`hdc shell cp` 会被 `Permission denied`，
+   但 **`hdc file send` 直接写这个路径可以成功**。
+
+装到 Android 运行时（卓易通/anco 容器）里需要在该容器内打开这个 APK 安装，HarmonyOS 的包管理器不接受 APK。
