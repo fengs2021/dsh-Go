@@ -19,8 +19,9 @@ class FloatingPillController extends Notifier<bool> {
 
   @override
   bool build() {
+    // 默认开着：这是用户要的「小悬浮窗」，能在设置里关掉。
     unawaited(_restore());
-    return false;
+    return true;
   }
 
   Future<void> _restore() async {
