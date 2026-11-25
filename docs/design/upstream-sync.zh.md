@@ -50,3 +50,27 @@
 
 短期不做全量 rebase；等需要上游 remote 修复时，单独开一条 `sync/upstream-<date>` 分支做整体 rebase，
 逐门跑 `test/remote`、`test/state`、`test/chat`、`flutter analyze`、`check-arkts`，再决定合回。
+
+## 5. 定点搬运（2026-11-26，分支 `sync/upstream-1126`）
+
+上游从 `d5a78fbc9` 涨到 `d73c679c3`，新增 272 个提交，落后 836→1108。新提交绝大多数是
+`companion`（伙伴小屋）与 `chat` 流式渲染微优化，依赖链长、与鸿蒙分支无关，不摘。按「平台无关 +
+能独立生效 + 手机使用相关」筛出并实测 cherry-pick：
+
+| 上游提交 | 内容 | 结果 |
+|---|---|---|
+| `33069b24e` | perf(client)：远程工作区大窗口 base64 放到 `Isolate.run` 后台解码 | ✅ 干净 |
+| `34967116c` | fix(share)：导出前等的插件图标就是卡片上画的那张 | ✅ 干净 |
+| `9750ffe9e` | perf(star)：求 Star 提示永久结束后停掉前台每分钟计时 | ✅ 干净（自动合并） |
+| `e6b799814` | fix(web)：切主机后同会话号也打开所选对话 | ✅ 干净（自动合并） |
+| `478fdb9d5` | perf(search)：checkpoint 缓存满不再按插入顺序逐出 | ✅ 干净（自动合并） |
+| `a99b5e190` | fix(terminal)：键盘重新唤起与复制粘贴 #1935 | ❌ 依赖前置的 `showAppSheet.onRouteChanged`，单摘编译失败，已回退 |
+| `2c9f771e4` | fix(phone)：手机操控回到发起处 #1938 | ❌ 冲突且耦合 companion/Android，已 abort |
+
+**验证**：`flutter analyze` No issues；`test/star`、`test/search`、`test/share` 等 84 例全通过；
+`packages/dsh_client` 测试与基线失败清单一致（仅基线固有的 `dsh_go_heartbeat_test.dart` 计时用例），
+未引入新失败；`l10n_merge --check`、`guide_sync --check` 通过。5 个提交共 7 文件、81  insertions。
+
+**结论**：定点搬运可行，但判据要严——只有无跨提交依赖、无 companion/Android 耦合的独立修复才单摘；
+terminal 和 phone 那两个仍印证上一节的「成批演进」规律，要拿到只能整体 rebase。成果留在
+`sync/upstream-1126`，未合回 `port/v71`，等真机出包验证后再决定。
