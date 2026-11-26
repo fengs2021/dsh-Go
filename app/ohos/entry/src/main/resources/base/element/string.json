@@ -91,6 +91,10 @@
     {
       "name": "float_window_reason",
       "value": "在其他应用之上显示本机智能体的运行状态"
+    },
+    {
+      "name": "dsh_pip_front_blocked",
+      "value": "系统不允许后台启动，请从桌面图标打开"
     }
   ]
 }

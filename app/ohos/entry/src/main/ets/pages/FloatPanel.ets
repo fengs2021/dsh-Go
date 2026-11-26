@@ -24,6 +24,8 @@ struct FloatPanel {
   private dotTimer: number = -1;
   private lastOffsetX: number = 0;
   private lastOffsetY: number = 0;
+  private downX: number = 0;
+  private downY: number = 0;
 
   aboutToAppear(): void {
     this.sync();
@@ -48,6 +50,9 @@ struct FloatPanel {
     this.status = this.state.status;
     this.theme = this.state.theme;
     this.compact = this.state.compact;
+    if (!this.compact) {
+      FloatWindowManager.getInstance().applyContentSize();
+    }
     if (this.glow === PipGlow.ATTENTION) {
       if (this.dotTimer === -1) {
         let fading: boolean = true;
@@ -120,7 +125,7 @@ struct FloatPanel {
     .height('100%')
     .padding({ left: 10, right: 8 })
     .alignItems(VerticalAlign.Center)
-    .priorityGesture(this.dragGesture())
+    .parallelGesture(this.dragGesture())
   }
 
   @Builder
@@ -193,6 +198,9 @@ struct FloatPanel {
       .layoutWeight(1)
       .padding({ left: 12, right: 12, top: 6, bottom: 10 })
       .alignItems(HorizontalAlign.Start)
+      // 正文区也能拖：之前只有 34vp 的标题栏接手势，按中间那片空白当然拖不动。
+      // 用 parallelGesture 而不是 priorityGesture —— 不抢「回到应用」的点击。
+      .parallelGesture(this.dragGesture())
     }
     .width('100%')
     .height('100%')
@@ -231,6 +239,23 @@ struct FloatPanel {
     .width('100%')
     .height('100%')
     .backgroundColor(this.theme.surface)
+    // 悬浮窗的拖动交给系统：ArkUI 的 PanGesture 在 TYPE_FLOAT 窗口里收不到连续
+    // move 事件，而 startMoving() 必须在这个窗口的 onTouch(Down) 里调。
+    .onTouch((event: TouchEvent): void => {
+      const manager: FloatWindowManager = FloatWindowManager.getInstance();
+      const touch: TouchObject | undefined = event.touches.length > 0 ? event.touches[0] : undefined;
+      if (touch === undefined) {
+        return;
+      }
+      if (event.type === TouchType.Down) {
+        manager.beginDragAt(touch.screenX, touch.screenY);
+      } else if (event.type === TouchType.Move) {
+        manager.dragToScreen(touch.screenX, touch.screenY);
+      } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+        // 窗口跟着手指移动时，Move 事件可能中途被系统断掉；抬手坐标才是最终位置。
+        manager.dragToScreen(touch.screenX, touch.screenY);
+      }
+    })
     .borderRadius(this.compact ? 18 : 16)
     .border({
       width: this.glow === PipGlow.NORMAL ? 1 : 2,

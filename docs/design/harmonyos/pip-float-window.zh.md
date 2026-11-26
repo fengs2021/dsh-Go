@@ -94,6 +94,40 @@ TYPE_FLOAT})` 不依赖这个权限是否授予，至少 API 26 + 本签名材�
 `ensurePermissionSilently` 这类运行时自授权限的写法**不要加**——Swai 那套在这台设备上
 既无必要也不生效，它的 `ensurePermissionSilently()` 只是把错误吞了。
 
+## 4.2 悬浮窗里「拖不动 / 点不动」到底是哪几步（2026-11-26 真机逐项排除）
+
+按发生顺序记录，四个坑互相掩盖，只看现象会误判：
+
+| # | 现象 | 真因 | 处理 |
+| --- | --- | --- | --- |
+| 1 | 拖整张卡没反应 | `PanGesture` 只挂在 34vp 的标题栏上，正文区没接手势 | 正文区也挂 `.parallelGesture()`（不抢按钮点击） |
+| 2 | 挂了手势仍然不动 | **`PanGesture` 在 `TYPE_FLOAT` 窗口里不触发**（同窗口的 `onClick`、`onTouch` 都正常） | 改用 `onTouch` |
+| 3 | 用 SDK 的 `startMoving()` 能拖走，但拖完 ⤢ / 回到应用全哑 | 系统进入 moving 后**不再回传 `TouchType.Up`**，窗口卡在 moving 状态吞掉后续所有输入 | 放弃 `startMoving()`，自己算坐标 + `moveWindowTo` |
+| 4 | 自己算坐标后跟手比例只有 ~0.23 | **`TouchObject.screenX/screenY 是 vp**，窗口坐标是 px，混着用等于把手指数缩了 1/density | `screen * densityPixels - grab` |
+
+最终实现（`window/FloatWindowManager.ets` 的 `beginDragAt` / `dragToScreen`）：`Down` 记「手指屏幕坐标 × density − 窗口当前坐标」的抓取偏移，`Move` 和 `Up/Cancel` 都按偏移反算窗口左上角再 `moveWindowTo`（抬手里程碑很关键：窗口跟着手指移动时 Move 事件会被系统中途断掉，抬手坐标才是最终位置）。
+
+另一个独立的坑：**尺寸变化后必须重新夹取位置**。展开态窗口更宽，旧 `currentX` 可能已经越界，下一次拖动时 `clamp` 会把窗口朝反方向拽回去（实测：右拖 300px，窗口反而左移 214px）。现在 `resize` 之后统一 `clampToScreen()`。
+
+### 4.3 「回到应用」：三方应用在后台拉不起自己
+
+真机日志（`hilog -x | grep A03F10`）三连：
+
+```
+DshPip: wantAgent rejected: Parameter error. Too few parameters.
+DshPip: openLink rejected: The application does not have permission to call the interface.
+DshPip: startAbility rejected: The application does not have permission to call the interface.
+```
+
+- `startAbility` / `openLink`（`dshgo://`）都被拒：应用在后台时启动 Ability 需要
+  `START_ABILITIES_FROM_BACKGROUND`（system_basic），三方拿不到，本 SDK 也没有
+  `FLAG_START_WITHOUT_USER_ACTION` 之类的绕过位；
+- `wantAgent.trigger` 这个 SDK 的 `TriggerInfo` 只有 `code / want / permission / extraInfo`，
+  传 `{ code, want }` 仍报「Too few parameters」，暂时没跑通；
+- 现状：三条都失败时 toast「系统不允许后台启动，请从桌面图标打开」，不静默。
+
+要做成「一键回前台」，只剩通知这条正路：发一条带 wantAgent 的通知，用户点通知由系统拉起（属于用户操作，不受后台限制）。
+
 ## 5. Dart 入口与通道协议
 
 `app/lib/pip/pip_window.dart`，通道名 `dsh/pip`：

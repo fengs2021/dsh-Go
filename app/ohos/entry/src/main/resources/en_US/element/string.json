@@ -87,6 +87,10 @@
     {
       "name": "float_window_reason",
       "value": "Show local agent progress above other apps"
+    },
+    {
+      "name": "dsh_pip_front_blocked",
+      "value": "The system blocked the background launch; open the app from its icon"
     }
   ]
 }
