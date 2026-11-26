@@ -144,8 +144,10 @@ DshPip: startAbility rejected: The application does not have permission to call 
 - **半透明**：`FloatPanel` 根节点用 `withAlpha(theme.surface, 'D9')`（85% 不透明），
   颜色仍取自 `palette.dart` 的 DSH 面色，只是加了一层 alpha；窗口本身
   `setWindowBackgroundColor('#00000000')` 才能让圆角外不漏底色。
-- **展开态正文**：显示**最新一句回复/叙述**（`RunActivity.narration ?? detail`），
-  没有就退回状态摘要。
+- **展开态正文**：三级回退取文案——`RunActivity.narration`（模型这一轮最新一行）
+  → 活动条 `detail` → 会话里最后一条非空 `AssistantChatItem.text`（压成一行、截断 240 字），
+  再退回状态摘要。原文里的 `**`、反引号、`#`、`|>` 这类 markdown 记号在
+  `PipState.plain()` 里抹掉——悬浮窗只有纯文本，留着只会脏。
 - **工具调用简化为图标**：标题栏右侧一个胶囊，图标 + 本轮已完成工具数
   （`⌘` 跑代码 / `◱` 读 / `✎` 写改 / `🌐` 网页 / `👆` 手机操控 / `⚙` 其它）。
 - 数据来自 `dsh/pip` 的 `setDetail`：Dart 侧 `live_activity_state.dart` 里

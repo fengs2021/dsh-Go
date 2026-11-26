@@ -151,11 +151,25 @@ export class PipState {
     this.notify();
   }
 
+  /// 去掉 markdown 记号：悬浮窗只有纯文本，留着 ** 和反引号只会脏。
+  private static plain(text: string): string {
+    let out: string = text;
+    out = out.split('**').join('');
+    out = out.split('###').join('');
+    out = out.split('##').join('');
+    out = out.split('#').join('');
+    out = out.split('```').join('');
+    out = out.split('`').join('');
+    out = out.split('> ').join('');
+    out = out.split('|').join(' ');
+    return out;
+  }
+
   setDetail(detail: string, tool: string, toolsDone: number): void {
     if (this.detail === detail && this.tool === tool && this.toolsDone === toolsDone) {
       return;
     }
-    this.detail = detail;
+    this.detail = PipState.plain(detail);
     this.tool = tool;
     this.toolsDone = toolsDone;
     this.notify();
