@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../l10n/l10n.dart';
 import '../notify/live_activity.dart';
 import '../pip/pip_window.dart';
+import '../ui/chat/run_info.dart' show runActivityProvider;
 import '../notify/live_art.dart';
 import '../pets/pet_signals.dart';
 import '../pets/pet_state.dart';
@@ -84,11 +85,32 @@ final liveActivityBridgeProvider = Provider<void>((ref) {
       if (previous == next) return;
       unawaited(_feedPip(pip, next));
     }, fireImmediately: true);
+    ref.listen<_PipDetail?>(_pipDetailProvider, (previous, next) {
+      if (previous == next) return;
+      unawaited(pip.setDetail(
+        detail: next?.detail ?? '',
+        tool: next?.tool ?? '',
+        toolsDone: next?.toolsDone ?? 0,
+      ));
+    }, fireImmediately: true);
   }
   ref.listen<LivePush>(livePushProvider, (previous, next) {
     if (previous == next) return;
     unawaited(ref.read(notifyChannelProvider).live(next));
   }, fireImmediately: true);
+});
+
+/// 浮窗展开态要的细节：最新一句回复/叙述 + 正在跑的工具。
+/// 与实时活动同源（RunActivity 就是输入条上方那条活动条的内容），不另造状态。
+typedef _PipDetail = ({String detail, String tool, int toolsDone});
+
+final _pipDetailProvider = Provider<_PipDetail?>((ref) {
+  final focus = ref.watch(petSignalsProvider).focus;
+  if (focus == null) return null;
+  final activity = ref.watch(runActivityProvider(focus.sessionId));
+  if (activity == null) return null;
+  final detail = activity.narration ?? activity.detail;
+  return (detail: detail, tool: activity.toolName ?? '', toolsDone: activity.toolsDone);
 });
 
 /// 把实时活动翻译成浮窗要的三样东西：说什么、什么色的点、要不要自动升系统悬浮窗。

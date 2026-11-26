@@ -28,13 +28,12 @@ export class FloatWindowManager {
 
   private static lastMoveWarn: number = 0;
   private static lastMoveLog: number = 0;
-  private static lastDragLog: number = 0;
 
   // 系统接手拖动后，TouchType.Up 可能不再回传给应用（真机实测：拖完点击全哑）。
   // 用一个标记 + 下一次 Down 时兜底 stopMoving()，把卡住的 moving 状态解掉。
   private moving: boolean = false;
-  private grabX: number = 0;
-  private grabY: number = 0;
+  private lastTouchX: number = 0;
+  private lastTouchY: number = 0;
   private static lastError: string = '';
 
   private context: common.UIAbilityContext | undefined = undefined;
@@ -165,34 +164,33 @@ export class FloatWindowManager {
   /// 所以拖动改成「onTouch 记起点 + Move 里自己算坐标 + moveWindowTo」，绕开系统 moving 状态。
   /// 记下手指相对窗口左上角的偏移（px）。用 screenX/screenY 而不是组件内 x/y：
   /// 窗口跟着手指移动后，组件内坐标会漂，屏幕坐标不会。
-  beginDragAt(screenX: number, screenY: number): void {
-    const density: number = display.getDefaultDisplaySync().densityPixels || 3;
-    // screenX/screenY 是 vp（实测：屏幕高 2848px 的机器上最大只到 844），窗口坐标是 px。
-    this.grabX = screenX * density - this.currentX;
-    this.grabY = screenY * density - this.currentY;
+  /// 只记上一帧的手指位置。onTouch 给的是**窗口内**的 vp 坐标，窗口一移动它就跟着变；
+  /// 用「按起点算绝对位置」会形成反馈回路（窗口动 → 坐标变 → 位置回退），表现就是框体一直抖。
+  /// 改成逐帧增量：窗口永远只按手指这一帧的位移走，坐标漂移被自然消掉。
+  beginDragAt(xVp: number, yVp: number): void {
+    this.lastTouchX = xVp;
+    this.lastTouchY = yVp;
   }
 
   /// 手指跟到哪窗口就到哪（px）。
-  async dragToScreen(screenX: number, screenY: number): Promise<void> {
+  async dragToScreen(xVp: number, yVp: number): Promise<void> {
     const target: window.Window | undefined = this.floatWindow;
     if (target === undefined) {
       return;
     }
     const info: display.Display = display.getDefaultDisplaySync();
     const density: number = info.densityPixels || 3;
+    const dxPx: number = (xVp - this.lastTouchX) * density;
+    const dyPx: number = (yVp - this.lastTouchY) * density;
+    this.lastTouchX = xVp;
+    this.lastTouchY = yVp;
+    if (Math.abs(dxPx) < 0.5 && Math.abs(dyPx) < 0.5) {
+      return;
+    }
     const maxX: number = Math.max(0, info.width - this.currentWidth);
     const maxY: number = Math.max(0, info.height - this.currentHeight);
-    const nextX: number = Math.max(0, Math.min(screenX * density - this.grabX, maxX));
-    const nextY: number = Math.max(0, Math.min(screenY * density - this.grabY, maxY));
-    {
-      const now: number = Date.now();
-      if (now - FloatWindowManager.lastDragLog > 200) {
-        FloatWindowManager.lastDragLog = now;
-        hilog.debug(DOMAIN, TAG, 'drag screen=(%{public}d,%{public}d) grab=(%{public}d,%{public}d) cur=(%{public}d,%{public}d) next=(%{public}d,%{public}d)',
-          Math.round(screenX), Math.round(screenY), Math.round(this.grabX), Math.round(this.grabY),
-          Math.round(this.currentX), Math.round(this.currentY), Math.round(nextX), Math.round(nextY));
-      }
-    }
+    const nextX: number = Math.max(0, Math.min(this.currentX + dxPx, maxX));
+    const nextY: number = Math.max(0, Math.min(this.currentY + dyPx, maxY));
     if (Math.round(nextX) === Math.round(this.currentX) && Math.round(nextY) === Math.round(this.currentY)) {
       return;
     }
@@ -410,8 +408,9 @@ export class FloatWindowManager {
     } else {
       this.currentWidth = Math.min(Math.floor(info.width * 0.94), Math.floor(340 * density));
       // 34(标题) + 6 + 18*行数 + 30(按钮) + 18(内边距)，行数按实际字数估，钳在 1~6 行。
-      const chars: number = PipState.getInstance().status.length;
-      const lines: number = Math.max(1, Math.min(6, Math.ceil(chars / 22)));
+      const state: PipState = PipState.getInstance();
+      const text: string = state.detail.length > 0 ? state.detail : state.status;
+      const lines: number = Math.max(1, Math.min(6, Math.ceil(text.length / 22)));
       this.currentHeight = Math.floor((34 + 6 + 18 * lines + 30 + 18) * density);
     }
     this.currentX = Math.max(20, Math.floor((info.width - this.currentWidth) / 2));

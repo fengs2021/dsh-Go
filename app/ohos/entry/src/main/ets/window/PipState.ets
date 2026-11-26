@@ -33,6 +33,14 @@ export interface PipTheme {
   warning: string;
 }
 
+/// 给 #RRGGBB 套一层透明度（#AARRGGBB），浮窗要半透明底。
+export function withAlpha(color: string, alphaHex: string): string {
+  if (color.length === 7 && color.startsWith('#')) {
+    return '#' + alphaHex + color.substring(1);
+  }
+  return color;
+}
+
 export function defaultPipTheme(dark: boolean): PipTheme {
   if (dark) {
     return {
@@ -67,6 +75,11 @@ export class PipState {
   glow: PipGlow = PipGlow.NORMAL;
   title: string = '';
   status: string = '';
+  /// 最新一句回复/叙述，展开态正文用它。
+  detail: string = '';
+  /// 正在跑的工具名（图标见 toolGlyph），空串表示没有工具在跑。
+  tool: string = '';
+  toolsDone: number = 0;
   /// 系统悬浮窗的胶囊态；应用内浮层不用它（浮层自己就是 MINI/EXPANDED 两档）。
   compact: boolean = false;
   theme: PipTheme = defaultPipTheme(false);
@@ -135,6 +148,16 @@ export class PipState {
     }
     this.title = title;
     this.status = status;
+    this.notify();
+  }
+
+  setDetail(detail: string, tool: string, toolsDone: number): void {
+    if (this.detail === detail && this.tool === tool && this.toolsDone === toolsDone) {
+      return;
+    }
+    this.detail = detail;
+    this.tool = tool;
+    this.toolsDone = toolsDone;
     this.notify();
   }
 

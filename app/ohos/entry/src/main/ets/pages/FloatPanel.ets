@@ -5,7 +5,7 @@
  * 胶囊态只有一行：状态点 + 一句现状 + 展开 + 回 App。展开态给正文和关闭。
  * 拖动的不是页面里的东西，是窗口本身（FloatWindowManager.moveBy 换算成窗口坐标）。
  */
-import { PipGlow, PipMode, PipState, PipTheme, defaultPipTheme } from '../window/PipState';
+import { PipGlow, PipMode, PipState, PipTheme, defaultPipTheme, withAlpha } from '../window/PipState';
 import { FloatWindowManager } from '../window/FloatWindowManager';
 
 @Entry
@@ -15,6 +15,9 @@ struct FloatPanel {
   @State private glow: PipGlow = PipGlow.NORMAL;
   @State private title: string = '';
   @State private status: string = '';
+  @State private detail: string = '';
+  @State private tool: string = '';
+  @State private toolsDone: number = 0;
   @State private theme: PipTheme = defaultPipTheme(false);
   @State private compact: boolean = false;
   @State private dotAlpha: number = 1;
@@ -22,10 +25,6 @@ struct FloatPanel {
   private state: PipState = PipState.getInstance();
   private dropSubscription: (() => void) | undefined = undefined;
   private dotTimer: number = -1;
-  private lastOffsetX: number = 0;
-  private lastOffsetY: number = 0;
-  private downX: number = 0;
-  private downY: number = 0;
 
   aboutToAppear(): void {
     this.sync();
@@ -48,6 +47,9 @@ struct FloatPanel {
     this.glow = this.state.glow;
     this.title = this.state.title;
     this.status = this.state.status;
+    this.detail = this.state.detail;
+    this.tool = this.state.tool;
+    this.toolsDone = this.state.toolsDone;
     this.theme = this.state.theme;
     this.compact = this.state.compact;
     if (!this.compact) {
@@ -125,7 +127,6 @@ struct FloatPanel {
     .height('100%')
     .padding({ left: 10, right: 8 })
     .alignItems(VerticalAlign.Center)
-    .parallelGesture(this.dragGesture())
   }
 
   @Builder
@@ -142,6 +143,22 @@ struct FloatPanel {
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .layoutWeight(1)
+        if (this.tool.length > 0) {
+          Row({ space: 3 }) {
+            Text(this.toolIcon())
+              .fontSize(13)
+            if (this.toolsDone > 0) {
+              Text(String(this.toolsDone))
+                .fontSize(10)
+                .fontColor(this.theme.onSurfaceMuted)
+            }
+          }
+          .padding({ left: 6, right: 6 })
+          .height(20)
+          .borderRadius(10)
+          .backgroundColor(withAlpha(this.theme.accent, '26'))
+          .alignItems(VerticalAlign.Center)
+        }
         Button({ type: ButtonType.Circle }) {
           Text('—')
             .fontSize(12)
@@ -172,12 +189,11 @@ struct FloatPanel {
       .height(34)
       .padding({ left: 12, right: 8 })
       .alignItems(VerticalAlign.Center)
-      .priorityGesture(this.dragGesture())
 
       Column() {
-        Text(this.status.length > 0 ? this.status : $r('app.string.dsh_pip_waiting'))
+        Text(this.bodyText())
           .fontSize(12)
-          .fontColor(this.theme.onSurfaceMuted)
+          .fontColor(this.theme.onSurface)
           .lineHeight(18)
           .maxLines(8)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -199,11 +215,41 @@ struct FloatPanel {
       .padding({ left: 12, right: 12, top: 6, bottom: 10 })
       .alignItems(HorizontalAlign.Start)
       // 正文区也能拖：之前只有 34vp 的标题栏接手势，按中间那片空白当然拖不动。
-      // 用 parallelGesture 而不是 priorityGesture —— 不抢「回到应用」的点击。
-      .parallelGesture(this.dragGesture())
     }
     .width('100%')
     .height('100%')
+  }
+
+  /// 正文优先显示最新一句回复；没有就退回状态摘要。
+  private bodyText(): ResourceStr {
+    if (this.detail.length > 0) {
+      return this.detail;
+    }
+    if (this.status.length > 0) {
+      return this.status;
+    }
+    return $r('app.string.dsh_pip_waiting');
+  }
+
+  /// 工具名 → 图标。够用就行，认不出的统一齿轮。
+  private toolIcon(): string {
+    const name: string = this.tool;
+    if (name.indexOf('bash') >= 0 || name.indexOf('run_code') >= 0) {
+      return '⌘';
+    }
+    if (name.indexOf('read') >= 0) {
+      return '◱';
+    }
+    if (name.indexOf('write') >= 0 || name.indexOf('edit') >= 0) {
+      return '✎';
+    }
+    if (name.indexOf('fetch') >= 0 || name.indexOf('web') >= 0) {
+      return '🌐';
+    }
+    if (name.indexOf('ui') >= 0) {
+      return '👆';
+    }
+    return '⚙';
   }
 
   private summary(): string {
@@ -211,21 +257,6 @@ struct FloatPanel {
       return this.status;
     }
     return this.title;
-  }
-
-  private dragGesture(): GestureType {
-    return PanGesture({ fingers: 1, direction: PanDirection.All })
-      .onActionStart((): void => {
-        this.lastOffsetX = 0;
-        this.lastOffsetY = 0;
-      })
-      .onActionUpdate((event: GestureEvent): void => {
-        const dx: number = event.offsetX - this.lastOffsetX;
-        const dy: number = event.offsetY - this.lastOffsetY;
-        this.lastOffsetX = event.offsetX;
-        this.lastOffsetY = event.offsetY;
-        FloatWindowManager.getInstance().moveBy(dx, dy);
-      });
   }
 
   build() {
@@ -238,7 +269,8 @@ struct FloatPanel {
     }
     .width('100%')
     .height('100%')
-    .backgroundColor(this.theme.surface)
+    // 半透明：85% 面色，能看见底下的内容又不糊掉字。
+    .backgroundColor(withAlpha(this.theme.surface, 'D9'))
     // 悬浮窗的拖动交给系统：ArkUI 的 PanGesture 在 TYPE_FLOAT 窗口里收不到连续
     // move 事件，而 startMoving() 必须在这个窗口的 onTouch(Down) 里调。
     .onTouch((event: TouchEvent): void => {

@@ -31,6 +31,10 @@ class PipWindow {
   Future<bool> setContent({required String title, String status = '', PipGlow glow = PipGlow.normal}) =>
       _invoke('setContent', {'title': title, 'status': status, 'glow': glow.name});
 
+  /// 展开态正文：最新一句回复 + 正在跑的工具（工具只传名字和计数，悬浮窗自己出图标）。
+  Future<bool> setDetail({required String detail, String tool = '', int toolsDone = 0}) =>
+      _invoke('setDetail', {'detail': detail, 'tool': tool, 'toolsDone': toolsDone});
+
   /// 允许 App 退到后台时自动升起系统悬浮窗。
   Future<bool> setFloatAuto(bool enabled) => _invoke('floatAuto', {'enabled': enabled});
 

@@ -60,6 +60,15 @@ export default class PipPlugin implements FlutterPlugin, MethodCallHandler {
         result.success(true);
         return;
       }
+      case 'setDetail': {
+        const detail: string = (call.argument('detail') ?? '') as string;
+        const tool: string = (call.argument('tool') ?? '') as string;
+        const raw: Any = call.argument('toolsDone');
+        const toolsDone: number = typeof raw === 'number' ? raw : 0;
+        state.setDetail(detail, tool, toolsDone);
+        result.success(true);
+        return;
+      }
       case 'setTheme': {
         state.setTheme(PipPlugin.parseTheme(call));
         result.success(true);
