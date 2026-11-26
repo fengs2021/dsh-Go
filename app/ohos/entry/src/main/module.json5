@@ -156,9 +156,6 @@
         "name": "ohos.permission.VIBRATE"
       },
       {
-        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING"
-      },
-      {
         // 画中画系统悬浮窗（window.WindowType.TYPE_FLOAT）。system_basic 级，声明只是
         // 「允许被授予」，实际授权要么靠签名 profile 里的 ACL，要么在 debug 包上用
         // `hdc shell atm perm -g -i <accessTokenId> -p ohos.permission.SYSTEM_FLOAT_WINDOW`
