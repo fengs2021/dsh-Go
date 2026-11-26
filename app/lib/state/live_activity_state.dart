@@ -7,8 +7,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/l10n.dart';
 import '../notify/live_activity.dart';
+import 'package:dsh_client/dsh_client.dart' show AssistantChatItem, ChatItem, ToolChatItem, ToolStatus;
+
 import '../pip/pip_window.dart';
 import '../ui/chat/run_info.dart' show runActivityProvider;
+import 'chat_state.dart' show chatProvider;
 import '../notify/live_art.dart';
 import '../pets/pet_signals.dart';
 import '../pets/pet_state.dart';
@@ -108,10 +111,48 @@ final _pipDetailProvider = Provider<_PipDetail?>((ref) {
   final focus = ref.watch(petSignalsProvider).focus;
   if (focus == null) return null;
   final activity = ref.watch(runActivityProvider(focus.sessionId));
-  if (activity == null) return null;
-  final detail = activity.narration ?? activity.detail;
-  return (detail: detail, tool: activity.toolName ?? '', toolsDone: activity.toolsDone);
+  final items = ref.watch(chatProvider(focus.sessionId)).items;
+  final latest = _latestReply(items);
+  final narration = activity?.narration?.trim() ?? '';
+  final activityDetail = (activity?.detail ?? '').trim();
+  // 优先「模型这一轮最新一行叙述」，其次是活动条的 detail，最后退回会话里最后一条回复。
+  final detail = narration.isNotEmpty ? narration : (activityDetail.isNotEmpty ? activityDetail : latest);
+  final tool = _runningTool(items);
+  final toolsDone = activity?.toolsDone ?? 0;
+  if (detail.isEmpty && tool.isEmpty && toolsDone == 0) return null;
+  return (detail: _clip(detail), tool: tool, toolsDone: toolsDone);
 });
+
+/// 会话里最后一条非空的助手回复（流式中的草稿也算）。
+String _latestReply(List<ChatItem> items) {
+  for (var i = items.length - 1; i >= 0; i--) {
+    final item = items[i];
+    if (item is AssistantChatItem) {
+      final text = item.text.trim();
+      if (text.isNotEmpty) return text;
+    }
+  }
+  return '';
+}
+
+/// 正在跑（或参数还在流）的工具名；没有就空串。
+String _runningTool(List<ChatItem> items) {
+  for (var i = items.length - 1; i >= 0; i--) {
+    final item = items[i];
+    if (item is ToolChatItem &&
+        (item.status == ToolStatus.running || item.status == ToolStatus.streaming)) {
+      return item.name;
+    }
+  }
+  return '';
+}
+
+/// 压成一行并截断：悬浮窗很小，放过长的原文没意义。
+String _clip(String text) {
+  final flat = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (flat.length <= 240) return flat;
+  return '${flat.substring(0, 240)}…';
+}
 
 /// 把实时活动翻译成浮窗要的三样东西：说什么、什么色的点、要不要自动升系统悬浮窗。
 /// 在跑才升应用内胶囊；等你/出错误切琥珀并收起，交给通知去提醒。

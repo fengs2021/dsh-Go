@@ -107,6 +107,17 @@ TYPE_FLOAT})` 不依赖这个权限是否授予，至少 API 26 + 本签名材�
 
 最终实现（`window/FloatWindowManager.ets` 的 `beginDragAt` / `dragToScreen`）：`Down` 记「手指屏幕坐标 × density − 窗口当前坐标」的抓取偏移，`Move` 和 `Up/Cancel` 都按偏移反算窗口左上角再 `moveWindowTo`（抬手里程碑很关键：窗口跟着手指移动时 Move 事件会被系统中途断掉，抬手坐标才是最终位置）。
 
+### 4.2.1 「框体一直跳动」的根因：窗口内坐标 × 跟着移动的窗口 = 反馈回路
+
+第一版用「按下点 + 当前手指位置」算绝对坐标，真机上框体持续抖动。原因是
+`onTouch` 的 `x/y`（包括 `screenX/screenY`）是**相对当前窗口**的：窗口跟着手指移动后，
+同一个手指的坐标值就反着变了，于是
+「窗口下移 → 手指坐标变小 → 算出的目标位置回退 → 窗口上移 → …」形成振荡。
+
+正解是**逐帧增量**：只记上一帧的手指坐标，每帧取差值乘 density（vp→px），窗口按这个
+增量移动。窗口移动量与手指移动量相等时，下一帧的差值自然趋近 0，回路被打断，
+框体稳稳跟手。`FloatWindowManager.beginDragAt / dragToScreen` 就是这一版。
+
 另一个独立的坑：**尺寸变化后必须重新夹取位置**。展开态窗口更宽，旧 `currentX` 可能已经越界，下一次拖动时 `clamp` 会把窗口朝反方向拽回去（实测：右拖 300px，窗口反而左移 214px）。现在 `resize` 之后统一 `clampToScreen()`。
 
 ### 4.3 「回到应用」：三方应用在后台拉不起自己
@@ -127,6 +138,19 @@ DshPip: startAbility rejected: The application does not have permission to call 
 - 现状：三条都失败时 toast「系统不允许后台启动，请从桌面图标打开」，不静默。
 
 要做成「一键回前台」，只剩通知这条正路：发一条带 wantAgent 的通知，用户点通知由系统拉起（属于用户操作，不受后台限制）。
+
+### 4.4 外观与内容
+
+- **半透明**：`FloatPanel` 根节点用 `withAlpha(theme.surface, 'D9')`（85% 不透明），
+  颜色仍取自 `palette.dart` 的 DSH 面色，只是加了一层 alpha；窗口本身
+  `setWindowBackgroundColor('#00000000')` 才能让圆角外不漏底色。
+- **展开态正文**：显示**最新一句回复/叙述**（`RunActivity.narration ?? detail`），
+  没有就退回状态摘要。
+- **工具调用简化为图标**：标题栏右侧一个胶囊，图标 + 本轮已完成工具数
+  （`⌘` 跑代码 / `◱` 读 / `✎` 写改 / `🌐` 网页 / `👆` 手机操控 / `⚙` 其它）。
+- 数据来自 `dsh/pip` 的 `setDetail`：Dart 侧 `live_activity_state.dart` 里
+  `_pipDetailProvider` 直接读 `runActivityProvider(focus.sessionId)`——就是输入条上方
+  那条活动条的同一份数据，不另造状态。
 
 ## 5. Dart 入口与通道协议
 

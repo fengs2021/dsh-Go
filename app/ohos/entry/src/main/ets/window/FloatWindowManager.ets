@@ -154,7 +154,9 @@ export class FloatWindowManager {
     } catch (error) {
       hilog.warn(DOMAIN, TAG, 'resize failed: %{public}s', (error as Error).message);
     }
-    await this.clampToScreen();
+    setTimeout((): void => {
+      this.forceClamp('compact');
+    }, 120);
   }
 
   /// 真机实测结论（v94，2026-11-26）：
@@ -373,15 +375,50 @@ export class FloatWindowManager {
     } catch (error) {
       hilog.debug(DOMAIN, TAG, 'content resize skipped: %{public}s', (error as Error).message);
     }
-    await this.clampToScreen();
+    setTimeout((): void => {
+      this.forceClamp('content');
+    }, 120);
+  }
+
+  /// 无条件把窗口夹回屏内（不看状态是否已相等），并留下数字日志。
+  /// 用于 resize 之后：系统可能把窗口保持在原左上角，导致右侧越界。
+  private async forceClamp(tag: string): Promise<void> {
+    const target: window.Window | undefined = this.floatWindow;
+    const info: display.Display = display.getDefaultDisplaySync();
+    const maxX: number = Math.max(0, info.width - this.currentWidth);
+    const maxY: number = Math.max(0, info.height - this.currentHeight);
+    const nx: number = Math.max(0, Math.min(this.currentX, maxX));
+    const ny: number = Math.max(0, Math.min(this.currentY, maxY));
+    hilog.warn(DOMAIN, TAG, 'forceClamp[%{public}s] disp=%{public}dx%{public}d size=%{public}dx%{public}d -> (%{public}d,%{public}d)',
+      tag, info.width, info.height, this.currentWidth, this.currentHeight, Math.round(nx), Math.round(ny));
+    this.currentX = nx;
+    this.currentY = ny;
+    if (target === undefined) {
+      return;
+    }
+    try {
+      await target.moveWindowTo(Math.round(nx), Math.round(ny));
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, 'forceClamp move rejected: %{public}s', (error as Error).message);
+    }
   }
 
   /// 尺寸变了就重新夹一次位置，并把窗口挪过去；否则越界的旧坐标会在下次拖动时把窗口拽回去。
   private async clampToScreen(): Promise<void> {
     const target: window.Window | undefined = this.floatWindow;
     const info: display.Display = display.getDefaultDisplaySync();
-    const maxX: number = Math.max(0, info.width - this.currentWidth);
-    const maxY: number = Math.max(0, info.height - this.currentHeight);
+    // 以窗口真实尺寸为准：resize 之后 currentWidth/Height 与系统实际值可能不同步，
+    // 用旧值算边界会漏掉「展开后右边被挤出屏幕」这种情况。
+    let width: number = this.currentWidth;
+    let height: number = this.currentHeight;
+    if (target !== undefined) {
+      const props: window.WindowProperties = target.getWindowProperties();
+      // resize 之后系统报告值可能还停在旧尺寸，取较大者才不会漏判越界。
+      width = Math.max(width, props.windowRect.width);
+      height = Math.max(height, props.windowRect.height);
+    }
+    const maxX: number = Math.max(0, info.width - width);
+    const maxY: number = Math.max(0, info.height - height);
     const nextX: number = Math.max(0, Math.min(this.currentX, maxX));
     const nextY: number = Math.max(0, Math.min(this.currentY, maxY));
     if (nextX === this.currentX && nextY === this.currentY) {
