@@ -9,6 +9,7 @@ import IslandsPlugin from '../plugins/IslandsPlugin';
 import NotifyPlugin from '../plugins/NotifyPlugin';
 import { FlutterAbility, FlutterEngine } from '@ohos/flutter_ohos';
 import ConnectivityPlugin from '../plugins/ConnectivityPlugin';
+import RemoteBackgroundPlugin from '../plugins/RemoteBackgroundPlugin';
 import { GeneratedPluginRegistrant } from '../plugins/GeneratedPluginRegistrant';
 import { RuntimePlugin } from '../runtime/RuntimePlugin';
 import { RuntimeController } from '../runtime/RuntimeController';
@@ -44,6 +45,7 @@ import { FloatWindowManager } from '../window/FloatWindowManager';
 
 export default class EntryAbility extends FlutterAbility {
   private keyboardLog: OhosKeyboardLog = new OhosKeyboardLog();
+  private remoteBackground?: RemoteBackgroundPlugin;
 
   onCreate(want: Want, launch: AbilityConstant.LaunchParam): void {
     hilog.warn(0x3F10, 'DshWake', 'entry onCreate entered');
@@ -105,6 +107,7 @@ export default class EntryAbility extends FlutterAbility {
   onForeground(): void {
     EntryAbility.ensureWakeWork(this.context);
     FloatWindowManager.getInstance().onForeground();
+    this.remoteBackground?.onForeground();
     this.keyboardLog.setForeground(true);
     PastePlugin.onForeground(this);
     AppLinksPlugin.onForeground(this);
@@ -123,6 +126,7 @@ export default class EntryAbility extends FlutterAbility {
 
   onBackground(): void {
     FloatWindowManager.getInstance().onBackground();
+    this.remoteBackground?.onBackground();
     this.keyboardLog.setForeground(false);
     PastePlugin.onBackground(this);
     AppLinksPlugin.onBackground(this);
@@ -141,6 +145,7 @@ export default class EntryAbility extends FlutterAbility {
 
   onDestroy(): void {
     FloatWindowManager.getInstance().destroy();
+    this.remoteBackground?.stop();
     MediaVideoPlugin.onDestroy(this);
     PictureShortcutPlugin.onBackground(this);
     this.keyboardLog.setForeground(false);
@@ -158,6 +163,9 @@ export default class EntryAbility extends FlutterAbility {
     flutterEngine.getPlugins()?.add(new AppLinksPlugin())
     super.configureFlutterEngine(flutterEngine)
     flutterEngine.getPlugins()?.add(new ConnectivityPlugin())
+    const remoteBackground = this.remoteBackground ?? new RemoteBackgroundPlugin(this.context)
+    this.remoteBackground = remoteBackground
+    flutterEngine.getPlugins()?.add(remoteBackground)
     GeneratedPluginRegistrant.registerWith(flutterEngine)
     flutterEngine.getPlugins()?.add(new SecretsPlugin())
     flutterEngine.getPlugins()?.add(new AttachmentFilesPlugin())

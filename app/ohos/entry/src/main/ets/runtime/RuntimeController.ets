@@ -455,6 +455,7 @@ export class RuntimeController {
   private lifecycleChanged(): void {
     const error = this.lifecycle.failureCode();
     if (error !== null && error !== this.lastLifecycleError) {
+      this.logNote('lifecycle: ' + error);
       this.emit(new Map<string, Object | null>([['type', 'notice'], ['text', LIFECYCLE_NOTICE]]));
     }
     this.lastLifecycleError = error;

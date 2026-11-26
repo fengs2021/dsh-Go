@@ -2,6 +2,40 @@
 
 每个版本先中文、后英文。发版时把对应版本的正文（不含版本标题）作为 Release 正文，见 `docs/release.md`。
 
+## 1.4.0 · 2026-11-25
+
+### 中文
+
+#### 新功能
+
+- **伙伴小屋有了完整模式。** 伙伴可以在自己的 DSH 会话里工作，小屋里能直接看进度、打电话或打开她的主会话。也可以养多个伙伴，或在 Android 上把伙伴设为系统默认助理。
+- **Android 手机操控有了悬浮岛和手机技能。** 操作进度能显示在屏幕顶部或支持的系统灵动岛里。完成任务后，可以把做法保存成手机技能，下次直接调用。
+- **OpenAI 官方渠道。** 支持的 Android 本机引擎可以用 ChatGPT 账号授权订阅，选用该账号可用的模型。
+- **酒馆和外观。** 补充了 SillyTavern 1.19 预设与 SPreset 支持。创意工坊的主题包可以改更多界面细节，壁纸也支持动图。
+- **iOS 实时活动。** 可以在锁屏和灵动岛查看进度。
+
+#### 修复与改进
+
+- 修复远程主机网页版偶尔打不开、部分连接断开后无法恢复的问题。
+- 修复终端键盘无法重新唤起、复制粘贴异常，以及部分 vivo 手机上手机操控无法读回结果的问题。
+- 减轻长对话和流式回复时的卡顿，修复通话字幕偶尔截断表情的问题。
+
+### English
+
+#### New features
+
+- **Full mode in the companion room.** Your companion can work in her own DSH session. See progress, call her or open her main session from the room. You can keep multiple companions or set your companion as Android’s default assistant.
+- **Floating island and phone skills on Android.** See phone control progress at the top of the screen or in the system island on supported phones. After a task, you can save the steps as a phone skill and use it again later.
+- **Official OpenAI channel.** On supported local Android engines, sign in with a ChatGPT account to authorize your subscription and use the models available to it.
+- **Tavern and appearance.** Expanded SillyTavern 1.19 preset and SPreset support. Workshop themes can customize more of the interface, and wallpapers can be animated.
+- **iOS Live Activities.** See progress on the Lock Screen and Dynamic Island.
+
+#### Fixes and improvements
+
+- Fixed cases where a remote host’s web app failed to open or a dropped connection failed to recover.
+- Fixed reopening the terminal keyboard, copying and pasting, and reading phone control results back on some vivo phones.
+- Reduced stutter in long chats and streaming replies. Fixed call captions occasionally cutting off emoji.
+
 ## 1.3.0 · 2026-11-21
 
 ### 中文
