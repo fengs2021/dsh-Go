@@ -68,6 +68,23 @@ tools/hdc-oh/hdc.exe -t <ip>:<port> shell "atm perm -g -i <accessTokenId> -p oho
 
 没授之前：应用内浮层照常工作，系统悬浮窗这条路静默不可用。
 
+### 4.1 真机实测：这条路在现有签名材料下走不通（2026-11-26）
+
+拿 v94（commit `c9a415e42`，`appProvisionType: debug`）在 `192.168.2.102` 上试过三步：
+
+| 步骤 | 结果 |
+| --- | --- |
+| 只声明 `SYSTEM_FLOAT_WINDOW`（`c9a415e42`） | `atm perm -g -i 537628011 -p ohos.permission.SYSTEM_FLOAT_WINDOW` → `Error: Permission ... is not requested by the application` |
+| 再补 `reason` + `usedScene.abilities=[EntryAbility]`（未提交的对照实验） | 同一条命令同样被拒 |
+| 事后核对 | `bm dump` 的 `reqPermissions` **确实包含** `ohos.permission.SYSTEM_FLOAT_WINDOW`，`reqPermissionStates` 全 0；`atm perm -h` 写着「only debug hap tokens can be modified」，而本包 `appProvisionType=debug` |
+
+结论：`atm` 的「not requested」不是字面意思——它看的是 token 上**可授予的 ACL 集合**，而
+`SYSTEM_FLOAT_WINDOW` 是 system_basic 权限，必须出现在签名 profile 的 `acls` 里才会被登记。
+现有签名材料没有这条 ACL，所以**声明写上也没用，三方签名下这条永远授不下来**。
+要么拿到带该 ACL 的 profile（AGC 特批/系统签名），要么放弃系统悬浮窗这条路。
+Swai 的做法（运行时 `atm` 自授）在这台设备和这份签名上同样不成立——它的
+`ensurePermissionSilently()` 把错误吞掉了，看起来「实现了」而已。
+
 ## 5. Dart 入口与通道协议
 
 `app/lib/pip/pip_window.dart`，通道名 `dsh/pip`：

@@ -79,6 +79,10 @@
     {
       "name": "dsh_pip_back",
       "value": "回到应用"
+    },
+    {
+      "name": "float_window_reason",
+      "value": "在其他应用之上显示本机智能体的运行状态"
     }
   ]
 }

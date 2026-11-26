@@ -83,6 +83,10 @@
     {
       "name": "dsh_pip_back",
       "value": "Back to app"
+    },
+    {
+      "name": "float_window_reason",
+      "value": "Show local agent progress above other apps"
     }
   ]
 }

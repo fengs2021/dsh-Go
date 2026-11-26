@@ -159,7 +159,14 @@
         // 「允许被授予」，实际授权要么靠签名 profile 里的 ACL，要么在 debug 包上用
         // `hdc shell atm perm -g -i <accessTokenId> -p ohos.permission.SYSTEM_FLOAT_WINDOW`
         // 手动给一次。没授权时 FloatWindowManager 静默降级，应用内浮层照常工作。
-        "name": "ohos.permission.SYSTEM_FLOAT_WINDOW"
+        "name": "ohos.permission.SYSTEM_FLOAT_WINDOW",
+        "reason": "$string:float_window_reason",
+        "usedScene": {
+          "abilities": [
+            "EntryAbility"
+          ],
+          "when": "always"
+        }
       },
       {
         "name": "ohos.permission.FILE_ACCESS_PERSIST"
