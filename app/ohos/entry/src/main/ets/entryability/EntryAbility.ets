@@ -39,12 +39,15 @@ import CompanionWidgetPlugin from '../plugins/CompanionWidgetPlugin';
 import Want from '@ohos.app.ability.Want';
 import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import window from '@ohos.window';
+import PipPlugin from '../plugins/PipPlugin';
+import { FloatWindowManager } from '../window/FloatWindowManager';
 
 export default class EntryAbility extends FlutterAbility {
   private keyboardLog: OhosKeyboardLog = new OhosKeyboardLog();
 
   onCreate(want: Want, launch: AbilityConstant.LaunchParam): void {
     hilog.warn(0x3F10, 'DshWake', 'entry onCreate entered');
+    FloatWindowManager.getInstance().init(this.context);
     HmsShareInbox.receive(this.context, want, launch);
     ShortcutsPlugin.receive(want, launch);
     // 熄屏状态下启动不会有 onForeground，这里也要注册一次（幂等）。
@@ -101,6 +104,7 @@ export default class EntryAbility extends FlutterAbility {
 
   onForeground(): void {
     EntryAbility.ensureWakeWork(this.context);
+    FloatWindowManager.getInstance().onForeground();
     this.keyboardLog.setForeground(true);
     PastePlugin.onForeground(this);
     AppLinksPlugin.onForeground(this);
@@ -118,6 +122,7 @@ export default class EntryAbility extends FlutterAbility {
   }
 
   onBackground(): void {
+    FloatWindowManager.getInstance().onBackground();
     this.keyboardLog.setForeground(false);
     PastePlugin.onBackground(this);
     AppLinksPlugin.onBackground(this);
@@ -135,6 +140,7 @@ export default class EntryAbility extends FlutterAbility {
   }
 
   onDestroy(): void {
+    FloatWindowManager.getInstance().destroy();
     MediaVideoPlugin.onDestroy(this);
     PictureShortcutPlugin.onBackground(this);
     this.keyboardLog.setForeground(false);
@@ -181,6 +187,7 @@ export default class EntryAbility extends FlutterAbility {
     flutterEngine.getPlugins()?.add(new PictureShortcutPlugin())
     flutterEngine.getPlugins()?.add(new LaunchPlugin())
     flutterEngine.getPlugins()?.add(new LaunchClipPlugin())
+    flutterEngine.getPlugins()?.add(new PipPlugin())
     flutterEngine.getPlugins()?.add(new MediaVideoPlugin(async (root: string, relative: string): Promise<number> => {
       return (await loadNativeHost()).openUserFile(root, relative);
     }))

@@ -71,6 +71,18 @@
     {
       "name": "companion_widget_asleep",
       "value": "Asleep"
+    },
+    {
+      "name": "dsh_pip_idle",
+      "value": "Agent"
+    },
+    {
+      "name": "dsh_pip_waiting",
+      "value": "Idle"
+    },
+    {
+      "name": "dsh_pip_back",
+      "value": "Back to app"
     }
   ]
 }

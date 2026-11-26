@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../l10n/l10n.dart';
 import '../notify/live_activity.dart';
+import '../pip/pip_window.dart';
 import '../notify/live_art.dart';
 import '../pets/pet_signals.dart';
 import '../pets/pet_state.dart';
@@ -77,12 +78,43 @@ final liveActivityBridgeProvider = Provider<void>((ref) {
   if (os == 'ohos') {
     final channel = ref.read(notifyChannelProvider);
     ref.onDispose(() => unawaited(channel.live(const LivePush(enabled: false))));
+    // 画中画浮窗吃的是同一份实时活动：在跑时贴一枚胶囊，退到后台交给原生系统悬浮窗。
+    const pip = PipWindow();
+    ref.listen<LivePush>(livePushProvider, (previous, next) {
+      if (previous == next) return;
+      unawaited(_feedPip(pip, next));
+    }, fireImmediately: true);
   }
   ref.listen<LivePush>(livePushProvider, (previous, next) {
     if (previous == next) return;
     unawaited(ref.read(notifyChannelProvider).live(next));
   }, fireImmediately: true);
 });
+
+/// 把实时活动翻译成浮窗要的三样东西：说什么、什么色的点、要不要自动升系统悬浮窗。
+/// 在跑才升应用内胶囊；等你/出错误切琥珀并收起，交给通知去提醒。
+Future<void> _feedPip(PipWindow pip, LivePush push) async {
+  final activity = push.enabled ? push.activity : null;
+  if (activity == null) {
+    await pip.setContent(title: '');
+    await pip.setFloatAuto(false);
+    await pip.hide();
+    return;
+  }
+  final glow = switch (activity.kind) {
+    LiveKind.running => PipGlow.running,
+    LiveKind.waiting => PipGlow.attention,
+    LiveKind.failed => PipGlow.attention,
+    LiveKind.done => PipGlow.normal,
+  };
+  await pip.setContent(title: activity.title, status: activity.text, glow: glow);
+  await pip.setFloatAuto(activity.kind == LiveKind.running || activity.kind == LiveKind.waiting);
+  if (activity.kind == LiveKind.running) {
+    await pip.show(compact: true);
+  } else {
+    await pip.hide();
+  }
+}
 
 /// One push at a time, in order: the still for an older state, slow to draw,
 /// can't land on a newer one. Each picture crosses the channel once.

@@ -67,6 +67,18 @@
     {
       "name": "companion_widget_asleep",
       "value": "睡着了"
+    },
+    {
+      "name": "dsh_pip_idle",
+      "value": "智能体"
+    },
+    {
+      "name": "dsh_pip_waiting",
+      "value": "待命"
+    },
+    {
+      "name": "dsh_pip_back",
+      "value": "回到应用"
     }
   ]
 }

@@ -131,6 +131,7 @@ $H shell "bm dump -n ccchimneyyy.dsh.go | grep -A3 EngineWakeAbility"  # 扩展�
 | [NekoBox4Harmony](https://github.com/xiaoli8571/NekoBox4Harmony)（★86，逆向 FlClash） | 明确写「**DATA_TRANSFER 当会话保活不成立**：10 分钟不更新会被取消，低速也会被取消」，只允许真实传输期短时持有；VPN 会话靠 `VpnExtensionAbility`（系统托管进程）+ 常驻通知 + 被杀自愈；`TASK_KEEPING` 因 ACL 不可得而放弃 |
 | [dsh-Remote](https://github.com/Blank-not-black/dsh-Remote)（★90，同把 DSH 搬到鸿蒙） | 用 `dataTransfer` + 5 分钟 `updateBackgroundRunning` + `continuousTaskCancel/Suspend/Active` 回调做诊断；**没有过夜存活记录**；提醒在 1700002 时降级为进程内定时器，并明说「冻结期间无提醒」 |
 | [Syncthing-for-HarmonyOS](https://github.com/forwardz666/Syncthing-for-HarmonyOS)（★17） | 长时任务扛真实同步；WorkScheduler 30 分钟只做保底探活；扩展里禁止 `backgroundTaskManager` |
+| [swai](https://github.com/shuwei-ai/swai)（★11，原生鸿蒙 + DSH 客户端，源码在 `<ws>/build/swai-ref` 核过） | **没有长时任务**：只声明 `KEEP_BACKGROUND_RUNNING`，无 `backgroundModes`、无 `startBackgroundRunning`、无 wantAgent 常驻通知、无 `TASK_KEEPING` 试探。保活只有两招：① `appService` 扩展 `ShellBridgeService`（`exported:true`，别的应用 bind 才活，**未声明独立 process，与 UI 同进程**，进程该冻还是冻）；② `requestSuspendDelay` 包住单次 agent 长跑、`finally` 取消（`agent/AgentSession.ets:214-247`）。真正做的是**感知层**：浮窗 + 状态点告诉用户「还在跑」，不解决进程被冻结 |
 | FlClash（闭源，NekoBox 逆向） | `TASK_KEEPING` + 双 Ability + VPN 扩展进程 + `hiAppEvent` 被杀自愈；手机端 ACL 由 AGC 特批 |
 
 ### 6. 尚未闭合的三件事（必须真机测，不能推理）
