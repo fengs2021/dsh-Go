@@ -10,7 +10,6 @@ import '../notify/live_activity.dart';
 import 'package:dsh_client/dsh_client.dart' show AssistantChatItem, ChatItem, ToolChatItem, ToolStatus;
 
 import '../pip/pip_window.dart';
-import '../ui/chat/run_info.dart' show runActivityProvider;
 import 'chat_state.dart' show chatProvider;
 import '../notify/live_art.dart';
 import '../pets/pet_signals.dart';
@@ -103,25 +102,35 @@ final liveActivityBridgeProvider = Provider<void>((ref) {
   }, fireImmediately: true);
 });
 
-/// 浮窗展开态要的细节：最新一句回复/叙述 + 正在跑的工具。
-/// 与实时活动同源（RunActivity 就是输入条上方那条活动条的内容），不另造状态。
+/// 浮窗展开态要的细节：最新一句回复 + 正在跑的工具 + 本轮已完成工具数。
+///
+/// 只看 [ChatItem]：目录依赖方向规定 ui/ 之外不能引 ui/，所以这里不引
+/// ui/chat/run_info.dart 的活动条，改用同一份会话数据自己算——
+/// 活动条那份 RunActivity 也是从这些 items 推出来的，值一致。
 typedef _PipDetail = ({String detail, String tool, int toolsDone});
 
 final _pipDetailProvider = Provider<_PipDetail?>((ref) {
   final focus = ref.watch(petSignalsProvider).focus;
   if (focus == null) return null;
-  final activity = ref.watch(runActivityProvider(focus.sessionId));
   final items = ref.watch(chatProvider(focus.sessionId)).items;
-  final latest = _latestReply(items);
-  final narration = activity?.narration?.trim() ?? '';
-  final activityDetail = (activity?.detail ?? '').trim();
-  // 优先「模型这一轮最新一行叙述」，其次是活动条的 detail，最后退回会话里最后一条回复。
-  final detail = narration.isNotEmpty ? narration : (activityDetail.isNotEmpty ? activityDetail : latest);
+  final detail = _latestReply(items);
   final tool = _runningTool(items);
-  final toolsDone = activity?.toolsDone ?? 0;
+  final toolsDone = _doneTools(items);
   if (detail.isEmpty && tool.isEmpty && toolsDone == 0) return null;
   return (detail: _clip(detail), tool: tool, toolsDone: toolsDone);
 });
+
+/// 本轮已经跑完的工具数（成功、失败都算跑完）。
+int _doneTools(List<ChatItem> items) {
+  var done = 0;
+  for (final item in items) {
+    if (item is ToolChatItem &&
+        (item.status == ToolStatus.succeeded || item.status == ToolStatus.failed)) {
+      done++;
+    }
+  }
+  return done;
+}
 
 /// 会话里最后一条非空的助手回复（流式中的草稿也算）。
 String _latestReply(List<ChatItem> items) {
