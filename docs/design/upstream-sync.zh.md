@@ -133,7 +133,74 @@ HoKit 重签 success、`hdc install -r` 成功，设备侧 `ccchimneyyy.dsh.go /
 签名包 md5 `90284636055b6ea6158d3ae1f66cde74`，完整记录见 `hap-build/BUILD-v92.txt`。
 全链路 `scripts/v92-pipeline.sh`（`PIPELINE_RC=0`），本次 hdc 文件通道正常。
 
-## 6. 整体 merge 可行性预演（2026-11-26，隔离工作树 `probe/merge-main`）
+## 6. 第二次整体 merge（2026-11-27，上游 v1.4.0）
+
+| 项 | 值 |
+| --- | --- |
+| 上游 `origin/main` | `89095085b`（Merge PR #2102 fix/tawcroot-compat），比上次前进 39 个提交 |
+| 合并前 HEAD | `695d234a0`（回退点记在 `hap-build/ROLLBACK-merge-main-1127.txt`） |
+| merge commit | `92fcb2842` |
+| 领先/落后（合并后） | 领先 85、落后 0 |
+
+**为什么之前没发现上游有更新**：`remote.origin.fetch` 的 refspec 只跟 `ohos/v8` 一条，
+`git fetch origin main` 只更新 `FETCH_HEAD`、不动 `origin/main` 这个引用，所以
+「落后 0」是假的。必须显式 `git fetch origin '+refs/heads/main:refs/remotes/origin/main'`。
+**这条 refspec 建议补上**，否则以后还会漏。
+
+### 6.1 上游这 39 个提交带来了什么
+
+- **v1.4.0 发布**（tag `v1.4.0`）：消息长按直接编辑重发、会话页显示 decoding speed、插件市场投稿可用；
+- **DS Bot 走隧道**、远程独立维持后台连接；
+- **鸿蒙侧新增** `RemoteBackgroundPlugin`、`RemoteAudioTask`，`backgroundModes` 要 `audioPlayback`；
+- **`runtime/patches` 新增 1 个** `ohos-inspector-unavailable.diff`（265 → 266，`series` 同步登记）→ **必须重编 runtime**。
+
+### 6.2 冲突 3 处，全部「两边都留」
+
+| 文件 | 上游 | 我们 | 解法 |
+| --- | --- | --- | --- |
+| `app/lib/ui/settings/background_guide_page.dart` | 加 `_RemoteBackgroundSection`（远程后台开关） | 有 `_experimentsSection`（实验项） | 两个区块都留 |
+| `app/ohos/.../EntryAbility.ets` | 接 `this.remoteBackground` 的前后台/销毁回调 | 接 `FloatWindowManager` 的前后台/销毁回调 | 两边回调都留 |
+| `app/ohos/entry/src/main/module.json5` | `backgroundModes: ["audioPlayback"]` | `backgroundModes: ["dataTransfer"]` | 合成 `["dataTransfer", "audioPlayback"]` |
+
+合并后另有一个**上游引入的构建错误**：`KEEP_BACKGROUND_RUNNING` 权限被声明两次
+（上游加了一条、我们早有一条），hvigor 报 `00303059 Duplicate permission names` → 删掉重复那条。
+
+### 6.3 验证结果
+
+| 检查 | 结果 |
+| --- | --- |
+| `l10n_merge --check` | ✅ 80 parts / 9051 keys |
+| `guide_sync --check` | ✅ 38 files |
+| `flutter analyze` | ✅ No issues found |
+| `check-arkts.sh --sdk /root/sdk --hms-stubs` | ✅ RC=0、0 error |
+| `flutter test`（全量） | 8489+ 通过 / 307 跳过 / **7 失败** → 逐条定性见下 |
+
+**7 个失败全部不是本次合并引入的**：
+
+| 失败 | 定性 |
+| --- | --- |
+| `import_direction_test`（1 条） | **我引入的**，已修：浮窗细节曾从 `state/` 引 `ui/chat/run_info.dart`，违反「ui/ 之外不引 ui/」（白名单只减不增）。改成只看 `ChatItem` 自算：最新一条助手回复、正在跑的工具名、本轮已完成工具数——活动条那份 `RunActivity` 也是从同一份 items 推出来的，值一致。提交 `7cb194693` |
+| `drawer_g9_folder_editor`（明/暗 2 条 golden） | **本机基线失败**：在合并前的 `695d234a0` 独立 worktree 上跑，失败完全一样。上游 CI 16 项全绿、且这两个 golden 上游没动 → 本机字体渲染差异 |
+| `host_sheet_missing`（dark/en/light 3 条 golden） | 同上，基线失败 |
+| `companion_server_test` 的 `without the token, nothing`（1 条） | **全量并发时的偶发**：单独跑全绿（10/10），基线与当前树都绿 |
+
+判定手段：`git worktree add --detach build/probe-golden-base 695d234a0` 造一个合并前的
+独立工作树，跑同一批测试对比——**同一批 golden 在基线上一样失败**，故为环境问题、非回归。
+
+### 6.4 出包 v95
+
+- **runtime 重编**：`prep95.sh` + `compose95.sh`，receipt `8fb01b68…`，新 `runtimeVersion`
+  `ohos-1b78da1abcd96814c6e6ce59`（上一版 `ohos-38b312bb…`），产物
+  `build/compose95/dsh-runtime-rawfile.zip` 89,679,315 B。
+- **AOT**：run `45915259195` success，`AOT_COMMIT=7cb194693`（与 HEAD 一致），`app.so` 50,414,472 B。
+- **构建/签名**：`fullhap95.sh` rc=0、`sign95.sh` rc=0，
+  `hap-build/dsh-ohos-v95-signed.hap` 167,280,339 B，md5 `4de359d0e6743d405a5844d2ec8f3809`。
+- **装机**：设备当时离线（息屏/离开 Wi-Fi，ping 100% 丢包、`tconn` 报 `Connect failed`），
+  装包脚本却**返回 0**——hdc 失败时退出码不可信。已修 `install-v95.sh`：
+  显式检查 `Connect failed`、检查 `[Fail]` 输出、装完用 `bm dump` 核版本。
+  另加 `scripts/install-when-online.sh`：设备上线后自动装并核验（日志 `/root/install-v95-online.log`）。
+
+## 6b. 整体 merge 可行性预演（2026-11-26，隔离工作树 `probe/merge-main`）
 
 第 3/4 节曾保守判断「整体 rebase 冲突面大、风险高」。用 `git merge-tree --write-tree`
 只读预演 + 隔离工作树实做，**推翻该判断**：
